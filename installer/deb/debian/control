@@ -1,0 +1,19 @@
+Source: gdrive-sync
+Section: utils
+Priority: optional
+Maintainer: GDrive Sync <noreply@gdrive-sync.dev>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/gdrive-sync/gdrive-sync
+
+Package: gdrive-sync
+Architecture: amd64
+Depends: ${misc:Depends},
+         libwebkit2gtk-4.1-0,
+         libgtk-3-0,
+         libayatana-appindicator3-1
+Description: Bidirectional Google Drive sync for Linux
+ A Linux-native bidirectional Google Drive sync solution that runs as a
+ background daemon with desktop integration via a system tray icon and
+ settings UI. Features include conflict detection and resolution,
+ real-time filesystem monitoring, and configurable sync strategies.

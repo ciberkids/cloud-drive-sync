@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Rust / Tauri
+ui/src-tauri/target/
+ui/src-tauri/gen/
+
+# Build artifacts
+*.rpm
+*.deb
+*.AppImage
+artifacts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Config/secrets (never commit)
+client_secret*.json
+token.json
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App runtime
+*.sock
+*.db
+*.db-journal

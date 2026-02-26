@@ -1,0 +1,46 @@
+# Multi-stage build for gdrive-sync Tauri UI
+# Produces RPM, .deb, and AppImage packages
+
+# Stage 1: Build frontend + Tauri app
+FROM rust:1.82-bookworm AS builder
+
+# Install system dependencies for Tauri build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    file \
+    libayatana-appindicator3-dev \
+    libgtk-3-dev \
+    librsvg2-dev \
+    libssl-dev \
+    libwebkit2gtk-4.1-dev \
+    pkg-config \
+    wget \
+    # For AppImage
+    libfuse2 \
+    # For .deb packaging
+    dpkg-dev \
+    # For RPM packaging
+    rpm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY ui/ .
+
+# Install JS dependencies
+RUN npm ci
+
+# Build the Tauri app (produces deb + AppImage by default, RPM if rpmbuild available)
+RUN npx tauri build
+
+# Stage 2: Output artifacts
+FROM scratch AS output
+COPY --from=builder /build/src-tauri/target/release/bundle/deb/*.deb /out/
+COPY --from=builder /build/src-tauri/target/release/bundle/appimage/*.AppImage /out/
+# RPM may not be built on Debian base; will be empty if so
+# COPY --from=builder /build/src-tauri/target/release/bundle/rpm/*.rpm /out/

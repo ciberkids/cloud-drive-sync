@@ -1,0 +1,28 @@
+# Multi-stage build for gdrive-sync daemon
+# Produces a standalone binary via PyInstaller
+
+# Stage 1: Build
+FROM python:3.12-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir pyinstaller
+
+WORKDIR /build
+COPY daemon/ .
+
+RUN pip install --no-cache-dir .
+RUN pyinstaller \
+    --onefile \
+    --name gdrive-sync-daemon \
+    --hidden-import=gdrive_sync \
+    --hidden-import=google.auth.transport.requests \
+    --hidden-import=google.auth.transport._http_client \
+    --collect-all=googleapiclient \
+    src/gdrive_sync/__main__.py
+
+# Stage 2: Output
+FROM scratch AS output
+COPY --from=builder /build/dist/gdrive-sync-daemon /out/gdrive-sync-daemon

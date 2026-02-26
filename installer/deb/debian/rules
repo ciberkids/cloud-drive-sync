@@ -1,0 +1,33 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	# Binaries
+	install -Dm755 gdrive-sync-daemon $(CURDIR)/debian/gdrive-sync/usr/bin/gdrive-sync-daemon
+	install -Dm755 gdrive-sync-ui $(CURDIR)/debian/gdrive-sync/usr/bin/gdrive-sync-ui
+
+	# Systemd user service
+	install -Dm644 gdrive-sync-daemon.service \
+		$(CURDIR)/debian/gdrive-sync/usr/lib/systemd/user/gdrive-sync-daemon.service
+
+	# Desktop files
+	install -Dm644 gdrive-sync-ui.desktop \
+		$(CURDIR)/debian/gdrive-sync/etc/xdg/autostart/gdrive-sync-ui.desktop
+	install -Dm644 gdrive-sync.desktop \
+		$(CURDIR)/debian/gdrive-sync/usr/share/applications/gdrive-sync.desktop
+
+	# Icons
+	install -Dm644 gdrive-sync.svg \
+		$(CURDIR)/debian/gdrive-sync/usr/share/icons/hicolor/scalable/apps/gdrive-sync.svg
+
+override_dh_auto_build:
+	# Pre-built binaries, nothing to build
+
+override_dh_auto_test:
+	# Skip tests for pre-built binaries
+
+override_dh_shlibdeps:
+	# Skip automatic shared library dependency detection for pre-built binaries
+	true
