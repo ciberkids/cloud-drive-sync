@@ -26,8 +26,9 @@ def cli(ctx: click.Context, config_path: Path | None, log_level: str | None) -> 
 
 @cli.command()
 @click.option("--foreground", is_flag=True, help="Run in the foreground (don't daemonize)")
+@click.option("--demo", is_flag=True, help="Run in demo mode with mock Google Drive (no credentials needed)")
 @click.pass_context
-def start(ctx: click.Context, foreground: bool) -> None:
+def start(ctx: click.Context, foreground: bool, demo: bool) -> None:
     """Start the sync daemon."""
     from gdrive_sync.daemon import Daemon
 
@@ -38,6 +39,7 @@ def start(ctx: click.Context, foreground: bool) -> None:
     daemon = Daemon(
         config_path=ctx.obj["config_path"],
         log_level=ctx.obj["log_level"],
+        demo=demo,
     )
 
     if foreground:

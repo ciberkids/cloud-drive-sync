@@ -1,0 +1,279 @@
+# UI Screenshots & Wireframes
+
+ASCII wireframe mockups for every page and state of the GDrive Sync desktop application.
+
+## Status Dashboard
+
+The main view. Shows overall sync health, file counts, and control buttons.
+
+### Idle (Up to Date)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ┌──────────┐                                                    │
+│ │ GDrive   │  ┌─────────────────────────────────────────────┐   │
+│ │  Sync    │  │                                             │   │
+│ │  ● ──────│  │   ✔  Up to date                             │   │
+│ │          │  │   Last sync: Jan 15, 2025 2:32:00 PM        │   │
+│ │ Status ◄─│  │                                             │   │
+│ │ Settings │  │   ┌─────────────┐  ┌──────────────────┐     │   │
+│ │ Conflicts│  │   │    247      │  │       0          │     │   │
+│ │ Activity │  │   │  Files      │  │  Active          │     │   │
+│ │ Account  │  │   │  synced     │  │  transfers       │     │   │
+│ │          │  │   └─────────────┘  └──────────────────┘     │   │
+│ │          │  │                                             │   │
+│ │          │  │   [  Sync Now  ]   [  Pause  ]              │   │
+│ │          │  │                                             │   │
+│ └──────────┘  └─────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Syncing
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ↻  Syncing...                                                  │
+│   Last sync: Jan 15, 2025 2:32:00 PM                            │
+│                                                                  │
+│   ┌─────────────┐  ┌──────────────────┐                          │
+│   │    249      │  │       2          │                          │
+│   │  Files      │  │  Active          │                          │
+│   │  synced     │  │  transfers       │                          │
+│   └─────────────┘  └──────────────────┘                          │
+│                                                                  │
+│   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░  (indeterminate)       │
+│                                                                  │
+│   [  Sync Now  ]   [  Pause  ]                                   │
+│    (disabled)                                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Paused
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ❚❚  Paused                                                    │
+│   Last sync: Jan 15, 2025 2:32:00 PM                            │
+│                                                                  │
+│   [  Sync Now  ]   [  Resume  ]                                  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Error
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ✖  Error: Drive API rate limit exceeded                       │
+│                                                                  │
+│   [  Sync Now  ]   [  Pause  ]                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Disconnected
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ○  Disconnected                                               │
+│                                                                  │
+│   [  Sync Now  ]   [  Pause  ]                                   │
+│    (disabled)       (disabled)                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Settings
+
+Manages sync pairs and conflict strategy.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Settings                                                       │
+│                                                                  │
+│   ─── Sync Folders ────────────────────────────────────────────  │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐    │
+│   │  ~/Documents/work                                       │    │
+│   │  Remote: My Drive                            [Remove]   │    │
+│   ├─────────────────────────────────────────────────────────┤    │
+│   │  ~/Pictures                                             │    │
+│   │  Remote: 0A3xFolderIdHere                    [Remove]   │    │
+│   └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│   Local folder:  [/home/user/Projects______] [Browse]            │
+│   Remote ID:     [root_____________________]                     │
+│                  Use "root" for My Drive, or a specific           │
+│                  folder ID                                       │
+│   [ Add Sync Folder ]                                            │
+│                                                                  │
+│   ─── Conflict Resolution ─────────────────────────────────────  │
+│                                                                  │
+│   Strategy: [ Keep both (rename conflicting file) ▼ ]            │
+│             ┌──────────────────────────────────────┐             │
+│             │ Keep both (rename conflicting file)  │             │
+│             │ Newest wins (overwrite older)        │             │
+│             │ Ask me (show dialog)                 │             │
+│             └──────────────────────────────────────┘             │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Conflicts
+
+Lists unresolved conflicts with per-file and batch resolution controls.
+
+### With Conflicts
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Conflicts (2)                                                  │
+│   [Keep all local]  [Keep all remote]  [Keep all both]           │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐    │
+│   │  report.docx                                            │    │
+│   │  ┌──────────────────┐      ┌──────────────────┐        │    │
+│   │  │ Local            │  vs  │ Remote           │        │    │
+│   │  │ 245 KB           │      │ 251 KB           │        │    │
+│   │  │ Jan 15 2:30 PM   │      │ Jan 15 2:28 PM   │        │    │
+│   │  └──────────────────┘      └──────────────────┘        │    │
+│   │  [Keep local]  [Keep remote]  [Keep both]               │    │
+│   ├─────────────────────────────────────────────────────────┤    │
+│   │  presentation.pptx                                      │    │
+│   │  ┌──────────────────┐      ┌──────────────────┐        │    │
+│   │  │ Local            │  vs  │ Remote           │        │    │
+│   │  │ 1.2 MB           │      │ 1.3 MB           │        │    │
+│   │  │ Jan 15 1:00 PM   │      │ Jan 15 12:45 PM  │        │    │
+│   │  └──────────────────┘      └──────────────────┘        │    │
+│   │  [Keep local]  [Keep remote]  [Keep both]               │    │
+│   └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### No Conflicts
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Conflicts                                                      │
+│                                                                  │
+│   No unresolved conflicts.                                       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Activity Log
+
+Timestamped, filterable feed of all sync operations.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Activity                                                       │
+│   [All] [Upload] [Download] [Delete] [Conflict] [Error]         │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐    │
+│   │  ↑  notes.md                              14:32 success │    │
+│   │  ↓  budget.xlsx                           14:31 success │    │
+│   │  ✖  old-draft.txt                         14:30 success │    │
+│   │  ⚠  report.docx                           14:28 conflict│    │
+│   │  ↓  photo.jpg                             14:25 success │    │
+│   │  ↑  readme.md                             14:20 success │    │
+│   │  ✘  backup.zip                            14:15 error   │    │
+│   └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│   [ Load more ]                                                  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Event type icons:
+- `↑` Upload
+- `↓` Download
+- `✖` Delete
+- `⚠` Conflict
+- `✘` Error
+
+## Account Manager
+
+Google account connection management.
+
+### Connected
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Google Account                                                 │
+│                                                                  │
+│   ● Connected                                                    │
+│                                                                  │
+│   [ Disconnect Account ]                                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Disconnected
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Google Account                                                 │
+│                                                                  │
+│   Connect your Google account to start syncing.                  │
+│                                                                  │
+│   [ Connect Google Account ]                                     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Authenticating
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   Google Account                                                 │
+│                                                                  │
+│   Connect your Google account to start syncing.                  │
+│                                                                  │
+│   [ Authenticating... ]                                          │
+│    (disabled)                                                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Tray Icon States
+
+The system tray icon reflects the current daemon status.
+
+| State | Icon | Description |
+|---|---|---|
+| **Idle** | Green checkmark | All files synced, no pending operations |
+| **Syncing** | Blue rotating arrows | Active file transfers in progress |
+| **Error** | Red X | A sync error occurred |
+| **Conflict** | Yellow warning triangle | Unresolved conflicts pending user action |
+| **Disconnected** | Grey circle | Cannot connect to daemon |
+
+The tray icon tooltip shows the current status text (e.g., "GDrive Sync - Connected", "GDrive Sync - Syncing 2 files").
+
+Right-clicking the tray icon shows a context menu:
+- **Show/Hide Window** — toggle the main window
+- **Sync Now** — trigger immediate sync
+- **Pause/Resume** — toggle sync pausing
+- **Quit** — exit the application
+
+## Notification Types
+
+Desktop notifications are sent via `tauri-plugin-notification`:
+
+| Type | Title | Body Example |
+|---|---|---|
+| **Sync Complete** | GDrive Sync | Synced 5 files (3 uploaded, 2 downloaded) |
+| **Conflict Detected** | GDrive Sync - Conflict | report.docx has conflicting changes |
+| **Error** | GDrive Sync - Error | Drive API rate limit exceeded |

@@ -52,12 +52,15 @@ class SyncEngine:
         config: Config,
         db: Database,
         drive_client: DriveClient,
+        *,
+        file_ops: FileOperations | None = None,
+        change_poller: ChangePoller | None = None,
     ) -> None:
         self._config = config
         self._db = db
         self._client = drive_client
-        self._ops = FileOperations(drive_client)
-        self._poller = ChangePoller(drive_client)
+        self._ops = file_ops or FileOperations(drive_client)
+        self._poller = change_poller or ChangePoller(drive_client)
         self._conflict_resolver = ConflictResolver(config.sync.conflict_strategy)
         self._pairs: dict[str, PairStatus] = {}
         self._stop_event = asyncio.Event()

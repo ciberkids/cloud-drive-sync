@@ -1,4 +1,4 @@
-.PHONY: help setup setup-daemon setup-ui dev-daemon dev-ui clean build build-daemon build-ui lint test
+.PHONY: help setup setup-daemon setup-ui dev dev-all dev-daemon dev-ui clean build build-daemon build-ui lint test test-integration
 
 DAEMON_DIR := daemon
 UI_DIR := ui
@@ -17,6 +17,12 @@ setup-daemon: ## Set up Python daemon venv and install dependencies
 
 setup-ui: ## Set up Tauri UI project dependencies
 	cd $(UI_DIR) && npm install
+
+dev: ## Start daemon in demo mode (no credentials needed)
+	./dev.sh
+
+dev-all: ## Start daemon + Tauri UI in demo mode
+	./dev.sh --with-ui
 
 dev-daemon: ## Run daemon in development mode
 	$(PYTHON) -m gdrive_sync --log-level debug
@@ -47,6 +53,9 @@ lint: ## Run linters
 
 test: ## Run all tests
 	cd $(DAEMON_DIR) && $(VENV)/bin/pytest -v
+
+test-integration: ## Run integration tests (demo mode, no credentials)
+	cd $(DAEMON_DIR) && $(VENV)/bin/pytest -v -m integration tests/test_integration.py
 
 install-service: ## Install systemd user service
 	mkdir -p ~/.config/systemd/user

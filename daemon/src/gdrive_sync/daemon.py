@@ -7,11 +7,8 @@ import os
 import signal
 from pathlib import Path
 
-from gdrive_sync.auth.credentials import get_credentials, save_credentials
-from gdrive_sync.auth.oauth import run_oauth_flow
-from gdrive_sync.config import Config
+from gdrive_sync.config import Config, SyncPair
 from gdrive_sync.db.database import Database
-from gdrive_sync.drive.client import DriveClient
 from gdrive_sync.ipc.handlers import RequestHandler
 from gdrive_sync.ipc.server import IpcServer
 from gdrive_sync.sync.engine import SyncEngine
@@ -20,13 +17,23 @@ from gdrive_sync.util.paths import ensure_dirs, pid_path
 
 log = get_logger("daemon")
 
+DEMO_BASE = Path.home() / "gdrive-sync-demo"
+DEMO_LOCAL = DEMO_BASE / "local"
+DEMO_REMOTE = DEMO_BASE / "remote"
+
 
 class Daemon:
     """The gdrive-sync daemon process."""
 
-    def __init__(self, config_path: Path | None = None, log_level: str | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        log_level: str | None = None,
+        demo: bool = False,
+    ) -> None:
         self._config_path = config_path
         self._log_level_override = log_level
+        self._demo = demo
         self._config: Config | None = None
         self._db: Database | None = None
         self._engine: SyncEngine | None = None
@@ -41,7 +48,11 @@ class Daemon:
         self._config = Config.load(self._config_path)
         level = self._log_level_override or self._config.general.log_level
         setup_logging(level)
-        log.info("gdrive-sync daemon starting")
+
+        if self._demo:
+            log.info("gdrive-sync daemon starting in DEMO mode")
+        else:
+            log.info("gdrive-sync daemon starting")
 
         # Write PID file
         pid_file = pid_path()
@@ -53,12 +64,25 @@ class Daemon:
             self._db = Database()
             await self._db.open()
 
-            # Load credentials
-            creds = get_credentials()
-            client = DriveClient(creds)
+            if self._demo:
+                client, file_ops, change_poller = self._setup_demo()
+            else:
+                from gdrive_sync.auth.credentials import get_credentials
+                from gdrive_sync.drive.client import DriveClient
+
+                creds = get_credentials()
+                client = DriveClient(creds)
+                file_ops = None
+                change_poller = None
 
             # Initialize sync engine
-            self._engine = SyncEngine(self._config, self._db, client)
+            self._engine = SyncEngine(
+                self._config,
+                self._db,
+                client,
+                file_ops=file_ops,
+                change_poller=change_poller,
+            )
 
             # Initialize IPC
             handler = RequestHandler(self._engine, self._config)
@@ -108,8 +132,48 @@ class Daemon:
 
         log.info("Daemon stopped")
 
+    def _setup_demo(self):
+        """Set up mock Drive components for demo mode.
+
+        Creates demo directories and injects a demo sync pair into the config.
+        Returns (mock_client, mock_ops, mock_poller).
+        """
+        from gdrive_sync.drive.mock_client import (
+            MockChangePoller,
+            MockDriveClient,
+            MockFileOperations,
+        )
+
+        DEMO_LOCAL.mkdir(parents=True, exist_ok=True)
+        DEMO_REMOTE.mkdir(parents=True, exist_ok=True)
+
+        # Inject demo sync pair if not already present
+        demo_path = str(DEMO_LOCAL)
+        has_demo_pair = any(
+            p.local_path == demo_path for p in self._config.sync.pairs
+        )
+        if not has_demo_pair:
+            self._config.sync.pairs.insert(
+                0,
+                SyncPair(local_path=demo_path, remote_folder_id="root", enabled=True),
+            )
+
+        client = MockDriveClient(DEMO_REMOTE)
+        file_ops = MockFileOperations(client)
+        change_poller = MockChangePoller(client)
+
+        log.info("Demo mode: local=%s, remote=%s", DEMO_LOCAL, DEMO_REMOTE)
+        return client, file_ops, change_poller
+
     def _do_auth(self) -> None:
         """Run the OAuth flow (called from a thread by IPC handler)."""
+        if self._demo:
+            log.info("Auth skipped in demo mode")
+            return
+
+        from gdrive_sync.auth.credentials import save_credentials
+        from gdrive_sync.auth.oauth import run_oauth_flow
+
         creds = run_oauth_flow()
         save_credentials(creds)
         log.info("Re-authenticated via IPC")

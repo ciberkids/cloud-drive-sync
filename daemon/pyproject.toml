@@ -37,6 +37,9 @@ packages = ["src/gdrive_sync"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: integration tests using demo mode (no real Google credentials)",
+]
 
 [tool.ruff]
 target-version = "py312"
