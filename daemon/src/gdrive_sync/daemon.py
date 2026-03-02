@@ -37,6 +37,7 @@ class Daemon:
         self._config: Config | None = None
         self._db: Database | None = None
         self._engine: SyncEngine | None = None
+        self._handler: RequestHandler | None = None
         self._ipc_server: IpcServer | None = None
         self._shutdown_event = asyncio.Event()
 
@@ -67,39 +68,67 @@ class Daemon:
             if self._demo:
                 client, file_ops, change_poller = self._setup_demo()
             else:
-                from gdrive_sync.auth.credentials import get_credentials
+                from gdrive_sync.auth.credentials import load_credentials
                 from gdrive_sync.drive.client import DriveClient
 
-                creds = get_credentials()
-                client = DriveClient(creds)
-                file_ops = None
-                change_poller = None
+                token_refreshed = False
 
-            # Initialize sync engine
-            self._engine = SyncEngine(
-                self._config,
-                self._db,
-                client,
-                file_ops=file_ops,
-                change_poller=change_poller,
-            )
+                def _on_token_refresh():
+                    nonlocal token_refreshed
+                    token_refreshed = True
 
-            # Initialize IPC
+                creds = load_credentials(on_refresh=_on_token_refresh)
+                if creds and creds.valid:
+                    log.info("Loaded existing credentials")
+                    if token_refreshed:
+                        from gdrive_sync.db.models import SyncLogEntry
+
+                        await self._db.add_log_entry(SyncLogEntry(
+                            action="auth",
+                            path="",
+                            pair_id="_system",
+                            status="success",
+                            detail="Token refreshed",
+                        ))
+                    client = DriveClient(creds)
+                    file_ops = None
+                    change_poller = None
+                else:
+                    log.info("No valid credentials, waiting for authentication via UI")
+                    client = None
+                    file_ops = None
+                    change_poller = None
+
+            # Initialize sync engine only if we have a client
+            if client is not None:
+                self._engine = SyncEngine(
+                    self._config,
+                    self._db,
+                    client,
+                    file_ops=file_ops,
+                    change_poller=change_poller,
+                )
+
+            # Initialize IPC (works with or without engine)
             handler = RequestHandler(self._engine, self._config)
             handler.set_auth_callback(self._do_auth)
+            handler.set_db(self._db)
+            self._handler = handler
             self._ipc_server = IpcServer(handler)
             await self._ipc_server.start()
 
-            # Wire up notifications
-            self._engine.set_notify_callback(self._ipc_server.notify_all)
+            # Wire up notifications if engine is ready
+            if self._engine:
+                self._engine.set_notify_callback(self._ipc_server.notify_all)
 
             # Install signal handlers
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.add_signal_handler(sig, self._signal_handler)
 
-            # Start the sync engine
-            await self._engine.start()
+            # Start the sync engine if we have credentials
+            if self._engine:
+                await self._engine.start()
 
             # Wait for shutdown
             log.info("Daemon running (PID %d)", os.getpid())
@@ -165,18 +194,83 @@ class Daemon:
         log.info("Demo mode: local=%s, remote=%s", DEMO_LOCAL, DEMO_REMOTE)
         return client, file_ops, change_poller
 
-    def _do_auth(self) -> None:
-        """Run the OAuth flow (called from a thread by IPC handler)."""
+    def _do_auth(self) -> dict:
+        """Run the OAuth flow (called from a thread by IPC handler).
+
+        Returns a dict with status info for the UI.
+        """
         if self._demo:
             log.info("Auth skipped in demo mode")
-            return
+            return {"status": "ok", "message": "Demo mode — no real auth needed"}
 
         from gdrive_sync.auth.credentials import save_credentials
         from gdrive_sync.auth.oauth import run_oauth_flow
+        from gdrive_sync.db.models import SyncLogEntry
 
-        creds = run_oauth_flow()
-        save_credentials(creds)
-        log.info("Re-authenticated via IPC")
+        # Log auth started
+        self._log_auth_event("auth", "Authentication started", "in_progress")
+
+        try:
+            creds = run_oauth_flow()
+            save_credentials(creds)
+            log.info("Authenticated via OAuth")
+
+            # Log auth success
+            self._log_auth_event("auth", "Authentication successful", "success")
+
+            # If engine wasn't started yet (first auth), initialize it now
+            if self._engine is None and self._db is not None:
+                from gdrive_sync.drive.client import DriveClient
+
+                client = DriveClient(creds)
+                self._engine = SyncEngine(
+                    self._config,
+                    self._db,
+                    client,
+                )
+                # Update the handler with the new engine and client
+                self._handler.set_engine(self._engine)
+                self._handler.set_drive_client(client)
+
+                if self._ipc_server:
+                    self._engine.set_notify_callback(self._ipc_server.notify_all)
+
+                # Schedule engine start on the event loop
+                import asyncio
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self._engine.start())
+                )
+                log.info("Sync engine initialized after authentication")
+
+            return {"status": "ok"}
+
+        except Exception as exc:
+            log.error("Authentication failed: %s", exc)
+            self._log_auth_event("auth", f"Authentication failed: {exc}", "error")
+            return {"status": "error", "message": str(exc)}
+
+    def _log_auth_event(self, action: str, detail: str, status: str) -> None:
+        """Log an auth event to the activity database."""
+        if self._db is None:
+            return
+        import asyncio
+        from gdrive_sync.db.models import SyncLogEntry
+
+        entry = SyncLogEntry(
+            action=action,
+            path="",
+            pair_id="_system",
+            status=status,
+            detail=detail,
+        )
+        try:
+            loop = asyncio.get_event_loop()
+            loop.call_soon_threadsafe(
+                lambda: asyncio.ensure_future(self._db.add_log_entry(entry))
+            )
+        except RuntimeError:
+            pass
 
     @staticmethod
     def is_running() -> bool:

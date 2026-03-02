@@ -21,6 +21,7 @@ class SyncPair:
     local_path: str = ""
     remote_folder_id: str = "root"
     enabled: bool = True
+    sync_mode: str = "two_way"  # "two_way", "upload_only", "download_only"
 
 
 @dataclass
@@ -80,6 +81,7 @@ class Config:
                     local_path=pair_data.get("local_path", ""),
                     remote_folder_id=pair_data.get("remote_folder_id", "root"),
                     enabled=pair_data.get("enabled", True),
+                    sync_mode=pair_data.get("sync_mode", "two_way"),
                 )
             )
 
@@ -104,6 +106,7 @@ class Config:
                         "local_path": p.local_path,
                         "remote_folder_id": p.remote_folder_id,
                         "enabled": p.enabled,
+                        "sync_mode": p.sync_mode,
                     }
                     for p in self.sync.pairs
                 ],

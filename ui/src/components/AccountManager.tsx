@@ -11,9 +11,9 @@ export function AccountManager() {
     setAuthInProgress(true);
     setAuthMessage(null);
     try {
-      const result = await ipc.startAuth() as { status?: string } | null;
+      const result = await ipc.startAuth() as { status?: string; message?: string } | null;
       if (result && result.status === "ok") {
-        setAuthMessage("Authentication successful. If running in demo mode, no real Google account is needed — sync works with the local mock Drive.");
+        setAuthMessage(result.message || "Authentication successful! Your Google Drive will start syncing.");
       } else if (result && result.status === "no_auth_callback") {
         setAuthMessage("No authentication handler available.");
       }
@@ -57,8 +57,13 @@ export function AccountManager() {
             disabled={authInProgress}
             className="btn btn-primary"
           >
-            {authInProgress ? "Authenticating..." : "Connect Google Account"}
+            {authInProgress ? "Waiting for browser..." : "Connect Google Account"}
           </button>
+          {authInProgress && (
+            <p className="auth-message">
+              A browser window should open for Google sign-in. Complete the authorization there, then return here.
+            </p>
+          )}
         </div>
       )}
     </div>

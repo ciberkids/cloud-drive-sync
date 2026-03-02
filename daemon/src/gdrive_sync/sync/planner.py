@@ -97,6 +97,35 @@ def plan_initial_sync(
     return actions
 
 
+def filter_actions_by_mode(
+    actions: list[SyncAction],
+    sync_mode: str,
+) -> list[SyncAction]:
+    """Remove actions not allowed by the sync mode.
+
+    Modes:
+    - ``two_way`` – keep everything (default)
+    - ``upload_only`` – drop DOWNLOAD and DELETE_LOCAL
+    - ``download_only`` – drop UPLOAD and DELETE_REMOTE
+    """
+    if sync_mode == "two_way":
+        return actions
+
+    blocked: set[ActionType]
+    if sync_mode == "upload_only":
+        blocked = {ActionType.DOWNLOAD, ActionType.DELETE_LOCAL}
+    elif sync_mode == "download_only":
+        blocked = {ActionType.UPLOAD, ActionType.DELETE_REMOTE}
+    else:
+        return actions
+
+    filtered = [a for a in actions if a.action not in blocked]
+    dropped = len(actions) - len(filtered)
+    if dropped:
+        log.info("Sync mode %s: dropped %d actions", sync_mode, dropped)
+    return filtered
+
+
 def plan_continuous_sync(
     changes: list[dict[str, Any]],
     stored_entries: dict[str, SyncEntry],

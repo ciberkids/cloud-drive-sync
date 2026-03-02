@@ -10,11 +10,14 @@ export interface DaemonStatus {
   active_transfers: number;
 }
 
+export type SyncMode = "two_way" | "upload_only" | "download_only";
+
 export interface SyncPair {
   id: string;
   local_path: string;
   remote_folder_id: string;
   enabled: boolean;
+  sync_mode: SyncMode;
 }
 
 export interface ConflictRecord {
@@ -30,7 +33,7 @@ export interface ConflictRecord {
 export interface LogEntry {
   id: number;
   timestamp: string;
-  event_type: "upload" | "download" | "delete" | "conflict" | "error";
+  event_type: "upload" | "download" | "delete" | "conflict" | "error" | "auth";
   path: string;
   details: string;
   status: string;

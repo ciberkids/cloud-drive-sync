@@ -76,8 +76,16 @@ def save_credentials(creds: Credentials, path: Path | None = None) -> None:
     log.info("Credentials saved to %s", path)
 
 
-def load_credentials(path: Path | None = None) -> Credentials | None:
-    """Load and decrypt credentials from disk, refreshing if expired."""
+def load_credentials(
+    path: Path | None = None,
+    on_refresh: callable | None = None,
+) -> Credentials | None:
+    """Load and decrypt credentials from disk, refreshing if expired.
+
+    Args:
+        path: Optional path to the credentials file.
+        on_refresh: Optional callback invoked after a token refresh succeeds.
+    """
     path = path or credentials_path()
     if not path.exists():
         log.debug("No stored credentials at %s", path)
@@ -110,6 +118,8 @@ def load_credentials(path: Path | None = None) -> Credentials | None:
         log.info("Refreshing expired credentials")
         creds.refresh(Request())
         save_credentials(creds, path)
+        if on_refresh:
+            on_refresh()
 
     return creds
 

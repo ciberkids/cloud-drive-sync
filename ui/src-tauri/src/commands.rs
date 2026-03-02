@@ -22,6 +22,7 @@ pub struct SyncPair {
     pub local_path: String,
     pub remote_folder_id: String,
     pub enabled: bool,
+    pub sync_mode: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -201,4 +202,37 @@ pub async fn logout(bridge: State<'_, BridgeState>) -> Result<(), String> {
 pub async fn connect_daemon(bridge: State<'_, BridgeState>) -> Result<(), String> {
     let mut bridge = bridge.0.lock().await;
     bridge.connect().await
+}
+
+#[tauri::command]
+pub async fn set_sync_mode(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+    sync_mode: String,
+) -> Result<(), String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "set_sync_mode",
+            Some(json!({
+                "pair_id": pair_id,
+                "sync_mode": sync_mode
+            })),
+        )
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_remote_folders(
+    bridge: State<'_, BridgeState>,
+    parent_id: String,
+) -> Result<serde_json::Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "list_remote_folders",
+            Some(serde_json::json!({ "parent_id": parent_id })),
+        )
+        .await
 }

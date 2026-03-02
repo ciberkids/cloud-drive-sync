@@ -105,10 +105,46 @@ body {
   color: #fff;
 }
 
+.main-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .main-content {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+}
+
+.daemon-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary));
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border-color));
+  font-size: 13px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.daemon-banner code {
+  font-size: 12px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-primary));
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.daemon-banner-icon {
+  font-size: 16px;
+  color: var(--warning);
+}
+
+.daemon-banner .btn {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Status */
@@ -326,6 +362,19 @@ body {
 .sync-pair-remote {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.sync-pair-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sync-mode-select {
+  width: auto;
+  padding: 4px 28px 4px 8px;
+  font-size: 12px;
 }
 
 .add-pair-form {
@@ -601,4 +650,195 @@ body {
   font-style: italic;
   padding: 20px 0;
   text-align: center;
+}
+
+/* Remote folder picker */
+.remote-picker-row {
+  display: flex;
+  gap: 8px;
+}
+
+.remote-picker-row .input {
+  flex: 1;
+}
+
+.remote-picker-panel {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.remote-picker-breadcrumbs {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.remote-picker-crumb {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  font-family: var(--font);
+}
+
+.remote-picker-crumb:hover {
+  text-decoration: underline;
+}
+
+.remote-picker-sep {
+  margin: 0 2px;
+  color: var(--text-secondary);
+}
+
+.remote-picker-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.remote-picker-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font);
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.remote-picker-folder:hover {
+  background: var(--bg-secondary);
+}
+
+.remote-picker-folder-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.remote-picker-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-picker-loading,
+.remote-picker-empty,
+.remote-picker-error {
+  padding: 16px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.remote-picker-error {
+  color: var(--danger);
+}
+
+.remote-picker-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-color);
+  gap: 8px;
+}
+
+.remote-picker-selected {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Remote folder browser */
+.remote-browser {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.remote-browser-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  position: relative;
+}
+
+.remote-browser-message {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.remote-browser-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color);
+  gap: 8px;
+}
+
+.remote-browser-toolbar .remote-picker-breadcrumbs {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+  padding: 0;
+}
+
+.remote-browser-toolbar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.remote-browser-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.remote-browser-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.remote-browser-folder-row .remote-picker-folder {
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-browser-sync-form {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remote-browser-sync-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.remote-browser-sync-actions {
+  display: flex;
+  gap: 6px;
 }

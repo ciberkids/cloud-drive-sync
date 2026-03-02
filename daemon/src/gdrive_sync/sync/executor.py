@@ -25,12 +25,14 @@ class SyncExecutor:
         db: Database,
         local_root: Path,
         pair_id: str,
+        remote_folder_id: str = "root",
         max_concurrent: int = 4,
     ) -> None:
         self._ops = ops
         self._db = db
         self._local_root = local_root
         self._pair_id = pair_id
+        self._remote_folder_id = remote_folder_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._active_count = 0
 
@@ -95,9 +97,9 @@ class SyncExecutor:
             raise FileNotFoundError(f"Local file missing: {local_path}")
 
         existing_id = action.stored_entry.remote_id if action.stored_entry else None
-        parent_id = "root"
+        parent_id = self._remote_folder_id
         if action.stored_entry and action.stored_entry.remote_id:
-            # For updates, use existing_id
+            # For updates, use existing_id (parent not needed)
             pass
 
         result = await self._ops.upload_file(

@@ -74,3 +74,20 @@ export async function logout(): Promise<void> {
 export async function connectDaemon(): Promise<void> {
   return invoke("connect_daemon");
 }
+
+export async function setSyncMode(
+  pairId: string,
+  syncMode: string
+): Promise<void> {
+  return invoke("set_sync_mode", { pairId, syncMode });
+}
+
+export async function listRemoteFolders(
+  parentId: string
+): Promise<{
+  folders: Array<{ id: string; name: string }>;
+  parent_id: string;
+  error?: string;
+}> {
+  return invoke("list_remote_folders", { parentId });
+}

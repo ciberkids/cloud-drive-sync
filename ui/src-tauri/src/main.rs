@@ -37,6 +37,8 @@ fn main() {
             commands::start_auth,
             commands::logout,
             commands::connect_daemon,
+            commands::set_sync_mode,
+            commands::list_remote_folders,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

@@ -1,29 +1,25 @@
 import { useState, useEffect } from "react";
-import { useSyncPairs } from "../lib/hooks";
-import { FolderPicker } from "./FolderPicker";
-import type { ConflictStrategy } from "../lib/types";
+import { useSyncPairs, useStatus } from "../lib/hooks";
+import { RemoteFolderBrowser } from "./RemoteFolderBrowser";
+import type { ConflictStrategy, SyncMode } from "../lib/types";
 import * as ipc from "../lib/ipc";
 import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 
 export function Settings() {
-  const { pairs, add, remove } = useSyncPairs();
+  const { pairs, add, remove, refresh } = useSyncPairs();
+  const status = useStatus();
   const [homeDir, setHomeDir] = useState("~");
 
   useEffect(() => {
     getHomeDir().then((dir) => setHomeDir(dir)).catch(() => {});
   }, []);
-  const [newLocalPath, setNewLocalPath] = useState("");
-  const [newRemoteId, setNewRemoteId] = useState("root");
   const [conflictStrategy, setConflictStrategy] =
     useState<ConflictStrategy>("keep_both");
   const [saving, setSaving] = useState(false);
 
-  const handleAddPair = async () => {
-    if (!newLocalPath) return;
+  const handleAddPair = async (remoteFolderId: string, localPath: string) => {
     try {
-      await add(newLocalPath, newRemoteId);
-      setNewLocalPath("");
-      setNewRemoteId("root");
+      await add(localPath, remoteFolderId);
     } catch (e) {
       console.error("Failed to add sync pair:", e);
     }
@@ -34,6 +30,15 @@ export function Settings() {
       await remove(id);
     } catch (e) {
       console.error("Failed to remove sync pair:", e);
+    }
+  };
+
+  const handleSyncModeChange = async (pairId: string, mode: SyncMode) => {
+    try {
+      await ipc.setSyncMode(pairId, mode);
+      refresh();
+    } catch (e) {
+      console.error("Failed to set sync mode:", e);
     }
   };
 
@@ -49,6 +54,7 @@ export function Settings() {
     }
   };
 
+  const existingRemoteIds = new Set(pairs.map((p) => p.remote_folder_id));
   const configPath = `${homeDir}/.config/gdrive-sync/config.toml`;
   const dataPath = `${homeDir}/.local/share/gdrive-sync/`;
 
@@ -67,46 +73,40 @@ export function Settings() {
                   Remote: {pair.remote_folder_id === "root" ? "My Drive" : pair.remote_folder_id}
                 </span>
               </div>
-              <button
-                onClick={() => handleRemovePair(pair.id)}
-                className="btn btn-danger btn-sm"
-              >
-                Remove
-              </button>
+              <div className="sync-pair-actions">
+                <select
+                  value={pair.sync_mode}
+                  onChange={(e) =>
+                    handleSyncModeChange(pair.id, e.target.value as SyncMode)
+                  }
+                  className="select sync-mode-select"
+                >
+                  <option value="two_way">Two-way</option>
+                  <option value="upload_only">Upload only</option>
+                  <option value="download_only">Download only</option>
+                </select>
+                <button
+                  onClick={() => handleRemovePair(pair.id)}
+                  className="btn btn-danger btn-sm"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
           {pairs.length === 0 && (
             <p className="empty-message">No sync folders configured.</p>
           )}
         </div>
+      </section>
 
-        <div className="add-pair-form">
-          <FolderPicker
-            value={newLocalPath}
-            onChange={setNewLocalPath}
-            label="Local folder"
-          />
-          <div className="field">
-            <label className="field-label">Remote folder ID</label>
-            <input
-              type="text"
-              value={newRemoteId}
-              onChange={(e) => setNewRemoteId(e.target.value)}
-              className="input"
-              placeholder="root"
-            />
-            <small className="field-hint">
-              Use "root" for My Drive, or a specific folder ID
-            </small>
-          </div>
-          <button
-            onClick={handleAddPair}
-            disabled={!newLocalPath}
-            className="btn btn-primary"
-          >
-            Add Sync Folder
-          </button>
-        </div>
+      <section className="settings-section">
+        <h3>Remote Folders</h3>
+        <RemoteFolderBrowser
+          authenticated={status.connected}
+          onAddPair={handleAddPair}
+          existingRemoteIds={existingRemoteIds}
+        />
       </section>
 
       <section className="settings-section">

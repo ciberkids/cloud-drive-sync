@@ -79,6 +79,20 @@ export function useSyncPairs() {
     refresh();
   }, [refresh]);
 
+  // Re-fetch when daemon connects (initial load may race with connection)
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen("daemon-connected", () => {
+      refresh();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [refresh]);
+
   const add = useCallback(
     async (localPath: string, remoteFolderId: string) => {
       const pair = await ipc.addSyncPair(localPath, remoteFolderId);

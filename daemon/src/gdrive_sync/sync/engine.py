@@ -21,6 +21,7 @@ from gdrive_sync.sync.executor import SyncExecutor
 from gdrive_sync.sync.planner import (
     ActionType,
     SyncAction,
+    filter_actions_by_mode,
     plan_continuous_sync,
     plan_initial_sync,
 )
@@ -116,6 +117,7 @@ class SyncEngine:
             self._db,
             local_root,
             pair_id,
+            remote_folder_id=pair.remote_folder_id,
             max_concurrent=self._config.sync.max_concurrent_transfers,
         )
 
@@ -174,6 +176,9 @@ class SyncEngine:
                         resolved_actions.append(result)
                 else:
                     resolved_actions.append(action)
+
+            # Filter by sync mode
+            resolved_actions = filter_actions_by_mode(resolved_actions, ps.pair.sync_mode)
 
             # Execute
             if ps.executor:
@@ -249,6 +254,7 @@ class SyncEngine:
                         change_data["mtime"] = file_path.stat().st_mtime
 
                 actions = plan_continuous_sync([change_data], stored_entries)
+                actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
                     await ps.executor.execute_all(actions)
                     ps.last_sync = datetime.now(timezone.utc)
@@ -320,6 +326,7 @@ class SyncEngine:
             )
 
         actions = plan_continuous_sync(change_dicts, stored_entries)
+        actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
             await ps.executor.execute_all(actions)
 
