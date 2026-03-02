@@ -134,6 +134,11 @@ class RequestHandler:
         if not local_path:
             raise TypeError("local_path is required")
 
+        # Prevent duplicate pairs
+        for existing in self._config.sync.pairs:
+            if existing.local_path == local_path and existing.remote_folder_id == remote_folder_id:
+                raise TypeError("This sync pair already exists")
+
         pair = SyncPair(
             local_path=local_path,
             remote_folder_id=remote_folder_id,
