@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from gdrive_sync.db.database import Database
 from gdrive_sync.db.models import FileState, SyncEntry, SyncLogEntry
@@ -27,6 +27,7 @@ class SyncExecutor:
         pair_id: str,
         remote_folder_id: str = "root",
         max_concurrent: int = 4,
+        drive_client=None,
     ) -> None:
         self._ops = ops
         self._db = db
@@ -35,6 +36,9 @@ class SyncExecutor:
         self._remote_folder_id = remote_folder_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._active_count = 0
+        self._drive_client = drive_client
+        # Cache of remote folder paths -> Drive folder IDs
+        self._folder_cache: dict[str, str] = {}
 
     @property
     def active_count(self) -> int:
@@ -91,16 +95,67 @@ class SyncExecutor:
             finally:
                 self._active_count -= 1
 
+    async def _ensure_remote_dirs(self, rel_path: str) -> str:
+        """Create any intermediate Drive folders for a nested path.
+
+        Returns the Drive folder ID of the immediate parent folder.
+        """
+        parts = PurePosixPath(rel_path).parts[:-1]  # directory components only
+        if not parts:
+            return self._remote_folder_id
+
+        if not self._drive_client:
+            log.warning("No drive client, cannot create remote directories for %s", rel_path)
+            return self._remote_folder_id
+
+        current_parent = self._remote_folder_id
+        accumulated = ""
+        for part in parts:
+            accumulated = f"{accumulated}/{part}" if accumulated else part
+            if accumulated in self._folder_cache:
+                current_parent = self._folder_cache[accumulated]
+                continue
+
+            # Search for existing folder
+            query = (
+                f"'{current_parent}' in parents "
+                f"and name = '{part.replace(chr(39), chr(92) + chr(39))}' "
+                f"and mimeType = 'application/vnd.google-apps.folder' "
+                f"and trashed = false"
+            )
+            result = await self._drive_client.list_files(query=query, page_size=1)
+            files = result.get("files", [])
+
+            if files:
+                folder_id = files[0]["id"]
+            else:
+                # Create the folder
+                created = await self._drive_client.create_file(
+                    name=part, parent_id=current_parent, is_folder=True
+                )
+                folder_id = created["id"]
+                log.debug("Created remote folder %s -> %s", accumulated, folder_id)
+
+            self._folder_cache[accumulated] = folder_id
+            current_parent = folder_id
+
+        return current_parent
+
     async def _do_upload(self, action: SyncAction) -> None:
         local_path = self._local_root / action.path
         if not local_path.exists():
             raise FileNotFoundError(f"Local file missing: {local_path}")
 
         existing_id = action.stored_entry.remote_id if action.stored_entry else None
-        parent_id = self._remote_folder_id
-        if action.stored_entry and action.stored_entry.remote_id:
-            # For updates, use existing_id (parent not needed)
-            pass
+
+        if existing_id:
+            # Update in place, no need to resolve parent
+            parent_id = self._remote_folder_id
+        else:
+            # New file: ensure intermediate directories exist in Drive
+            parent_id = await self._ensure_remote_dirs(
+                action.path.replace(os.sep, "/")
+            )
 
         result = await self._ops.upload_file(
             local_path=local_path,

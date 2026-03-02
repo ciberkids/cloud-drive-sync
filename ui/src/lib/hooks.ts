@@ -126,6 +126,20 @@ export function useConflicts() {
     refresh();
   }, [refresh]);
 
+  // Re-fetch when daemon connects
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen("daemon-connected", () => {
+      refresh();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [refresh]);
+
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     listen("daemon:conflict_detected", () => {
@@ -175,6 +189,20 @@ export function useActivityLog(limit = 50) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Re-fetch when daemon connects
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen("daemon-connected", () => {
+      load();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
   }, [load]);
 
   // Listen for new activity

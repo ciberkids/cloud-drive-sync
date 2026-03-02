@@ -119,6 +119,7 @@ class SyncEngine:
             pair_id,
             remote_folder_id=pair.remote_folder_id,
             max_concurrent=self._config.sync.max_concurrent_transfers,
+            drive_client=self._client,
         )
 
         watcher = DirectoryWatcher(
