@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 
 interface FolderPickerProps {
   value: string;
@@ -11,11 +13,18 @@ export function FolderPicker({
   onChange,
   label = "Local folder",
 }: FolderPickerProps) {
+  const [home, setHome] = useState("/home");
+
+  useEffect(() => {
+    getHomeDir().then((dir) => setHome(dir)).catch(() => {});
+  }, []);
+
   const handlePick = async () => {
     const selected = await open({
       directory: true,
       multiple: false,
       title: "Select sync folder",
+      defaultPath: home,
     });
     if (selected && typeof selected === "string") {
       onChange(selected);
@@ -30,7 +39,7 @@ export function FolderPicker({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="/home/user/Google Drive"
+          placeholder={`${home}/Google Drive`}
           className="input"
         />
         <button onClick={handlePick} className="btn btn-secondary" type="button">

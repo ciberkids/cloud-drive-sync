@@ -262,7 +262,7 @@ body {
   padding: 8px 12px;
   border-radius: var(--radius);
   border: 1px solid var(--border-color);
-  background: var(--bg-primary);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font);
@@ -270,8 +270,22 @@ body {
   transition: border-color 0.15s;
 }
 
+.select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2398989d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
 .input:focus, .select:focus {
   border-color: var(--accent);
+}
+
+.select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 /* Settings */
@@ -341,6 +355,36 @@ body {
 .field-hint {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Config paths */
+.config-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-path-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.config-path-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.config-path-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  word-break: break-all;
+  user-select: all;
 }
 
 /* Folder picker */
@@ -541,6 +585,15 @@ body {
 .account-badge.connected {
   background: color-mix(in srgb, var(--success) 15%, transparent);
   color: var(--success);
+}
+
+.auth-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
 }
 
 .empty-message {

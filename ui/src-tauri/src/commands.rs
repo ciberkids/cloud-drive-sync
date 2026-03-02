@@ -1,6 +1,7 @@
 use crate::ipc_bridge::DaemonBridge;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
 
@@ -44,7 +45,7 @@ pub struct LogEntry {
     pub status: String,
 }
 
-pub struct BridgeState(pub Mutex<DaemonBridge>);
+pub struct BridgeState(pub Arc<Mutex<DaemonBridge>>);
 
 #[tauri::command]
 pub async fn get_status(bridge: State<'_, BridgeState>) -> Result<DaemonStatus, String> {

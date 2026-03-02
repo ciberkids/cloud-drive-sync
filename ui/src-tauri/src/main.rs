@@ -7,7 +7,8 @@ mod tray;
 
 use commands::BridgeState;
 use ipc_bridge::DaemonBridge;
-use tauri::Manager;
+use std::sync::Arc;
+use tauri::{Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 
 fn main() {
@@ -20,7 +21,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(BridgeState(Mutex::new(bridge)))
+        .manage(BridgeState(Arc::new(Mutex::new(bridge))))
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::get_sync_pairs,
@@ -45,7 +46,7 @@ fn main() {
 
             // Spawn daemon connection task
             let bridge_state = app.state::<BridgeState>();
-            let bridge_mutex = bridge_state.0.clone();
+            let bridge_mutex = Arc::clone(&bridge_state.0);
             let connect_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 // Try to connect with retries
@@ -81,7 +82,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 while let Some((method, params)) = notification_rx.recv().await {
                     let event_name = format!("daemon:{}", method);
-                    let _ = event_handle.emit(&event_name, params);
+                    let _ = event_handle.emit(&event_name, &params);
 
                     // Update tray based on notifications
                     match method.as_str() {

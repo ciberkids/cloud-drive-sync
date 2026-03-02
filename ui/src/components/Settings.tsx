@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSyncPairs } from "../lib/hooks";
 import { FolderPicker } from "./FolderPicker";
 import type { ConflictStrategy } from "../lib/types";
 import * as ipc from "../lib/ipc";
+import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 
 export function Settings() {
   const { pairs, add, remove } = useSyncPairs();
+  const [homeDir, setHomeDir] = useState("~");
+
+  useEffect(() => {
+    getHomeDir().then((dir) => setHomeDir(dir)).catch(() => {});
+  }, []);
   const [newLocalPath, setNewLocalPath] = useState("");
   const [newRemoteId, setNewRemoteId] = useState("root");
   const [conflictStrategy, setConflictStrategy] =
@@ -42,6 +48,9 @@ export function Settings() {
       setSaving(false);
     }
   };
+
+  const configPath = `${homeDir}/.config/gdrive-sync/config.toml`;
+  const dataPath = `${homeDir}/.local/share/gdrive-sync/`;
 
   return (
     <div className="settings">
@@ -118,6 +127,20 @@ export function Settings() {
             <option value="newest_wins">Newest wins (overwrite older)</option>
             <option value="ask_user">Ask me (show dialog)</option>
           </select>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Storage</h3>
+        <div className="config-paths">
+          <div className="config-path-item">
+            <span className="config-path-label">Configuration</span>
+            <code className="config-path-value">{configPath}</code>
+          </div>
+          <div className="config-path-item">
+            <span className="config-path-label">Data &amp; database</span>
+            <code className="config-path-value">{dataPath}</code>
+          </div>
         </div>
       </section>
     </div>
