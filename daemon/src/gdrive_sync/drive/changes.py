@@ -37,7 +37,7 @@ class ChangePoller:
     async def get_start_page_token(self) -> str:
         """Get the initial change token to start polling from."""
         request = self._client.service.changes().getStartPageToken()
-        result = await asyncio.to_thread(request.execute)
+        result = await self._client._execute(request)
         token = result["startPageToken"]
         log.debug("Got start page token: %s", token)
         return token
@@ -62,7 +62,7 @@ class ChangePoller:
                 "modifiedTime, parents, trashed))",
                 pageSize=100,
             )
-            result = await asyncio.to_thread(request.execute)
+            result = await self._client._execute(request)
 
             for change_data in result.get("changes", []):
                 change = self._parse_change(change_data)

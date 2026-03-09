@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from gdrive_sync.db.models import FileState, SyncEntry
 from gdrive_sync.sync.conflict import (
     detect_conflict,

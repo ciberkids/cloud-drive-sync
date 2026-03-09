@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -328,7 +326,9 @@ async def test_ipc_get_status(engine: SyncEngine, demo_config: Config, demo_dirs
     request = JsonRpcRequest(method="get_status", params={}, id=1)
     response = await handler.handle(request)
     assert response.error is None
-    assert "pair_0" in response.result
+    assert response.result["connected"] is True
+    assert "files_synced" in response.result
+    assert "active_transfers" in response.result
 
 
 @pytest.mark.integration

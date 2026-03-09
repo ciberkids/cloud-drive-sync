@@ -61,6 +61,19 @@ pytest tests/test_planner.py # Run a specific file
 
 Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (async test functions are detected automatically).
 
+#### Bug and Feature Regression Tests
+
+The following test files cover specific bugs and features with targeted regression tests:
+
+| Test File | Covers |
+|---|---|
+| `test_bug_activity_filters.py` | Activity log filtering by pair and event_type normalization |
+| `test_bug_remote_browser.py` | Remote folder browser query filtering |
+| `test_bug_stale_data.py` | Stale pair cleanup on engine startup |
+| `test_bug_status_counts.py` | Accurate `files_synced` count from DB |
+| `test_bug_sync_trigger.py` | `force_sync`/`pause_sync`/`resume_sync` with `pair_id` parameter |
+| `test_feature_ignore_hidden.py` | Hidden file filtering in scanner, watcher, and planner |
+
 ### Running All Checks
 
 ```bash
@@ -140,7 +153,7 @@ For full architectural details, see [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
 2. **Add the handler** in `daemon/src/gdrive_sync/ipc/handlers.py`:
 
-   Register it in `RequestHandler.__init__`:
+   Register it in the `self._handlers` dict in `RequestHandler.__init__`:
    ```python
    self._handlers["my_method"] = self._my_method
    ```

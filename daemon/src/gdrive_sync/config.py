@@ -22,6 +22,7 @@ class SyncPair:
     remote_folder_id: str = "root"
     enabled: bool = True
     sync_mode: str = "two_way"  # "two_way", "upload_only", "download_only"
+    ignore_hidden: bool = True
 
 
 @dataclass
@@ -82,6 +83,7 @@ class Config:
                     remote_folder_id=pair_data.get("remote_folder_id", "root"),
                     enabled=pair_data.get("enabled", True),
                     sync_mode=pair_data.get("sync_mode", "two_way"),
+                    ignore_hidden=pair_data.get("ignore_hidden", True),
                 )
             )
 
@@ -107,6 +109,7 @@ class Config:
                         "remote_folder_id": p.remote_folder_id,
                         "enabled": p.enabled,
                         "sync_mode": p.sync_mode,
+                        "ignore_hidden": p.ignore_hidden,
                     }
                     for p in self.sync.pairs
                 ],

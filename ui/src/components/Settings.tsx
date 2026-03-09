@@ -33,6 +33,15 @@ export function Settings() {
     }
   };
 
+  const handleIgnoreHiddenChange = async (pairId: string, ignoreHidden: boolean) => {
+    try {
+      await ipc.setIgnoreHidden(pairId, ignoreHidden);
+      refresh();
+    } catch (e) {
+      console.error("Failed to set ignore_hidden:", e);
+    }
+  };
+
   const handleSyncModeChange = async (pairId: string, mode: SyncMode) => {
     try {
       await ipc.setSyncMode(pairId, mode);
@@ -85,6 +94,17 @@ export function Settings() {
                   <option value="upload_only">Upload only</option>
                   <option value="download_only">Download only</option>
                 </select>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={pair.ignore_hidden ?? true}
+                    onChange={(e) =>
+                      handleIgnoreHiddenChange(pair.id, e.target.checked)
+                    }
+                  />
+                  <span className="toggle-slider" />
+                  <span className="toggle-label">Hide dotfiles</span>
+                </label>
                 <button
                   onClick={() => handleRemovePair(pair.id)}
                   className="btn btn-danger btn-sm"

@@ -66,7 +66,7 @@ class Daemon:
             await self._db.open()
 
             if self._demo:
-                client, file_ops, change_poller = self._setup_demo()
+                client, file_ops, change_poller = await self._setup_demo()
             else:
                 from gdrive_sync.auth.credentials import load_credentials
                 from gdrive_sync.drive.client import DriveClient
@@ -161,7 +161,7 @@ class Daemon:
 
         log.info("Daemon stopped")
 
-    def _setup_demo(self):
+    async def _setup_demo(self):
         """Set up mock Drive components for demo mode.
 
         Creates demo directories and injects a demo sync pair into the config.
@@ -188,6 +188,11 @@ class Daemon:
             )
 
         client = MockDriveClient(DEMO_REMOTE)
+
+        # Seed sample folders so the remote folder browser has something to show
+        await client.create_file("Documents", "root", is_folder=True)
+        await client.create_file("Photos", "root", is_folder=True)
+
         file_ops = MockFileOperations(client)
         change_poller = MockChangePoller(client)
 
@@ -205,7 +210,6 @@ class Daemon:
 
         from gdrive_sync.auth.credentials import save_credentials
         from gdrive_sync.auth.oauth import run_oauth_flow
-        from gdrive_sync.db.models import SyncLogEntry
 
         # Log auth started
         self._log_auth_event("auth", "Authentication started", "in_progress")

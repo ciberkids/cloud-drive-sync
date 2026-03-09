@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from gdrive_sync.ipc.protocol import (
     JSONRPC_VERSION,
-    JsonRpcError,
     JsonRpcNotification,
     JsonRpcRequest,
     JsonRpcResponse,

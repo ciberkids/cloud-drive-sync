@@ -10,21 +10,21 @@ GDrive Sync uses **JSON-RPC 2.0 over a Unix domain socket** for communication be
 
 ### `get_status`
 
-Get the current sync status for all configured pairs.
+Get the current daemon and sync status.
 
 **Params**: none
 
-**Response**: A dictionary keyed by pair ID, each value containing:
+**Response**:
 
 | Field | Type | Description |
 |---|---|---|
-| `local_path` | string | Local directory path |
-| `remote_folder_id` | string | Google Drive folder ID |
-| `active` | boolean | Whether the pair is active |
-| `paused` | boolean | Whether syncing is paused |
-| `last_sync` | string\|null | ISO 8601 timestamp of last sync |
-| `active_transfers` | integer | Number of in-progress transfers |
-| `errors` | string[] | Last 5 error messages |
+| `connected` | boolean | Whether the daemon has valid credentials and an active sync engine |
+| `syncing` | boolean | Whether any transfers are currently in progress |
+| `paused` | boolean | Whether all pairs are paused |
+| `error` | string\|null | Most recent error message, if any |
+| `last_sync` | string\|null | ISO 8601 timestamp of most recent sync across all pairs |
+| `files_synced` | integer | Total files with `synced` state across all pairs (queried from DB) |
+| `active_transfers` | integer | Number of in-progress transfers across all pairs |
 
 **Example**:
 
@@ -37,15 +37,13 @@ Get the current sync status for all configured pairs.
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "pair_0": {
-      "local_path": "/home/user/Documents",
-      "remote_folder_id": "root",
-      "active": true,
-      "paused": false,
-      "last_sync": "2025-01-15T14:32:00+00:00",
-      "active_transfers": 0,
-      "errors": []
-    }
+    "connected": true,
+    "syncing": false,
+    "paused": false,
+    "error": null,
+    "last_sync": "2025-01-15T14:32:00+00:00",
+    "files_synced": 247,
+    "active_transfers": 0
   }
 }
 ```
@@ -62,10 +60,12 @@ List all configured sync folder pairs.
 
 | Field | Type | Description |
 |---|---|---|
-| `index` | integer | Pair index in the config |
+| `id` | string | Pair identifier (index as string) |
 | `local_path` | string | Local directory path |
 | `remote_folder_id` | string | Google Drive folder ID |
 | `enabled` | boolean | Whether the pair is enabled |
+| `sync_mode` | string | Sync direction: `"two_way"`, `"upload_only"`, or `"download_only"` |
+| `ignore_hidden` | boolean | Whether hidden files (dotfiles) are excluded from sync |
 
 **Example**:
 
@@ -79,16 +79,20 @@ List all configured sync folder pairs.
   "id": 2,
   "result": [
     {
-      "index": 0,
+      "id": "0",
       "local_path": "/home/user/Documents",
       "remote_folder_id": "root",
-      "enabled": true
+      "enabled": true,
+      "sync_mode": "two_way",
+      "ignore_hidden": true
     },
     {
-      "index": 1,
+      "id": "1",
       "local_path": "/home/user/Pictures",
       "remote_folder_id": "0A3xFolderIdHere",
-      "enabled": true
+      "enabled": true,
+      "sync_mode": "upload_only",
+      "ignore_hidden": true
     }
   ]
 }
@@ -106,13 +110,20 @@ Add a new sync folder pair.
 |---|---|---|---|
 | `local_path` | string | yes | Absolute path to local directory |
 | `remote_folder_id` | string | no | Drive folder ID (default: `"root"`) |
+| `ignore_hidden` | boolean | no | Whether to ignore hidden files/dotfiles (default: `true`) |
 
-**Response**:
+**Response**: The newly created sync pair object:
 
 | Field | Type | Description |
 |---|---|---|
-| `status` | string | `"added"` |
-| `index` | integer | Index of the new pair |
+| `id` | string | Pair identifier (index as string) |
+| `local_path` | string | Local directory path |
+| `remote_folder_id` | string | Google Drive folder ID |
+| `enabled` | boolean | Always `true` for new pairs |
+| `sync_mode` | string | Always `"two_way"` for new pairs |
+| `ignore_hidden` | boolean | Whether hidden files are excluded |
+
+**Errors**: Returns `-32602` (Invalid params) if the pair already exists (duplicate local path + remote folder ID).
 
 **Example**:
 
@@ -123,7 +134,8 @@ Add a new sync folder pair.
   "method": "add_sync_pair",
   "params": {
     "local_path": "/home/user/Projects",
-    "remote_folder_id": "root"
+    "remote_folder_id": "root",
+    "ignore_hidden": true
   },
   "id": 3
 }
@@ -133,8 +145,12 @@ Add a new sync folder pair.
   "jsonrpc": "2.0",
   "id": 3,
   "result": {
-    "status": "added",
-    "index": 2
+    "id": "2",
+    "local_path": "/home/user/Projects",
+    "remote_folder_id": "root",
+    "enabled": true,
+    "sync_mode": "two_way",
+    "ignore_hidden": true
   }
 }
 ```
@@ -269,7 +285,7 @@ Trigger an immediate full sync for a specific pair.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `pair_id` | string | yes | Pair identifier (e.g., `"pair_0"`) |
+| `pair_id` | string | no | Pair identifier (e.g., `"pair_0"`). Defaults to `"pair_0"` if omitted. |
 
 **Response**:
 
@@ -306,7 +322,7 @@ Pause syncing for a specific pair. Changes are still detected but not processed.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `pair_id` | string | yes | Pair identifier |
+| `pair_id` | string | no | Pair identifier. Defaults to `"pair_0"` if omitted. |
 
 **Response**:
 
@@ -343,7 +359,7 @@ Resume syncing for a paused pair.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `pair_id` | string | yes | Pair identifier |
+| `pair_id` | string | no | Pair identifier. Defaults to `"pair_0"` if omitted. |
 
 **Response**:
 
@@ -389,11 +405,18 @@ Retrieve recent sync activity entries.
 |---|---|---|
 | `id` | integer | Log entry ID |
 | `timestamp` | string | ISO 8601 timestamp |
-| `action` | string | Action type (upload, download, delete, conflict) |
+| `event_type` | string | Normalized event type for UI filtering (see below) |
 | `path` | string | Relative file path |
 | `pair_id` | string | Sync pair identifier |
 | `status` | string | Result status |
-| `detail` | string\|null | Human-readable detail |
+| `details` | string | Human-readable detail |
+
+The `event_type` field is normalized for consistent UI filtering:
+- If the entry has `status: "error"`, `event_type` is `"error"` regardless of the original action
+- If the action starts with `"delete"`, `event_type` is `"delete"`
+- Otherwise `event_type` matches the original action (e.g. `"upload"`, `"download"`, `"auth"`)
+
+When no `pair_id` filter is specified, entries from removed sync pairs are automatically excluded (only entries for currently configured pairs and `_system` events are returned).
 
 **Example**:
 
@@ -414,20 +437,20 @@ Retrieve recent sync activity entries.
     {
       "id": 42,
       "timestamp": "2025-01-15T14:32:00+00:00",
-      "action": "upload",
+      "event_type": "upload",
       "path": "notes.md",
       "pair_id": "pair_0",
       "status": "success",
-      "detail": "Uploaded 2.4 KB"
+      "details": "Uploaded 2.4 KB"
     },
     {
       "id": 41,
       "timestamp": "2025-01-15T14:31:00+00:00",
-      "action": "download",
+      "event_type": "download",
       "path": "budget.xlsx",
       "pair_id": "pair_0",
       "status": "success",
-      "detail": "Downloaded 156 KB"
+      "details": "Downloaded 156 KB"
     }
   ]
 }
@@ -496,7 +519,10 @@ Initiate the OAuth2 authorization flow. Opens a browser for the user to authoriz
 
 | Field | Type | Description |
 |---|---|---|
-| `status` | string | `"ok"` if auth callback is set, `"no_auth_callback"` otherwise |
+| `status` | string | `"ok"` if auth succeeded, `"error"` on failure, `"no_auth_callback"` if no callback is set |
+| `message` | string\|undefined | Error message (only present when `status` is `"error"`) |
+
+Auth events (success and failure) are logged to the activity log with `action: "auth"` and `pair_id: "_system"`.
 
 **Example**:
 
@@ -537,6 +563,129 @@ Clear stored OAuth credentials and sign out.
   "jsonrpc": "2.0",
   "id": 13,
   "result": {"status": "logged_out"}
+}
+```
+
+---
+
+### `list_remote_folders`
+
+List folders in a given parent folder on Google Drive. Used by the UI for the remote folder browser.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `parent_id` | string | no | Drive folder ID to list children of (default: `"root"`) |
+
+**Response**:
+
+| Field | Type | Description |
+|---|---|---|
+| `folders` | array | List of `{id, name}` objects |
+| `parent_id` | string | The parent folder ID that was queried |
+| `error` | string\|null | Error message if the request failed |
+
+**Example**:
+
+```json
+// Request
+{
+  "jsonrpc": "2.0",
+  "method": "list_remote_folders",
+  "params": {"parent_id": "root"},
+  "id": 14
+}
+
+// Response
+{
+  "jsonrpc": "2.0",
+  "id": 14,
+  "result": {
+    "folders": [
+      {"id": "0A3xFolderIdHere", "name": "Documents"},
+      {"id": "0B4yAnotherFolder", "name": "Projects"}
+    ],
+    "parent_id": "root"
+  }
+}
+```
+
+---
+
+### `set_sync_mode`
+
+Change the sync direction for a specific pair.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pair_id` | string | yes | Pair identifier (index as string) |
+| `sync_mode` | string | yes | One of: `"two_way"`, `"upload_only"`, `"download_only"` |
+
+**Response**:
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"ok"` |
+| `sync_mode` | string | The mode that was set |
+
+**Example**:
+
+```json
+// Request
+{
+  "jsonrpc": "2.0",
+  "method": "set_sync_mode",
+  "params": {"pair_id": "0", "sync_mode": "upload_only"},
+  "id": 15
+}
+
+// Response
+{
+  "jsonrpc": "2.0",
+  "id": 15,
+  "result": {"status": "ok", "sync_mode": "upload_only"}
+}
+```
+
+---
+
+### `set_ignore_hidden`
+
+Toggle the hidden file filtering setting for a sync pair. When enabled, files and directories starting with a dot (e.g. `.git`, `.env`) are excluded from sync.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pair_id` | string | yes | Pair identifier (index as string) |
+| `ignore_hidden` | boolean | yes | `true` to exclude hidden files, `false` to include them |
+
+**Response**:
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"ok"` |
+| `ignore_hidden` | boolean | The value that was set |
+
+**Example**:
+
+```json
+// Request
+{
+  "jsonrpc": "2.0",
+  "method": "set_ignore_hidden",
+  "params": {"pair_id": "0", "ignore_hidden": false},
+  "id": 16
+}
+
+// Response
+{
+  "jsonrpc": "2.0",
+  "id": 16,
+  "result": {"status": "ok", "ignore_hidden": false}
 }
 ```
 
@@ -668,24 +817,28 @@ The Tauri React frontend calls these commands via `invoke()`. The Rust backend p
 |---|---|---|---|
 | `get_status` | — | `DaemonStatus` | Get daemon connection and sync status |
 | `get_sync_pairs` | — | `SyncPair[]` | List configured sync pairs |
-| `add_sync_pair` | `localPath: string`, `remoteFolderId: string` | `SyncPair` | Add a new sync pair |
+| `add_sync_pair` | `localPath: string`, `remoteFolderId: string`, `ignoreHidden?: boolean` | `SyncPair` | Add a new sync pair |
 | `remove_sync_pair` | `pairId: string` | — | Remove a sync pair |
 | `set_conflict_strategy` | `strategy: string` | — | Set conflict resolution strategy |
 | `resolve_conflict` | `conflictId: string`, `resolution: ConflictResolution` | — | Resolve a specific conflict |
-| `force_sync` | — | — | Trigger immediate sync |
-| `pause_sync` | — | — | Pause syncing |
-| `resume_sync` | — | — | Resume syncing |
+| `force_sync` | `pairId?: string` | — | Trigger immediate sync |
+| `pause_sync` | `pairId?: string` | — | Pause syncing |
+| `resume_sync` | `pairId?: string` | — | Resume syncing |
 | `get_activity_log` | `limit: number`, `offset: number` | `LogEntry[]` | Fetch activity log entries |
 | `get_conflicts` | — | `ConflictRecord[]` | Get unresolved conflicts |
 | `start_auth` | — | `unknown` | Start OAuth flow |
 | `logout` | — | — | Clear credentials |
 | `connect_daemon` | — | — | Reconnect to daemon socket |
+| `set_sync_mode` | `pairId: string`, `syncMode: string` | — | Change sync direction for a pair |
+| `set_ignore_hidden` | `pairId: string`, `ignoreHidden: boolean` | — | Toggle hidden file filtering for a pair |
+| `list_remote_folders` | `parentId: string` | `{folders, parent_id, error?}` | Browse remote Drive folders |
 
 ### TypeScript Types
 
 ```typescript
 type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user";
 type ConflictResolution = "keep_local" | "keep_remote" | "keep_both";
+type SyncMode = "two_way" | "upload_only" | "download_only";
 
 interface DaemonStatus {
   connected: boolean;
@@ -702,6 +855,8 @@ interface SyncPair {
   local_path: string;
   remote_folder_id: string;
   enabled: boolean;
+  sync_mode: SyncMode;
+  ignore_hidden?: boolean;
 }
 
 interface ConflictRecord {
@@ -717,7 +872,7 @@ interface ConflictRecord {
 interface LogEntry {
   id: number;
   timestamp: string;
-  event_type: "upload" | "download" | "delete" | "conflict" | "error";
+  event_type: "upload" | "download" | "delete" | "conflict" | "error" | "auth";
   path: string;
   details: string;
   status: string;
@@ -737,6 +892,7 @@ The Rust backend forwards daemon notifications as Tauri events. The frontend lis
 | `daemon:error` | `{message, pair_id?}` | Error occurred |
 | `daemon-connected` | — | Successfully connected to daemon |
 | `daemon-offline` | — | Failed to connect after retries |
+| `tray-action` | `string` | System tray menu item clicked (`"force_sync"`, `"toggle_pause"`) |
 
 ---
 

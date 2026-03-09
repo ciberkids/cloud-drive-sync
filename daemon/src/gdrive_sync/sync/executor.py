@@ -39,6 +39,8 @@ class SyncExecutor:
         self._drive_client = drive_client
         # Cache of remote folder paths -> Drive folder IDs
         self._folder_cache: dict[str, str] = {}
+        # Serialize folder creation to prevent duplicate folders from races
+        self._mkdir_lock = asyncio.Lock()
 
     @property
     def active_count(self) -> int:
@@ -84,6 +86,8 @@ class SyncExecutor:
                         await self._do_upload(action)
                     case ActionType.DOWNLOAD:
                         await self._do_download(action)
+                    case ActionType.MKDIR:
+                        await self._do_mkdir(action)
                     case ActionType.DELETE_LOCAL:
                         await self._do_delete_local(action)
                     case ActionType.DELETE_REMOTE:
@@ -99,6 +103,8 @@ class SyncExecutor:
         """Create any intermediate Drive folders for a nested path.
 
         Returns the Drive folder ID of the immediate parent folder.
+        Serialized via _mkdir_lock to prevent duplicate folder creation
+        when multiple uploads target the same parent concurrently.
         """
         parts = PurePosixPath(rel_path).parts[:-1]  # directory components only
         if not parts:
@@ -108,38 +114,63 @@ class SyncExecutor:
             log.warning("No drive client, cannot create remote directories for %s", rel_path)
             return self._remote_folder_id
 
-        current_parent = self._remote_folder_id
-        accumulated = ""
-        for part in parts:
-            accumulated = f"{accumulated}/{part}" if accumulated else part
-            if accumulated in self._folder_cache:
-                current_parent = self._folder_cache[accumulated]
-                continue
+        async with self._mkdir_lock:
+            current_parent = self._remote_folder_id
+            accumulated = ""
+            for part in parts:
+                accumulated = f"{accumulated}/{part}" if accumulated else part
+                if accumulated in self._folder_cache:
+                    current_parent = self._folder_cache[accumulated]
+                    continue
 
-            # Search for existing folder
-            query = (
-                f"'{current_parent}' in parents "
-                f"and name = '{part.replace(chr(39), chr(92) + chr(39))}' "
-                f"and mimeType = 'application/vnd.google-apps.folder' "
-                f"and trashed = false"
-            )
-            result = await self._drive_client.list_files(query=query, page_size=1)
-            files = result.get("files", [])
-
-            if files:
-                folder_id = files[0]["id"]
-            else:
-                # Create the folder
-                created = await self._drive_client.create_file(
-                    name=part, parent_id=current_parent, is_folder=True
+                # Search for existing folder
+                query = (
+                    f"'{current_parent}' in parents "
+                    f"and name = '{part.replace(chr(39), chr(92) + chr(39))}' "
+                    f"and mimeType = 'application/vnd.google-apps.folder' "
+                    f"and trashed = false"
                 )
-                folder_id = created["id"]
-                log.debug("Created remote folder %s -> %s", accumulated, folder_id)
+                result = await self._drive_client.list_files(query=query, page_size=1)
+                files = result.get("files", [])
 
-            self._folder_cache[accumulated] = folder_id
-            current_parent = folder_id
+                if files:
+                    folder_id = files[0]["id"]
+                else:
+                    # Create the folder
+                    created = await self._drive_client.create_file(
+                        name=part, parent_id=current_parent, is_folder=True
+                    )
+                    folder_id = created["id"]
+                    log.debug("Created remote folder %s -> %s", accumulated, folder_id)
+
+                self._folder_cache[accumulated] = folder_id
+                current_parent = folder_id
 
         return current_parent
+
+    async def _do_mkdir(self, action: SyncAction) -> None:
+        """Create a local directory and record it as synced."""
+        local_path = self._local_root / action.path
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        remote_id = None
+        if action.remote_info:
+            remote_id = action.remote_info.get("id")
+
+        now = datetime.now(timezone.utc)
+        entry = SyncEntry(
+            path=action.path,
+            pair_id=self._pair_id,
+            local_md5=None,
+            remote_md5=None,
+            remote_id=remote_id,
+            state=FileState.SYNCED,
+            local_mtime=local_path.stat().st_mtime if local_path.exists() else 0,
+            remote_mtime=0,
+            last_synced=now,
+        )
+        await self._db.upsert_sync_entry(entry)
+        log.debug("Created local directory %s", action.path)
 
     async def _do_upload(self, action: SyncAction) -> None:
         local_path = self._local_root / action.path
@@ -224,6 +255,8 @@ class SyncExecutor:
                 local_path.unlink()
             log.debug("Deleted local %s", action.path)
         await self._db.delete_sync_entry(action.path, self._pair_id)
+        # Also clean up any child entries if this was a directory
+        await self._db.delete_sync_entries_by_prefix(action.path, self._pair_id)
 
     async def _do_delete_remote(self, action: SyncAction) -> None:
         remote_id = action.stored_entry.remote_id if action.stored_entry else None
@@ -231,6 +264,8 @@ class SyncExecutor:
             raise ValueError(f"No remote ID for deletion: {action.path}")
         await self._ops.delete_remote(remote_id, trash=True)
         await self._db.delete_sync_entry(action.path, self._pair_id)
+        # Also clean up any child entries if this was a directory
+        await self._db.delete_sync_entries_by_prefix(action.path, self._pair_id)
         log.debug("Deleted remote %s (%s)", action.path, remote_id)
 
     async def _mark_conflict(self, action: SyncAction) -> None:

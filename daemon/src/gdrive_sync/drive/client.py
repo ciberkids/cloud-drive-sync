@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from google.oauth2.credentials import Credentials
@@ -21,10 +22,23 @@ class DriveClient:
 
     def __init__(self, credentials: Credentials) -> None:
         self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        # httplib2 is not thread-safe; serialize all API calls that go
+        # through asyncio.to_thread to prevent heap corruption / segfaults.
+        self._api_lock = threading.Lock()
 
     @property
     def service(self):
         return self._service
+
+    async def _execute(self, request):
+        """Execute a Drive API request, serialized to avoid httplib2 thread-safety issues."""
+        import asyncio
+
+        def _run():
+            with self._api_lock:
+                return request.execute()
+
+        return await asyncio.to_thread(_run)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def list_files(
@@ -45,18 +59,13 @@ class DriveClient:
             fields=f"nextPageToken, files({FIELDS_FILE})",
             pageToken=page_token,
         )
-        import asyncio
-
-        result = await asyncio.to_thread(request.execute)
-        return result
+        return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def get_file(self, file_id: str) -> dict[str, Any]:
         """Get metadata for a single file."""
-        import asyncio
-
         request = self._service.files().get(fileId=file_id, fields=FIELDS_FILE)
-        return await asyncio.to_thread(request.execute)
+        return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def create_file(
@@ -68,8 +77,6 @@ class DriveClient:
         is_folder: bool = False,
     ) -> dict[str, Any]:
         """Create a file or folder on Drive."""
-        import asyncio
-
         metadata: dict[str, Any] = {"name": name, "parents": [parent_id]}
         if is_folder:
             metadata["mimeType"] = "application/vnd.google-apps.folder"
@@ -85,7 +92,7 @@ class DriveClient:
             request = self._service.files().create(
                 body=metadata, media_body=media, fields=FIELDS_FILE
             )
-        return await asyncio.to_thread(request.execute)
+        return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def update_file(
@@ -96,8 +103,6 @@ class DriveClient:
         new_name: str | None = None,
     ) -> dict[str, Any]:
         """Update a file's content and/or metadata."""
-        import asyncio
-
         body: dict[str, Any] = {}
         if new_name:
             body["name"] = new_name
@@ -113,25 +118,21 @@ class DriveClient:
         request = self._service.files().update(
             fileId=file_id, body=body if body else None, media_body=media, fields=FIELDS_FILE
         )
-        return await asyncio.to_thread(request.execute)
+        return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         """Permanently delete a file (bypass trash)."""
-        import asyncio
-
         request = self._service.files().delete(fileId=file_id)
-        await asyncio.to_thread(request.execute)
+        await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def trash_file(self, file_id: str) -> dict[str, Any]:
         """Move a file to trash."""
-        import asyncio
-
         request = self._service.files().update(
             fileId=file_id, body={"trashed": True}, fields=FIELDS_FILE
         )
-        return await asyncio.to_thread(request.execute)
+        return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def export_file(self, file_id: str, mime_type: str) -> bytes:
@@ -142,22 +143,21 @@ class DriveClient:
         request = self._service.files().export_media(fileId=file_id, mimeType=mime_type)
 
         def _download():
-            buffer = io.BytesIO()
-            downloader = MediaIoBaseDownload(buffer, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-            return buffer.getvalue()
+            with self._api_lock:
+                buffer = io.BytesIO()
+                downloader = MediaIoBaseDownload(buffer, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                return buffer.getvalue()
 
         return await asyncio.to_thread(_download)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def get_about(self) -> dict[str, Any]:
         """Get storage quota and user info."""
-        import asyncio
-
         request = self._service.about().get(fields="user, storageQuota")
-        return await asyncio.to_thread(request.execute)
+        return await self._execute(request)
 
     async def list_all_files(self, folder_id: str = "root") -> list[dict[str, Any]]:
         """List all files in a folder, handling pagination."""

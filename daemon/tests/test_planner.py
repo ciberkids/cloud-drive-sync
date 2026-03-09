@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from gdrive_sync.db.models import FileState, SyncEntry
 from gdrive_sync.local.scanner import LocalFileInfo
 from gdrive_sync.sync.planner import ActionType, plan_continuous_sync, plan_initial_sync
@@ -148,3 +146,26 @@ class TestContinuousSync:
         actions = plan_continuous_sync(changes, {})
         assert len(actions) == 1
         assert actions[0].action == ActionType.DOWNLOAD
+
+    def test_remote_deletion_untracked_ignored(self):
+        """Remote deletion of a file we don't track should NOT delete locally."""
+        changes = [{"path": "House", "source": "remote", "deleted": True}]
+        actions = plan_continuous_sync(changes, {})
+        assert len(actions) == 0
+
+    def test_remote_deletion_untracked_with_other_tracked(self):
+        """Untracked remote deletion ignored while tracked entries still work."""
+        stored = {
+            "tracked.txt": SyncEntry(
+                path="tracked.txt", pair_id="p0", state=FileState.SYNCED,
+                local_md5="aaa", remote_md5="aaa", remote_id="rid1",
+            )
+        }
+        changes = [
+            {"path": "unrelated_folder", "source": "remote", "deleted": True},
+            {"path": "tracked.txt", "source": "remote", "deleted": True},
+        ]
+        actions = plan_continuous_sync(changes, stored)
+        assert len(actions) == 1
+        assert actions[0].action == ActionType.DELETE_LOCAL
+        assert actions[0].path == "tracked.txt"

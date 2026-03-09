@@ -44,9 +44,15 @@ def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
     return False
 
 
+def _is_hidden(rel_path: str) -> bool:
+    """Check if any path component starts with a dot."""
+    return any(part.startswith(".") for part in Path(rel_path).parts)
+
+
 async def scan_directory(
     root: Path,
     ignore_patterns: list[str] | None = None,
+    ignore_hidden: bool = True,
 ) -> dict[str, LocalFileInfo]:
     """Recursively scan a directory, computing MD5 hashes.
 
@@ -73,6 +79,8 @@ async def scan_directory(
 
         rel = str(path.relative_to(root))
         if _is_ignored(rel, patterns):
+            continue
+        if ignore_hidden and _is_hidden(rel):
             continue
 
         try:

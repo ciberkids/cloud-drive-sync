@@ -9,7 +9,7 @@ from pathlib import Path
 
 from gdrive_sync.config import Config, SyncPair
 from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import ChangeToken, ConflictRecord, FileState, SyncEntry
+from gdrive_sync.db.models import ChangeToken, ConflictRecord
 from gdrive_sync.drive.changes import ChangePoller, RemoteChange
 from gdrive_sync.drive.client import DriveClient
 from gdrive_sync.drive.operations import FileOperations
@@ -83,6 +83,11 @@ class SyncEngine:
     async def start(self) -> None:
         """Initialize and start sync for all enabled pairs."""
         log.info("Starting sync engine")
+
+        # Clean up stale pairs from DB
+        active_pair_ids = {f"pair_{i}" for i in range(len(self._config.sync.pairs))}
+        await self._db.cleanup_stale_pairs(active_pair_ids)
+
         for i, pair in enumerate(self._config.sync.pairs):
             if not pair.enabled:
                 continue
@@ -123,7 +128,8 @@ class SyncEngine:
         )
 
         watcher = DirectoryWatcher(
-            local_root, debounce_delay=self._config.sync.debounce_delay
+            local_root, debounce_delay=self._config.sync.debounce_delay,
+            ignore_hidden=pair.ignore_hidden,
         )
 
         ps = PairStatus(
@@ -146,7 +152,7 @@ class SyncEngine:
 
         try:
             # Scan local
-            local_files = await scan_directory(local_root)
+            local_files = await scan_directory(local_root, ignore_hidden=ps.pair.ignore_hidden)
 
             # Scan remote
             remote_files = await self._client.list_all_recursive(ps.pair.remote_folder_id)
@@ -189,6 +195,11 @@ class SyncEngine:
 
             ps.last_sync = datetime.now(timezone.utc)
             log.info("Initial sync complete for %s", pair_id)
+
+            # Notify UI
+            if self._notify_callback:
+                await self._notify_callback("sync_complete", {"pair_id": pair_id})
+                await self._notify_callback("status_changed", None)
 
             # Get change token for future polling
             token = await self._poller.get_start_page_token()
@@ -246,12 +257,15 @@ class SyncEngine:
                     "deleted": change.change_type == ChangeType.DELETED,
                     "md5": None,
                     "mtime": 0,
+                    "is_directory": change.is_directory,
                 }
 
                 if not change_data["deleted"]:
                     file_path = local_root / change.path
                     if file_path.exists() and file_path.is_file():
                         change_data["md5"] = await md5_hash(file_path)
+                        change_data["mtime"] = file_path.stat().st_mtime
+                    elif file_path.exists() and file_path.is_dir():
                         change_data["mtime"] = file_path.stat().st_mtime
 
                 actions = plan_continuous_sync([change_data], stored_entries)
@@ -279,12 +293,12 @@ class SyncEngine:
 
             try:
                 changes, new_token = await self._poller.poll_changes(token)
+                token = new_token
+                await self._db.upsert_change_token(
+                    ChangeToken(pair_id=ps.pair_id, token=new_token)
+                )
                 if changes:
                     await self._process_remote_changes(ps, changes)
-                    token = new_token
-                    await self._db.upsert_change_token(
-                        ChangeToken(pair_id=ps.pair_id, token=new_token)
-                    )
                     ps.last_sync = datetime.now(timezone.utc)
             except Exception:
                 log.exception("Error polling remote changes for %s", ps.pair_id)
@@ -302,12 +316,26 @@ class SyncEngine:
 
         # Build path mapping from remote_id -> stored path
         id_to_path: dict[str, str] = {}
+        tracked_folder_ids: set[str] = {ps.pair.remote_folder_id}
         for entry in stored_entries.values():
             if entry.remote_id:
                 id_to_path[entry.remote_id] = entry.path
+                tracked_folder_ids.add(entry.remote_id)
 
         change_dicts: list[dict] = []
         for rc in changes:
+            is_tracked = rc.file_id in id_to_path
+            is_in_monitored_folder = bool(
+                rc.parents and tracked_folder_ids.intersection(rc.parents)
+            )
+
+            if not is_tracked and not is_in_monitored_folder:
+                log.debug(
+                    "Skipping change for unrelated file: %s (id=%s, parents=%s)",
+                    rc.file_name, rc.file_id, rc.parents,
+                )
+                continue
+
             path = id_to_path.get(rc.file_id, rc.file_name or rc.file_id)
             change_dicts.append(
                 {
@@ -316,6 +344,7 @@ class SyncEngine:
                     "deleted": rc.removed or rc.trashed,
                     "md5": rc.md5,
                     "mtime": 0,
+                    "mimeType": rc.mime_type or "",
                     "remote_id": rc.file_id,
                     "remote_info": {
                         "id": rc.file_id,

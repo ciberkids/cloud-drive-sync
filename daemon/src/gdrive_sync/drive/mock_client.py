@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
+import re
 import shutil
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,12 +80,27 @@ class MockDriveClient:
         page_size: int = 100,
         query: str | None = None,
     ) -> dict[str, Any]:
-        child_ids = self._children.get(folder_id, set())
+        # Parse parent from query if present
+        effective_folder_id = folder_id
+        if query:
+            parent_match = re.search(r"'([^']+)'\s+in\s+parents", query)
+            if parent_match:
+                effective_folder_id = parent_match.group(1)
+
+        child_ids = self._children.get(effective_folder_id, set())
         files = [
             self._files[fid]
             for fid in child_ids
             if fid in self._files and not self._files[fid].get("trashed")
         ]
+
+        # Apply query filters
+        if query:
+            mime_match = re.search(r"mimeType\s*=\s*'([^']+)'", query)
+            if mime_match:
+                mime_type = mime_match.group(1)
+                files = [f for f in files if f.get("mimeType") == mime_type]
+
         return {"files": files}
 
     async def get_file(self, file_id: str) -> dict[str, Any]:
@@ -143,7 +157,7 @@ class MockDriveClient:
         self._files[file_id] = meta
         self._children.setdefault(parent_id, set()).add(file_id)
         log.debug("Mock created: %s (%s)", name, file_id)
-        return meta
+        return dict(meta)
 
     async def update_file(
         self,
@@ -176,7 +190,7 @@ class MockDriveClient:
             meta["mimeType"] = mime_type
 
         log.debug("Mock updated: %s (%s)", meta["name"], file_id)
-        return meta
+        return dict(meta)
 
     async def delete_file(self, file_id: str) -> None:
         if file_id in self._files:

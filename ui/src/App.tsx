@@ -42,15 +42,17 @@ function NavBar() {
 function DaemonBanner() {
   const status = useStatus();
   const [reconnecting, setReconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (status.connected) return null;
 
   const handleReconnect = async () => {
     setReconnecting(true);
+    setError(null);
     try {
       await ipc.connectDaemon();
-    } catch {
-      // will remain disconnected
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setReconnecting(false);
     }
@@ -60,6 +62,7 @@ function DaemonBanner() {
     <div className="daemon-banner">
       <span className="daemon-banner-icon">&#x25CB;</span>
       <span>Daemon not connected. Make sure <code>gdrive-sync-daemon start</code> is running.</span>
+      {error && <span className="daemon-banner-error">{error}</span>}
       <button
         className="btn btn-sm btn-primary"
         onClick={handleReconnect}

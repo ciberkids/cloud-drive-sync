@@ -6,11 +6,41 @@ import enum
 from dataclasses import dataclass
 from typing import Any
 
-from gdrive_sync.db.models import FileState, SyncEntry
+from pathlib import Path
+
+from gdrive_sync.db.models import SyncEntry
 from gdrive_sync.local.scanner import LocalFileInfo
 from gdrive_sync.util.logging import get_logger
 
 log = get_logger("sync.planner")
+
+FOLDER_MIME = "application/vnd.google-apps.folder"
+
+# Google-native document types that cannot be downloaded as binary files.
+# Folders are NOT in this set — they must be synced as local directories.
+_GOOGLE_NATIVE_SKIP_MIMES = frozenset(
+    {
+        "application/vnd.google-apps.document",
+        "application/vnd.google-apps.spreadsheet",
+        "application/vnd.google-apps.presentation",
+        "application/vnd.google-apps.form",
+        "application/vnd.google-apps.drawing",
+        "application/vnd.google-apps.script",
+        "application/vnd.google-apps.site",
+        "application/vnd.google-apps.jam",
+        "application/vnd.google-apps.map",
+    }
+)
+
+
+def _is_google_native_doc(mime: str) -> bool:
+    """Return True for Google-native document mimeTypes that cannot be downloaded."""
+    return mime in _GOOGLE_NATIVE_SKIP_MIMES
+
+
+def _is_folder(mime: str) -> bool:
+    """Return True when the mimeType indicates a Google Drive folder."""
+    return mime == FOLDER_MIME
 
 
 class ActionType(enum.Enum):
@@ -20,6 +50,7 @@ class ActionType(enum.Enum):
     DELETE_REMOTE = "delete_remote"
     CONFLICT = "conflict"
     NOOP = "noop"
+    MKDIR = "mkdir"
 
 
 @dataclass
@@ -34,9 +65,15 @@ class SyncAction:
     reason: str = ""
 
 
+def _is_hidden(path: str) -> bool:
+    """Check if any path component starts with a dot."""
+    return any(part.startswith(".") for part in Path(path).parts)
+
+
 def plan_initial_sync(
     local_files: dict[str, LocalFileInfo],
     remote_files: list[dict[str, Any]],
+    ignore_hidden: bool = True,
 ) -> list[SyncAction]:
     """Plan actions for the very first sync (no stored state).
 
@@ -55,26 +92,40 @@ def plan_initial_sync(
     all_paths = set(local_files.keys()) | set(remote_by_path.keys())
 
     for path in sorted(all_paths):
+        if ignore_hidden and _is_hidden(path):
+            continue
         local = local_files.get(path)
         remote = remote_by_path.get(path)
 
         if local and not remote:
             actions.append(SyncAction(ActionType.UPLOAD, path, local_info=local, reason="local only"))
         elif remote and not local:
-            # Skip Google Docs native types for download (they have no md5)
             mime = remote.get("mimeType", "")
-            if mime.startswith("application/vnd.google-apps."):
+            if _is_google_native_doc(mime):
                 log.debug("Skipping Google-native file: %s", path)
                 continue
-            actions.append(
-                SyncAction(ActionType.DOWNLOAD, path, remote_info=remote, reason="remote only")
-            )
+            if _is_folder(mime):
+                actions.append(
+                    SyncAction(ActionType.MKDIR, path, remote_info=remote, reason="remote folder")
+                )
+            else:
+                actions.append(
+                    SyncAction(ActionType.DOWNLOAD, path, remote_info=remote, reason="remote only")
+                )
         elif local and remote:
+            mime = remote.get("mimeType", "")
+            if _is_folder(mime):
+                # Folder exists both locally and remotely — nothing to do
+                actions.append(SyncAction(ActionType.NOOP, path, reason="folder in sync"))
+                continue
             remote_md5 = remote.get("md5Checksum")
             if remote_md5 and local.md5 == remote_md5:
                 actions.append(SyncAction(ActionType.NOOP, path, reason="already in sync"))
             elif remote_md5 is None:
                 # Google native doc — skip
+                if _is_google_native_doc(mime):
+                    continue
+                # Unknown type with no md5 — skip
                 continue
             else:
                 actions.append(
@@ -88,9 +139,10 @@ def plan_initial_sync(
                 )
 
     log.info(
-        "Initial plan: %d uploads, %d downloads, %d conflicts, %d noop",
+        "Initial plan: %d uploads, %d downloads, %d mkdir, %d conflicts, %d noop",
         sum(1 for a in actions if a.action == ActionType.UPLOAD),
         sum(1 for a in actions if a.action == ActionType.DOWNLOAD),
+        sum(1 for a in actions if a.action == ActionType.MKDIR),
         sum(1 for a in actions if a.action == ActionType.CONFLICT),
         sum(1 for a in actions if a.action == ActionType.NOOP),
     )
@@ -151,6 +203,13 @@ def plan_continuous_sync(
         path = change["path"]
         source = change["source"]
         stored = stored_entries.get(path)
+        mime = change.get("mimeType", "")
+        if not mime:
+            # Also check inside remote_info for mimeType
+            ri = change.get("remote_info")
+            if ri:
+                mime = ri.get("mimeType", "")
+        is_dir = _is_folder(mime) or change.get("is_directory", False)
 
         if change.get("deleted"):
             if source == "local":
@@ -164,14 +223,44 @@ def plan_continuous_sync(
                         )
                     )
             else:  # remote deletion
-                actions.append(
-                    SyncAction(
-                        ActionType.DELETE_LOCAL,
-                        path,
-                        stored_entry=stored,
-                        reason="remote deletion",
+                if stored:
+                    actions.append(
+                        SyncAction(
+                            ActionType.DELETE_LOCAL,
+                            path,
+                            stored_entry=stored,
+                            reason="remote deletion",
+                        )
                     )
-                )
+                else:
+                    log.debug("Ignoring remote deletion for untracked path: %s", path)
+            continue
+
+        # Handle directories / folders
+        if is_dir:
+            if source == "local":
+                if stored is None:
+                    actions.append(
+                        SyncAction(
+                            ActionType.MKDIR,
+                            path,
+                            reason="new local directory",
+                        )
+                    )
+                else:
+                    actions.append(SyncAction(ActionType.NOOP, path, reason="directory already tracked"))
+            else:  # remote folder
+                if stored is None:
+                    actions.append(
+                        SyncAction(
+                            ActionType.MKDIR,
+                            path,
+                            remote_info=change.get("remote_info"),
+                            reason="new remote folder",
+                        )
+                    )
+                else:
+                    actions.append(SyncAction(ActionType.NOOP, path, reason="folder already tracked"))
             continue
 
         new_md5 = change.get("md5")

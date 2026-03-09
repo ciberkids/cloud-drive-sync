@@ -103,9 +103,11 @@ When a sync pair starts for the first time (no stored state):
      │
 5. Execute actions (upload/download) with concurrency limit
      │
-6. Store change token from Drive Changes API
+6. Notify UI via `sync_complete` and `status_changed` notifications
      │
-7. Start continuous sync loops
+7. Store change token from Drive Changes API
+     │
+8. Start continuous sync loops
 ```
 
 ### Continuous Sync
@@ -137,6 +139,34 @@ The `plan_continuous_sync()` function uses three-way comparison:
 - Compare the **new state** (from the change) against the **stored base state**
 - If only one side changed relative to base → propagate the change
 - If both sides changed relative to base → CONFLICT
+
+### Sync Modes
+
+Each sync pair has a configurable `sync_mode` that filters planned actions:
+
+| Mode | Allowed Actions | Use Case |
+|---|---|---|
+| `two_way` | All (upload, download, delete local/remote) | Full bidirectional sync (default) |
+| `upload_only` | Upload, delete remote | Backup local files to Drive |
+| `download_only` | Download, delete local | Mirror Drive contents locally |
+
+Mode filtering is applied by `filter_actions_by_mode()` after planning but before execution.
+
+### Hidden File Filtering
+
+Each sync pair has an `ignore_hidden` setting (default: `true`) that controls whether dotfiles and dot-directories are synced. When enabled, files and directories whose name starts with `.` are excluded at multiple levels:
+
+| Component | Filtering Point |
+|---|---|
+| **Scanner** (`local/scanner.py`) | `scan_directory()` skips paths where any component starts with `.` |
+| **Watcher** (`local/watcher.py`) | `_EventHandler._enqueue()` drops filesystem events for hidden paths |
+| **Planner** (`sync/planner.py`) | `plan_initial_sync()` skips hidden paths during initial diff |
+
+The setting is toggled per-pair via the `set_ignore_hidden` IPC method, which persists to `config.toml`. The UI exposes this as a "Hide dotfiles" checkbox in Settings.
+
+### Stale Data Cleanup
+
+When the sync engine starts, it compares the set of active pair IDs (derived from the current config) against pair IDs found in the database. Any data belonging to pairs that no longer exist in the config is cleaned up via `Database.cleanup_stale_pairs()`. This prevents orphaned data from removed sync pairs from accumulating in the database or appearing in activity logs.
 
 ### FileState Transitions
 
@@ -205,6 +235,8 @@ The daemon and UI communicate via **JSON-RPC 2.0 over a Unix domain socket** wit
        │      "params":{...}}             │
        │     (no id = no response needed) │
 ```
+
+The daemon supports 16 RPC methods including sync control (`force_sync`, `pause_sync`, `resume_sync`), configuration (`add_sync_pair`, `remove_sync_pair`, `set_conflict_strategy`, `set_sync_mode`, `set_ignore_hidden`), data queries (`get_status`, `get_sync_pairs`, `get_activity_log`, `get_conflicts`), authentication (`start_auth`, `logout`), and Drive browsing (`list_remote_folders`).
 
 See [API Reference](API.md) for the full list of methods and notifications.
 

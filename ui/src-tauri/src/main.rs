@@ -38,6 +38,7 @@ fn main() {
             commands::logout,
             commands::connect_daemon,
             commands::set_sync_mode,
+            commands::set_ignore_hidden,
             commands::list_remote_folders,
         ])
         .setup(|app| {

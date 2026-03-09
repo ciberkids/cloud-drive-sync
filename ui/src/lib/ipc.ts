@@ -17,11 +17,13 @@ export async function getSyncPairs(): Promise<SyncPair[]> {
 
 export async function addSyncPair(
   localPath: string,
-  remoteFolderId: string
+  remoteFolderId: string,
+  ignoreHidden?: boolean
 ): Promise<SyncPair> {
   return invoke<SyncPair>("add_sync_pair", {
     localPath,
     remoteFolderId,
+    ignoreHidden,
   });
 }
 
@@ -40,16 +42,16 @@ export async function resolveConflict(
   return invoke("resolve_conflict", { conflictId, resolution });
 }
 
-export async function forceSync(): Promise<void> {
-  return invoke("force_sync");
+export async function forceSync(pairId?: string): Promise<void> {
+  return invoke("force_sync", { pairId });
 }
 
-export async function pauseSync(): Promise<void> {
-  return invoke("pause_sync");
+export async function pauseSync(pairId?: string): Promise<void> {
+  return invoke("pause_sync", { pairId });
 }
 
-export async function resumeSync(): Promise<void> {
-  return invoke("resume_sync");
+export async function resumeSync(pairId?: string): Promise<void> {
+  return invoke("resume_sync", { pairId });
 }
 
 export async function getActivityLog(
@@ -80,6 +82,13 @@ export async function setSyncMode(
   syncMode: string
 ): Promise<void> {
   return invoke("set_sync_mode", { pairId, syncMode });
+}
+
+export async function setIgnoreHidden(
+  pairId: string,
+  ignoreHidden: boolean
+): Promise<void> {
+  return invoke("set_ignore_hidden", { pairId, ignoreHidden });
 }
 
 export async function listRemoteFolders(

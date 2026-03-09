@@ -44,6 +44,7 @@ class RequestHandler:
             "logout": self._logout,
             "list_remote_folders": self._list_remote_folders,
             "set_sync_mode": self._set_sync_mode,
+            "set_ignore_hidden": self._set_ignore_hidden,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -85,6 +86,17 @@ class RequestHandler:
             raise RuntimeError("Not authenticated. Please connect your Google account first.")
         return self._engine
 
+    def _default_pair_id(self, params: dict | None) -> str:
+        """Extract pair_id from params, defaulting to pair_0 if not provided."""
+        params = params or {}
+        pair_id = params.get("pair_id")
+        if not pair_id:
+            if self._config.sync.pairs:
+                pair_id = "pair_0"
+            else:
+                raise TypeError("No sync pairs configured")
+        return pair_id
+
     async def _get_status(self, params: dict) -> dict:
         if self._engine is None:
             return {
@@ -106,13 +118,22 @@ class RequestHandler:
         last_syncs = [p["last_sync"] for p in pairs.values() if p.get("last_sync")]
         total_transfers = sum(p.get("active_transfers", 0) for p in pairs.values())
 
+        # Bug 6 fix: count actual synced files from DB
+        total_synced = 0
+        db = self._db or (self._engine._db if self._engine else None)
+        if db:
+            for i in range(len(self._config.sync.pairs)):
+                pair_id = f"pair_{i}"
+                counts = await db.count_by_state(pair_id)
+                total_synced += counts.get("synced", 0)
+
         return {
             "connected": True,
             "syncing": syncing or total_transfers > 0,
             "paused": paused,
             "error": errors[0] if errors else None,
             "last_sync": max(last_syncs) if last_syncs else None,
-            "files_synced": 0,
+            "files_synced": total_synced,
             "active_transfers": total_transfers,
         }
 
@@ -124,6 +145,7 @@ class RequestHandler:
                 "remote_folder_id": p.remote_folder_id,
                 "enabled": p.enabled,
                 "sync_mode": p.sync_mode,
+                "ignore_hidden": p.ignore_hidden,
             }
             for i, p in enumerate(self._config.sync.pairs)
         ]
@@ -131,6 +153,7 @@ class RequestHandler:
     async def _add_sync_pair(self, params: dict) -> dict:
         local_path = params.get("local_path")
         remote_folder_id = params.get("remote_folder_id", "root")
+        ignore_hidden = params.get("ignore_hidden", True)
         if not local_path:
             raise TypeError("local_path is required")
 
@@ -143,6 +166,7 @@ class RequestHandler:
             local_path=local_path,
             remote_folder_id=remote_folder_id,
             enabled=True,
+            ignore_hidden=ignore_hidden,
         )
         self._config.sync.pairs.append(pair)
         self._config.save()
@@ -153,6 +177,7 @@ class RequestHandler:
             "remote_folder_id": remote_folder_id,
             "enabled": True,
             "sync_mode": "two_way",
+            "ignore_hidden": ignore_hidden,
         }
 
     async def _remove_sync_pair(self, params: dict) -> dict:
@@ -189,25 +214,19 @@ class RequestHandler:
 
     async def _force_sync(self, params: dict) -> dict:
         engine = self._require_engine()
-        pair_id = params.get("pair_id")
-        if not pair_id:
-            raise TypeError("pair_id is required")
+        pair_id = self._default_pair_id(params)
         ok = await engine.force_sync(pair_id)
         return {"status": "ok" if ok else "not_found"}
 
     async def _pause_sync(self, params: dict) -> dict:
         engine = self._require_engine()
-        pair_id = params.get("pair_id")
-        if not pair_id:
-            raise TypeError("pair_id is required")
+        pair_id = self._default_pair_id(params)
         ok = await engine.pause_pair(pair_id)
         return {"status": "paused" if ok else "not_found"}
 
     async def _resume_sync(self, params: dict) -> dict:
         engine = self._require_engine()
-        pair_id = params.get("pair_id")
-        if not pair_id:
-            raise TypeError("pair_id is required")
+        pair_id = self._default_pair_id(params)
         ok = await engine.resume_pair(pair_id)
         return {"status": "resumed" if ok else "not_found"}
 
@@ -215,25 +234,67 @@ class RequestHandler:
         db = self._db or (self._engine._db if self._engine else None)
         if db is None:
             return []
+        params = params or {}
         limit = params.get("limit", 50)
         pair_id = params.get("pair_id")
-        entries = await db.get_recent_log(limit=limit, pair_id=pair_id)
-        return [
-            {
+
+        offset = params.get("offset", 0)
+        entries = await db.get_recent_log(limit=limit, offset=offset, pair_id=pair_id)
+
+        # Bug 4 fix: filter by active pair IDs when no specific pair_id requested
+        if not pair_id:
+            active_pair_ids = {f"pair_{i}" for i in range(len(self._config.sync.pairs))}
+            active_pair_ids.add("_system")
+            entries = [e for e in entries if e.pair_id in active_pair_ids]
+
+        # Human-readable action descriptions
+        _ACTION_LABELS = {
+            "upload": "File uploaded",
+            "download": "File downloaded",
+            "mkdir": "Directory created",
+            "delete_local": "Local file deleted",
+            "delete_remote": "Remote file deleted",
+            "conflict": "Conflict detected",
+            "auth": "Authentication",
+        }
+
+        result = []
+        for e in entries:
+            # Normalize event_type for UI filter tabs
+            if e.status == "error":
+                event_type = "error"
+            elif e.action == "mkdir":
+                event_type = "download"
+            elif e.action.startswith("delete"):
+                event_type = "delete"
+            else:
+                event_type = e.action
+
+            # Build a human-readable detail string
+            detail = e.detail or ""
+            label = _ACTION_LABELS.get(e.action, e.action)
+            if detail:
+                detail = f"{label}: {detail}"
+            else:
+                detail = label
+
+            result.append({
                 "id": e.id,
                 "timestamp": e.timestamp.isoformat(),
-                "event_type": e.action,
+                "event_type": event_type,
                 "path": e.path,
-                "details": e.detail or "",
+                "details": detail,
                 "status": e.status,
-            }
-            for e in entries
-        ]
+                "pair_id": e.pair_id,
+            })
+
+        return result
 
     async def _get_conflicts(self, params: dict) -> list[dict]:
         db = self._db or (self._engine._db if self._engine else None)
         if db is None:
             return []
+        params = params or {}
         pair_id = params.get("pair_id")
         conflicts = await db.get_unresolved_conflicts(pair_id)
         return [
@@ -252,10 +313,27 @@ class RequestHandler:
         if self._auth_callback:
             import asyncio
 
-            result = await asyncio.to_thread(self._auth_callback)
-            if isinstance(result, dict):
-                return result
-            return {"status": "ok"}
+            try:
+                result = await asyncio.to_thread(self._auth_callback)
+                # Bug 8 fix: log successful auth event
+                if self._db:
+                    from gdrive_sync.db.models import SyncLogEntry
+                    await self._db.add_log_entry(SyncLogEntry(
+                        action="auth", path="", pair_id="_system",
+                        status="success", detail="Authentication successful",
+                    ))
+                if isinstance(result, dict):
+                    return result
+                return {"status": "ok"}
+            except Exception as exc:
+                # Bug 8 fix: log failed auth event
+                if self._db:
+                    from gdrive_sync.db.models import SyncLogEntry
+                    await self._db.add_log_entry(SyncLogEntry(
+                        action="auth", path="", pair_id="_system",
+                        status="error", detail=str(exc),
+                    ))
+                return {"status": "error", "message": str(exc)}
         return {"status": "no_auth_callback"}
 
     async def _list_remote_folders(self, params: dict) -> dict:
@@ -264,6 +342,7 @@ class RequestHandler:
             return {"folders": [], "error": "Not authenticated"}
 
         client = self._drive_client or self._engine._client
+        params = params or {}
         parent_id = params.get("parent_id", "root")
 
         try:
@@ -295,6 +374,23 @@ class RequestHandler:
         self._config.sync.pairs[index].sync_mode = mode
         self._config.save()
         return {"status": "ok", "sync_mode": mode}
+
+    async def _set_ignore_hidden(self, params: dict) -> dict:
+        """Toggle the ignore_hidden setting for a sync pair."""
+        params = params or {}
+        pair_id = params.get("pair_id")
+        ignore_hidden = params.get("ignore_hidden")
+        if pair_id is None or ignore_hidden is None:
+            raise TypeError("pair_id and ignore_hidden are required")
+        try:
+            index = int(pair_id)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id")
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+        self._config.sync.pairs[index].ignore_hidden = ignore_hidden
+        self._config.save()
+        return {"status": "ok", "ignore_hidden": ignore_hidden}
 
     async def _logout(self, params: dict) -> dict:
         from gdrive_sync.util.paths import credentials_path, data_dir

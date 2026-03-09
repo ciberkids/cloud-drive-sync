@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import aiosqlite
@@ -173,6 +173,15 @@ class Database:
         )
         await self.db.commit()
 
+    async def delete_sync_entries_by_prefix(self, path_prefix: str, pair_id: str) -> int:
+        """Delete all entries whose path starts with path_prefix/"""
+        cursor = await self.db.execute(
+            "DELETE FROM sync_state WHERE path LIKE ? AND pair_id = ?",
+            (path_prefix + "/%", pair_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount
+
     async def get_entries_by_state(self, state: FileState, pair_id: str) -> list[SyncEntry]:
         cursor = await self.db.execute(
             "SELECT path, local_md5, remote_md5, remote_id, state, "
@@ -256,18 +265,20 @@ class Database:
         )
         await self.db.commit()
 
-    async def get_recent_log(self, limit: int = 50, pair_id: str | None = None) -> list[SyncLogEntry]:
+    async def get_recent_log(
+        self, limit: int = 50, offset: int = 0, pair_id: str | None = None
+    ) -> list[SyncLogEntry]:
         if pair_id:
             cursor = await self.db.execute(
                 "SELECT id, timestamp, action, path, pair_id, status, detail "
-                "FROM sync_log WHERE pair_id = ? ORDER BY id DESC LIMIT ?",
-                (pair_id, limit),
+                "FROM sync_log WHERE pair_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (pair_id, limit, offset),
             )
         else:
             cursor = await self.db.execute(
                 "SELECT id, timestamp, action, path, pair_id, status, detail "
-                "FROM sync_log ORDER BY id DESC LIMIT ?",
-                (limit,),
+                "FROM sync_log ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             )
         rows = await cursor.fetchall()
         return [SyncLogEntry.from_row(tuple(r)) for r in rows]
@@ -288,3 +299,22 @@ class Database:
         await self.db.execute("DELETE FROM conflicts WHERE pair_id = ?", (pair_id,))
         await self.db.execute("DELETE FROM sync_log WHERE pair_id = ?", (pair_id,))
         await self.db.commit()
+
+    async def cleanup_stale_pairs(self, active_pair_ids: set[str]) -> int:
+        """Remove all data for pairs not in the active set."""
+        cursor = await self.db.execute(
+            "SELECT DISTINCT pair_id FROM sync_state "
+            "UNION SELECT DISTINCT pair_id FROM change_tokens "
+            "UNION SELECT DISTINCT pair_id FROM conflicts "
+            "UNION SELECT DISTINCT pair_id FROM sync_log"
+        )
+        rows = await cursor.fetchall()
+        all_pair_ids = {row[0] for row in rows}
+        stale_ids = all_pair_ids - active_pair_ids - {"_system"}
+        count = 0
+        for pair_id in stale_ids:
+            await self.clear_pair(pair_id)
+            count += 1
+        if count:
+            log.info("Cleaned up %d stale pairs", count)
+        return count

@@ -57,6 +57,25 @@ export function useStatus(pollIntervalMs = 5000): DaemonStatus {
     };
   }, []);
 
+  // Immediately re-poll when daemon connects (manual reconnect or auto-connect)
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen("daemon-connected", async () => {
+      try {
+        const s = await ipc.getStatus();
+        setStatus(s);
+      } catch {
+        // ignore
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   return status;
 }
 

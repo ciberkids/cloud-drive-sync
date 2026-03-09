@@ -18,6 +18,7 @@ export interface SyncPair {
   remote_folder_id: string;
   enabled: boolean;
   sync_mode: SyncMode;
+  ignore_hidden: boolean;
 }
 
 export interface ConflictRecord {

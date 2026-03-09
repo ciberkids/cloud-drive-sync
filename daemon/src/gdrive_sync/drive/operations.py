@@ -68,13 +68,14 @@ class FileOperations:
             )
 
         def _do_upload():
-            response = None
-            while response is None:
-                status, response = request.next_chunk()
-                if status and progress_callback:
-                    # Schedule the callback from the thread
-                    pass
-            return response
+            with self._client._api_lock:
+                response = None
+                while response is None:
+                    status, response = request.next_chunk()
+                    if status and progress_callback:
+                        # Schedule the callback from the thread
+                        pass
+                return response
 
         result = await asyncio.to_thread(_do_upload)
         log.info("Upload complete: %s -> %s", name, result.get("id"))
@@ -103,12 +104,13 @@ class FileOperations:
         request = self._client.service.files().get_media(fileId=remote_id)
 
         def _do_download():
-            buffer = io.BytesIO()
-            downloader = MediaIoBaseDownload(buffer, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            return buffer.getvalue()
+            with self._client._api_lock:
+                buffer = io.BytesIO()
+                downloader = MediaIoBaseDownload(buffer, request)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                return buffer.getvalue()
 
         data = await asyncio.to_thread(_do_download)
         local_path.write_bytes(data)

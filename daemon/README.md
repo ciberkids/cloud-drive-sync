@@ -99,6 +99,8 @@ Each `[[sync.pairs]]` entry defines a local-to-remote folder mapping. You can ha
 | `local_path` | string | (required) | Absolute path to the local directory |
 | `remote_folder_id` | string | `"root"` | Google Drive folder ID (`"root"` = My Drive top level) |
 | `enabled` | boolean | `true` | Whether this pair should be synced |
+| `sync_mode` | string | `"two_way"` | Sync direction: `"two_way"`, `"upload_only"`, or `"download_only"` |
+| `ignore_hidden` | boolean | `true` | Whether to exclude hidden files/directories (names starting with `.`) from sync |
 
 ### Example Configuration
 
@@ -116,11 +118,15 @@ debounce_delay = 1.0
 local_path = "/home/user/Documents"
 remote_folder_id = "root"
 enabled = true
+sync_mode = "two_way"
+ignore_hidden = true
 
 [[sync.pairs]]
 local_path = "/home/user/Pictures"
 remote_folder_id = "0A3xRemoteFolderIdHere"
 enabled = true
+sync_mode = "upload_only"
+ignore_hidden = true
 ```
 
 ## Demo Mode

@@ -51,11 +51,12 @@ class _PendingEvent:
 class _EventHandler(FileSystemEventHandler):
     """Watchdog handler that feeds events into an asyncio queue."""
 
-    def __init__(self, root: Path, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
+    def __init__(self, root: Path, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, ignore_hidden: bool = False) -> None:
         super().__init__()
         self._root = root
         self._loop = loop
         self._queue = queue
+        self._ignore_hidden = ignore_hidden
 
     def _rel(self, path: str) -> str:
         try:
@@ -64,6 +65,8 @@ class _EventHandler(FileSystemEventHandler):
             return path
 
     def _enqueue(self, change: LocalChange) -> None:
+        if self._ignore_hidden and any(part.startswith(".") for part in Path(change.path).parts):
+            return
         self._loop.call_soon_threadsafe(self._queue.put_nowait, change)
 
     def on_created(self, event: FileCreatedEvent | DirCreatedEvent) -> None:
@@ -95,9 +98,10 @@ class _EventHandler(FileSystemEventHandler):
 class DirectoryWatcher:
     """Watches a directory tree and produces debounced change events."""
 
-    def __init__(self, root: Path, debounce_delay: float = 1.0) -> None:
+    def __init__(self, root: Path, debounce_delay: float = 1.0, ignore_hidden: bool = False) -> None:
         self._root = root
         self._debounce_delay = debounce_delay
+        self._ignore_hidden = ignore_hidden
         self._observer: Observer | None = None
         self._raw_queue: asyncio.Queue[LocalChange] = asyncio.Queue()
         self._output_queue: asyncio.Queue[LocalChange] = asyncio.Queue()
@@ -111,7 +115,7 @@ class DirectoryWatcher:
     async def start(self) -> None:
         """Start watching the directory."""
         loop = asyncio.get_running_loop()
-        handler = _EventHandler(self._root, loop, self._raw_queue)
+        handler = _EventHandler(self._root, loop, self._raw_queue, self._ignore_hidden)
         self._observer = Observer()
         self._observer.schedule(handler, str(self._root), recursive=True)
         self._observer.start()

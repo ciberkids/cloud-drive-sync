@@ -2,7 +2,7 @@ use crate::ipc_bridge::DaemonBridge;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,6 +23,7 @@ pub struct SyncPair {
     pub remote_folder_id: String,
     pub enabled: bool,
     pub sync_mode: String,
+    pub ignore_hidden: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -79,17 +80,17 @@ pub async fn add_sync_pair(
     bridge: State<'_, BridgeState>,
     local_path: String,
     remote_folder_id: String,
+    ignore_hidden: Option<bool>,
 ) -> Result<SyncPair, String> {
     let bridge = bridge.0.lock().await;
-    let result = bridge
-        .call(
-            "add_sync_pair",
-            Some(json!({
-                "local_path": local_path,
-                "remote_folder_id": remote_folder_id
-            })),
-        )
-        .await?;
+    let mut params = json!({
+        "local_path": local_path,
+        "remote_folder_id": remote_folder_id
+    });
+    if let Some(ih) = ignore_hidden {
+        params["ignore_hidden"] = json!(ih);
+    }
+    let result = bridge.call("add_sync_pair", Some(params)).await?;
     serde_json::from_value(result).map_err(|e| e.to_string())
 }
 
@@ -140,23 +141,35 @@ pub async fn resolve_conflict(
 }
 
 #[tauri::command]
-pub async fn force_sync(bridge: State<'_, BridgeState>) -> Result<(), String> {
+pub async fn force_sync(
+    bridge: State<'_, BridgeState>,
+    pair_id: Option<String>,
+) -> Result<(), String> {
     let bridge = bridge.0.lock().await;
-    bridge.call("force_sync", None).await?;
+    let params = pair_id.map(|id| json!({ "pair_id": id }));
+    bridge.call("force_sync", params).await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn pause_sync(bridge: State<'_, BridgeState>) -> Result<(), String> {
+pub async fn pause_sync(
+    bridge: State<'_, BridgeState>,
+    pair_id: Option<String>,
+) -> Result<(), String> {
     let bridge = bridge.0.lock().await;
-    bridge.call("pause_sync", None).await?;
+    let params = pair_id.map(|id| json!({ "pair_id": id }));
+    bridge.call("pause_sync", params).await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn resume_sync(bridge: State<'_, BridgeState>) -> Result<(), String> {
+pub async fn resume_sync(
+    bridge: State<'_, BridgeState>,
+    pair_id: Option<String>,
+) -> Result<(), String> {
     let bridge = bridge.0.lock().await;
-    bridge.call("resume_sync", None).await?;
+    let params = pair_id.map(|id| json!({ "pair_id": id }));
+    bridge.call("resume_sync", params).await?;
     Ok(())
 }
 
@@ -199,9 +212,15 @@ pub async fn logout(bridge: State<'_, BridgeState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn connect_daemon(bridge: State<'_, BridgeState>) -> Result<(), String> {
+pub async fn connect_daemon(
+    bridge: State<'_, BridgeState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let mut bridge = bridge.0.lock().await;
-    bridge.connect().await
+    bridge.connect().await?;
+    let _ = app.emit("daemon-connected", ());
+    crate::tray::update_tray_status(&app, "Connected");
+    Ok(())
 }
 
 #[tauri::command]
@@ -217,6 +236,25 @@ pub async fn set_sync_mode(
             Some(json!({
                 "pair_id": pair_id,
                 "sync_mode": sync_mode
+            })),
+        )
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_ignore_hidden(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+    ignore_hidden: bool,
+) -> Result<(), String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "set_ignore_hidden",
+            Some(json!({
+                "pair_id": pair_id,
+                "ignore_hidden": ignore_hidden
             })),
         )
         .await?;
