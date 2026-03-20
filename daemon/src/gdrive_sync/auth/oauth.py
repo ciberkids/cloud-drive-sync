@@ -18,7 +18,7 @@ SCOPES = [
 DEFAULT_CLIENT_SECRETS = config_dir() / "client_secret.json"
 
 
-def run_oauth_flow(client_secrets: Path | None = None) -> "google.oauth2.credentials.Credentials":
+def run_oauth_flow(client_secrets: Path | None = None) -> "google.oauth2.credentials.Credentials":  # noqa: F821
     """Run the OAuth2 browser-based consent flow.
 
     Opens the user's default browser for Google account authorization.
