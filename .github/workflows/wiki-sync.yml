@@ -1,0 +1,51 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+      - 'docs/**'
+      - 'README.md'
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync wiki content
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Clone the wiki repo using HTTPS with token auth
+          wiki_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          git clone "$wiki_url" wiki-repo 2>/dev/null || {
+            # If wiki doesn't exist yet, initialize it
+            mkdir wiki-repo
+            cd wiki-repo
+            git init
+            git remote add origin "$wiki_url"
+            cd ..
+          }
+
+          # Copy wiki contents
+          cp wiki/*.md wiki-repo/
+
+          # Commit and push if there are changes
+          cd wiki-repo
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No wiki changes to push"
+          else
+            git commit -m "Sync wiki from main branch"
+            git push origin HEAD:master || git push origin HEAD:main
+          fi
