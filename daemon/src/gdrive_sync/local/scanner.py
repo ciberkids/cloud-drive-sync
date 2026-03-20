@@ -29,6 +29,7 @@ class LocalFileInfo:
     md5: str
     mtime: float
     size: int
+    is_dir: bool = False
 
 
 def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
@@ -74,13 +75,18 @@ async def scan_directory(
     count = 0
 
     for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-
         rel = str(path.relative_to(root))
         if _is_ignored(rel, patterns):
             continue
         if ignore_hidden and _is_hidden(rel):
+            continue
+
+        if path.is_dir():
+            # Include directories so the planner can match remote folders
+            result[rel] = LocalFileInfo(md5="", mtime=path.stat().st_mtime, size=0, is_dir=True)
+            continue
+
+        if not path.is_file():
             continue
 
         try:

@@ -98,7 +98,10 @@ def plan_initial_sync(
         remote = remote_by_path.get(path)
 
         if local and not remote:
-            actions.append(SyncAction(ActionType.UPLOAD, path, local_info=local, reason="local only"))
+            if local.is_dir:
+                actions.append(SyncAction(ActionType.MKDIR, path, local_info=local, reason="local directory"))
+            else:
+                actions.append(SyncAction(ActionType.UPLOAD, path, local_info=local, reason="local only"))
         elif remote and not local:
             mime = remote.get("mimeType", "")
             if _is_google_native_doc(mime):
@@ -114,7 +117,7 @@ def plan_initial_sync(
                 )
         elif local and remote:
             mime = remote.get("mimeType", "")
-            if _is_folder(mime):
+            if _is_folder(mime) or local.is_dir:
                 # Folder exists both locally and remotely — nothing to do
                 actions.append(SyncAction(ActionType.NOOP, path, reason="folder in sync"))
                 continue

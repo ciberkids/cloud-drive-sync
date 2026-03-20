@@ -8,7 +8,7 @@ mod tray;
 use commands::BridgeState;
 use ipc_bridge::DaemonBridge;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{image::Image, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 
 fn main() {
@@ -105,8 +105,13 @@ fn main() {
                 }
             });
 
-            // Hide window on close instead of exiting (tray app)
+            // Set window icon explicitly (needed on Linux/Wayland)
             let window = app.get_webview_window("main").unwrap();
+            let win_icon = Image::from_bytes(include_bytes!("../icons/128x128.png"))
+                .expect("Failed to load window icon");
+            let _ = window.set_icon(win_icon);
+
+            // Hide window on close instead of exiting (tray app)
             let close_handle = window.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {

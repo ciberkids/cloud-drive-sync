@@ -186,6 +186,69 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Sync result feedback */
+.sync-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 13px;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sync-result-success {
+  background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary));
+  border-left: 3px solid var(--success);
+  color: var(--text-primary);
+}
+
+.sync-result-noop {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary));
+  border-left: 3px solid var(--accent);
+  color: var(--text-primary);
+}
+
+.sync-result-error {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-secondary));
+  border-left: 3px solid var(--danger);
+  color: var(--text-primary);
+}
+
+.sync-result-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.sync-result-success .sync-result-icon { color: var(--success); }
+.sync-result-noop .sync-result-icon { color: var(--accent); }
+.sync-result-error .sync-result-icon { color: var(--danger); }
+
+.sync-result-message {
+  flex: 1;
+}
+
+.sync-result-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.sync-result-dismiss:hover {
+  color: var(--text-primary);
+}
+
 .status-stats {
   display: flex;
   gap: 24px;
@@ -230,6 +293,149 @@ body {
 @keyframes indeterminate {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
+}
+
+/* Live transfers */
+.live-transfers {
+  margin-bottom: 20px;
+}
+
+.live-transfers h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.transfer-item {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+
+.transfer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.transfer-direction {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.transfer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.transfer-speed {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.transfer-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.transfer-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.transfer-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.transfer-pct {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Daemon info */
+.daemon-info {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+
+.daemon-info h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.daemon-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.daemon-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.daemon-label {
+  color: var(--text-secondary);
+}
+
+.daemon-value {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.daemon-socket {
+  font-family: monospace;
+  font-size: 11px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daemon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.daemon-dot.running {
+  background: var(--success);
+}
+
+.daemon-dot.stopped {
+  background: var(--danger);
 }
 
 .status-actions {
@@ -494,6 +700,158 @@ body {
   font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
   word-break: break-all;
   user-select: all;
+}
+
+/* Transfers page */
+.transfers-page {
+  max-width: 700px;
+}
+
+.transfers-page h2 {
+  margin-bottom: 16px;
+}
+
+.transfers-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-secondary);
+}
+
+.transfers-empty-icon {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 12px;
+  color: var(--success);
+}
+
+.transfers-empty p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.transfers-empty-hint {
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  margin-top: 6px !important;
+  color: var(--text-secondary);
+}
+
+.transfers-summary {
+  margin-bottom: 12px;
+}
+
+.transfers-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.transfers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transfer-card {
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+
+.transfer-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.transfer-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.transfer-badge-upload {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.transfer-badge-download {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.transfer-badge-mkdir {
+  background: color-mix(in srgb, var(--text-secondary) 15%, transparent);
+  color: var(--text-secondary);
+}
+
+.transfer-badge-delete_local,
+.transfer-badge-delete_remote {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+}
+
+.transfer-card-speed {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.transfer-card-file {
+  margin-bottom: 10px;
+}
+
+.transfer-card-name {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-card-dir {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transfer-card-bar {
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.transfer-card-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  min-width: 2%;
+}
+
+.transfer-card-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* Folder picker */

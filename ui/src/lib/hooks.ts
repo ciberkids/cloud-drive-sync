@@ -16,6 +16,8 @@ const DEFAULT_STATUS: DaemonStatus = {
   last_sync: null,
   files_synced: 0,
   active_transfers: 0,
+  live_transfers: [],
+  daemon: null,
 };
 
 export function useStatus(pollIntervalMs = 5000): DaemonStatus {

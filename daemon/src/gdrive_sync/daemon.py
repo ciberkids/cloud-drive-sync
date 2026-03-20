@@ -247,12 +247,47 @@ class Daemon:
                 )
                 log.info("Sync engine initialized after authentication")
 
+            elif self._engine is not None:
+                # Re-auth: rebuild client with fresh credentials and restart engine
+                from gdrive_sync.drive.client import DriveClient
+                from gdrive_sync.drive.changes import ChangePoller
+                from gdrive_sync.drive.operations import FileOperations
+
+                import asyncio
+
+                client = DriveClient(creds)
+                self._engine._client = client
+                self._engine._ops = FileOperations(client)
+                self._engine._poller = ChangePoller(client)
+
+                # Update executors in active pairs
+                for ps in self._engine._pairs.values():
+                    if ps.executor:
+                        ps.executor._ops = self._engine._ops
+                        ps.executor._drive_client = client
+
+                # Update handler's client reference
+                self._handler.set_drive_client(client)
+
+                # Restart the engine to re-run initial sync with new creds
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self._restart_engine())
+                )
+                log.info("Credentials refreshed, engine restarted")
+
             return {"status": "ok"}
 
         except Exception as exc:
             log.error("Authentication failed: %s", exc)
             self._log_auth_event("auth", f"Authentication failed: {exc}", "error")
             return {"status": "error", "message": str(exc)}
+
+    async def _restart_engine(self) -> None:
+        """Stop and restart the sync engine (e.g. after credential refresh)."""
+        if self._engine:
+            await self._engine.stop()
+            await self._engine.start()
 
     def _log_auth_event(self, action: str, detail: str, status: str) -> None:
         """Log an auth event to the activity database."""

@@ -5,6 +5,25 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::Mutex;
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct DaemonInfo {
+    pub pid: Option<u64>,
+    pub uptime: Option<u64>,
+    pub uptime_formatted: Option<String>,
+    pub socket_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct LiveTransfer {
+    pub pair_id: Option<String>,
+    pub path: Option<String>,
+    pub direction: Option<String>,
+    pub bytes: Option<u64>,
+    pub total: Option<u64>,
+    pub speed: Option<f64>,
+    pub speed_formatted: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DaemonStatus {
     pub connected: bool,
@@ -14,6 +33,10 @@ pub struct DaemonStatus {
     pub last_sync: Option<String>,
     pub files_synced: u64,
     pub active_transfers: u64,
+    #[serde(default)]
+    pub live_transfers: Vec<LiveTransfer>,
+    #[serde(default)]
+    pub daemon: Option<DaemonInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,6 +84,8 @@ pub async fn get_status(bridge: State<'_, BridgeState>) -> Result<DaemonStatus, 
             last_sync: None,
             files_synced: 0,
             active_transfers: 0,
+            live_transfers: vec![],
+            daemon: None,
         });
     }
 

@@ -1,5 +1,22 @@
 export type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user";
 
+export interface DaemonInfo {
+  pid: number | null;
+  uptime: number | null;
+  uptime_formatted: string | null;
+  socket_path: string | null;
+}
+
+export interface LiveTransfer {
+  pair_id: string;
+  path: string;
+  direction: "upload" | "download" | "mkdir" | "delete_local" | "delete_remote";
+  bytes: number;
+  total: number;
+  speed: number;
+  speed_formatted: string;
+}
+
 export interface DaemonStatus {
   connected: boolean;
   syncing: boolean;
@@ -8,6 +25,8 @@ export interface DaemonStatus {
   last_sync: string | null;
   files_synced: number;
   active_transfers: number;
+  live_transfers: LiveTransfer[];
+  daemon: DaemonInfo | null;
 }
 
 export type SyncMode = "two_way" | "upload_only" | "download_only";
@@ -34,7 +53,7 @@ export interface ConflictRecord {
 export interface LogEntry {
   id: number;
   timestamp: string;
-  event_type: "upload" | "download" | "delete" | "conflict" | "error" | "auth";
+  event_type: "upload" | "download" | "delete" | "sync" | "conflict" | "error" | "auth";
   path: string;
   details: string;
   status: string;

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import io
+import os
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,26 @@ from gdrive_sync.util.logging import get_logger
 from gdrive_sync.util.retry import async_retry
 
 log = get_logger("drive.operations")
+
+
+def _format_speed(bytes_per_sec: float) -> str:
+    """Format bytes/sec as a human-readable string."""
+    if bytes_per_sec >= 1_000_000:
+        return f"{bytes_per_sec / 1_000_000:.1f} MB/s"
+    elif bytes_per_sec >= 1_000:
+        return f"{bytes_per_sec / 1_000:.1f} KB/s"
+    return f"{bytes_per_sec:.0f} B/s"
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format bytes as a human-readable string."""
+    if size_bytes >= 1_000_000_000:
+        return f"{size_bytes / 1_000_000_000:.1f} GB"
+    elif size_bytes >= 1_000_000:
+        return f"{size_bytes / 1_000_000:.1f} MB"
+    elif size_bytes >= 1_000:
+        return f"{size_bytes / 1_000:.1f} KB"
+    return f"{size_bytes} B"
 
 
 class FileOperations:
@@ -67,19 +89,31 @@ class FileOperations:
                 fields="id, name, md5Checksum, modifiedTime",
             )
 
+        start_time = time.monotonic()
+        loop = asyncio.get_running_loop()
+
         def _do_upload():
             with self._client._api_lock:
                 response = None
                 while response is None:
                     status, response = request.next_chunk()
                     if status and progress_callback:
-                        # Schedule the callback from the thread
-                        pass
+                        elapsed = time.monotonic() - start_time
+                        bytes_sent = int(status.resumable_progress)
+                        speed = bytes_sent / elapsed if elapsed > 0 else 0
+                        loop.call_soon_threadsafe(
+                            progress_callback, bytes_sent, file_size, speed
+                        )
                 return response
 
         result = await asyncio.to_thread(_do_upload)
-        log.info("Upload complete: %s -> %s", name, result.get("id"))
-        return result
+        elapsed = time.monotonic() - start_time
+        avg_speed = file_size / elapsed if elapsed > 0 else 0
+        log.info(
+            "Upload complete: %s -> %s (%s at %s)",
+            name, result.get("id"), _format_size(file_size), _format_speed(avg_speed),
+        )
+        return {**result, "_transfer_speed": avg_speed, "_transfer_size": file_size, "_transfer_elapsed": elapsed}
 
     @async_retry(max_retries=3, base_delay=2.0, max_delay=30.0)
     async def download_file(
@@ -103,19 +137,50 @@ class FileOperations:
 
         request = self._client.service.files().get_media(fileId=remote_id)
 
-        def _do_download():
-            with self._client._api_lock:
-                buffer = io.BytesIO()
-                downloader = MediaIoBaseDownload(buffer, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                return buffer.getvalue()
+        start_time = time.monotonic()
+        loop = asyncio.get_running_loop()
 
-        data = await asyncio.to_thread(_do_download)
-        local_path.write_bytes(data)
-        log.info("Download complete: %s (%d bytes)", local_path, len(data))
-        return local_path
+        def _do_download():
+            """Stream download to a temp file, then atomically rename."""
+            with self._client._api_lock:
+                # Write to a temp file in the same directory for atomic rename
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=str(local_path.parent),
+                    prefix=f".{local_path.name}.",
+                    suffix=".tmp",
+                )
+                try:
+                    with os.fdopen(fd, "wb") as tmp_file:
+                        downloader = MediaIoBaseDownload(tmp_file, request)
+                        done = False
+                        while not done:
+                            status, done = downloader.next_chunk()
+                            if status and progress_callback:
+                                elapsed = time.monotonic() - start_time
+                                bytes_received = int(status.resumable_progress)
+                                speed = bytes_received / elapsed if elapsed > 0 else 0
+                                loop.call_soon_threadsafe(
+                                    progress_callback, bytes_received, 0, speed
+                                )
+                    # Atomic rename to final destination
+                    os.replace(tmp_path, str(local_path))
+                    return os.path.getsize(str(local_path))
+                except BaseException:
+                    # Clean up temp file on any failure
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+
+        size = await asyncio.to_thread(_do_download)
+        elapsed = time.monotonic() - start_time
+        avg_speed = size / elapsed if elapsed > 0 else 0
+        log.info(
+            "Download complete: %s (%s at %s)",
+            local_path, _format_size(size), _format_speed(avg_speed),
+        )
+        return local_path, avg_speed, size, elapsed
 
     async def delete_remote(self, remote_id: str, trash: bool = True) -> None:
         """Delete (or trash) a remote file.

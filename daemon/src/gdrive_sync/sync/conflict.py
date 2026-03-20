@@ -139,9 +139,77 @@ class ConflictResolver:
             action_type = resolve_newest_wins(local_mtime, remote_mtime)
             return SyncAction(action=action_type, path=path, reason="newest_wins")
         elif self._strategy == "ask_user":
-            return await resolve_ask_user(path, conflict, notify_callback)
+            return await self._resolve_ask_user(
+                path, conflict, notify_callback, local_path=local_path
+            )
         else:
             log.error("Unknown conflict strategy: %s", self._strategy)
+            return None
+
+    async def _resolve_ask_user(
+        self,
+        path: str,
+        conflict: ConflictRecord,
+        notify_callback=None,
+        local_path: Path | None = None,
+    ) -> SyncAction | None:
+        """Register a pending resolution Future, notify the UI, and wait."""
+        conflict_id = conflict.id
+        if conflict_id is not None:
+            future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+            self._pending_resolutions[conflict_id] = future
+
+        # Notify connected clients
+        if notify_callback:
+            await notify_callback(
+                "conflict_detected",
+                {
+                    "id": conflict_id,
+                    "path": path,
+                    "local_md5": conflict.local_md5,
+                    "remote_md5": conflict.remote_md5,
+                },
+            )
+
+        log.info("Conflict on %s deferred to user", path)
+
+        if conflict_id is None:
+            return None
+
+        # Wait for user resolution (with timeout to avoid hanging forever)
+        try:
+            resolution = await asyncio.wait_for(future, timeout=3600)
+        except asyncio.TimeoutError:
+            log.warning("Conflict resolution timed out for %s", path)
+            self._pending_resolutions.pop(conflict_id, None)
+            return None
+        finally:
+            self._pending_resolutions.pop(conflict_id, None)
+
+        return self._resolution_to_action(path, resolution, local_path)
+
+    @staticmethod
+    def _resolution_to_action(
+        path: str, resolution: str, local_path: Path | None = None
+    ) -> SyncAction | None:
+        """Convert a user resolution string to a SyncAction."""
+        if resolution == "keep_local":
+            return SyncAction(
+                action=ActionType.UPLOAD, path=path, reason="user chose keep_local"
+            )
+        elif resolution == "keep_remote":
+            return SyncAction(
+                action=ActionType.DOWNLOAD, path=path, reason="user chose keep_remote"
+            )
+        elif resolution == "keep_both":
+            # Preserve local copy before downloading remote version
+            if local_path and local_path.exists():
+                resolve_keep_both(local_path)
+            return SyncAction(
+                action=ActionType.DOWNLOAD, path=path, reason="user chose keep_both"
+            )
+        else:
+            log.error("Unknown resolution: %s", resolution)
             return None
 
     def set_user_resolution(self, conflict_id: int, resolution: str) -> None:
@@ -149,3 +217,8 @@ class ConflictResolver:
         future = self._pending_resolutions.get(conflict_id)
         if future and not future.done():
             future.set_result(resolution)
+        else:
+            log.warning(
+                "No pending resolution for conflict %d (may have timed out)",
+                conflict_id,
+            )

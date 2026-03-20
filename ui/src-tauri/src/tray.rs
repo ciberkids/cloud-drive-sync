@@ -1,4 +1,5 @@
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
@@ -26,7 +27,11 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
+    let tray_icon = Image::from_bytes(include_bytes!("../icons/icon-idle.png"))
+        .expect("Failed to load tray icon");
+
     let _tray = TrayIconBuilder::with_id("main")
+        .icon(tray_icon)
         .tooltip("GDrive Sync")
         .menu(&menu)
         .menu_on_left_click(false)

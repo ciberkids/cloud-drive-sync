@@ -4,6 +4,7 @@ import { SyncStatus } from "./components/SyncStatus";
 import { Settings } from "./components/Settings";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { ActivityLog } from "./components/ActivityLog";
+import { Transfers } from "./components/Transfers";
 import { AccountManager } from "./components/AccountManager";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
@@ -27,6 +28,9 @@ function NavBar() {
         </li>
         <li>
           <NavLink to="/conflicts">Conflicts</NavLink>
+        </li>
+        <li>
+          <NavLink to="/transfers">Transfers</NavLink>
         </li>
         <li>
           <NavLink to="/activity">Activity</NavLink>
@@ -86,6 +90,7 @@ export default function App() {
               <Route path="/" element={<SyncStatus />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/conflicts" element={<ConflictDialog />} />
+              <Route path="/transfers" element={<Transfers />} />
               <Route path="/activity" element={<ActivityLog />} />
               <Route path="/account" element={<AccountManager />} />
             </Routes>

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from gdrive_sync.config import Config, SyncPair
 from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import ChangeToken, ConflictRecord
+from gdrive_sync.db.models import ChangeToken, ConflictRecord, SyncLogEntry
 from gdrive_sync.drive.changes import ChangePoller, RemoteChange
 from gdrive_sync.drive.client import DriveClient
 from gdrive_sync.drive.operations import FileOperations
@@ -125,6 +125,7 @@ class SyncEngine:
             remote_folder_id=pair.remote_folder_id,
             max_concurrent=self._config.sync.max_concurrent_transfers,
             drive_client=self._client,
+            notify_callback=self._notify_callback,
         )
 
         watcher = DirectoryWatcher(
@@ -144,11 +145,21 @@ class SyncEngine:
         task_init = asyncio.create_task(self._initial_sync(ps))
         self._tasks.append(task_init)
 
-    async def _initial_sync(self, ps: PairStatus) -> None:
+    async def _initial_sync(self, ps: PairStatus, is_manual: bool = False) -> None:
         """Perform initial full sync for a pair, then start continuous sync."""
         pair_id = ps.pair_id
         local_root = Path(ps.pair.local_path)
         log.info("Starting initial sync for %s (%s)", pair_id, local_root)
+
+        # Clear previous errors for this pair
+        ps.errors.clear()
+
+        # Log sync start
+        trigger = "Manual sync requested" if is_manual else "Automatic sync started"
+        await self._db.add_log_entry(SyncLogEntry(
+            action="sync", path="", pair_id=pair_id,
+            status="in_progress", detail=f"{trigger} — scanning local and remote files",
+        ))
 
         try:
             # Scan local
@@ -188,18 +199,66 @@ class SyncEngine:
             resolved_actions = filter_actions_by_mode(resolved_actions, ps.pair.sync_mode)
 
             # Execute
+            uploaded = 0
+            downloaded = 0
+            errors = 0
             if ps.executor:
                 failed = await ps.executor.execute_all(resolved_actions)
+                errors = len(failed)
+                failed_paths = {a.path for a in failed} if failed else set()
                 if failed:
                     ps.errors.extend(f"Failed: {a.path}" for a in failed)
+                for a in resolved_actions:
+                    if a.path in failed_paths:
+                        continue
+                    if a.action == ActionType.UPLOAD:
+                        uploaded += 1
+                    elif a.action in (ActionType.DOWNLOAD, ActionType.MKDIR):
+                        downloaded += 1
 
             ps.last_sync = datetime.now(timezone.utc)
             log.info("Initial sync complete for %s", pair_id)
 
+            # Log sync result
+            total = uploaded + downloaded
+            if errors > 0:
+                parts = []
+                if total > 0:
+                    parts.append(f"{total} file{'s' if total != 1 else ''} transferred")
+                parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+                detail = f"Sync finished with {', '.join(parts)}"
+                await self._db.add_log_entry(SyncLogEntry(
+                    action="sync", path="", pair_id=pair_id,
+                    status="error", detail=detail,
+                ))
+            elif total == 0:
+                await self._db.add_log_entry(SyncLogEntry(
+                    action="sync", path="", pair_id=pair_id,
+                    status="success", detail="Everything is up to date — nothing to sync",
+                ))
+            else:
+                parts = []
+                if uploaded > 0:
+                    parts.append(f"{uploaded} uploaded")
+                if downloaded > 0:
+                    parts.append(f"{downloaded} downloaded")
+                await self._db.add_log_entry(SyncLogEntry(
+                    action="sync", path="", pair_id=pair_id,
+                    status="success", detail=f"Sync complete: {', '.join(parts)}",
+                ))
+
             # Notify UI
             if self._notify_callback:
-                await self._notify_callback("sync_complete", {"pair_id": pair_id})
-                await self._notify_callback("status_changed", None)
+                await self._notify_callback("sync_complete", {
+                    "pair_id": pair_id,
+                    "uploaded": uploaded,
+                    "downloaded": downloaded,
+                    "errors": errors,
+                })
+                await self._notify_callback("status_changed", {
+                    "pair_id": pair_id,
+                    "status": "idle",
+                })
 
             # Get change token for future polling
             token = await self._poller.get_start_page_token()
@@ -211,9 +270,13 @@ class SyncEngine:
             if not self._stop_event.is_set():
                 await self._start_continuous(ps)
 
-        except Exception:
+        except Exception as exc:
             log.exception("Initial sync failed for %s", pair_id)
             ps.errors.append("Initial sync failed")
+            await self._db.add_log_entry(SyncLogEntry(
+                action="sync", path="", pair_id=pair_id,
+                status="error", detail=f"Sync failed: {exc}",
+            ))
 
     async def _start_continuous(self, ps: PairStatus) -> None:
         """Start the watcher and poller loops for continuous sync."""
@@ -316,18 +379,35 @@ class SyncEngine:
 
         # Build path mapping from remote_id -> stored path
         id_to_path: dict[str, str] = {}
+        # Only track folder IDs (not file IDs) for parent matching.
+        # A folder entry has local_md5=None (files always have an md5).
         tracked_folder_ids: set[str] = {ps.pair.remote_folder_id}
         for entry in stored_entries.values():
             if entry.remote_id:
                 id_to_path[entry.remote_id] = entry.path
-                tracked_folder_ids.add(entry.remote_id)
+                if entry.local_md5 is None:
+                    tracked_folder_ids.add(entry.remote_id)
 
         change_dicts: list[dict] = []
         for rc in changes:
             is_tracked = rc.file_id in id_to_path
-            is_in_monitored_folder = bool(
-                rc.parents and tracked_folder_ids.intersection(rc.parents)
-            )
+
+            # For untracked files, check if their parent is a known folder
+            # in our sync tree (not just any tracked entry).
+            parent_path: str | None = None
+            is_in_monitored_folder = False
+            if not is_tracked and rc.parents:
+                for pid in rc.parents:
+                    if pid == ps.pair.remote_folder_id:
+                        # Direct child of the sync root
+                        parent_path = ""
+                        is_in_monitored_folder = True
+                        break
+                    if pid in tracked_folder_ids and pid in id_to_path:
+                        # Child of a tracked subfolder
+                        parent_path = id_to_path[pid]
+                        is_in_monitored_folder = True
+                        break
 
             if not is_tracked and not is_in_monitored_folder:
                 log.debug(
@@ -336,7 +416,19 @@ class SyncEngine:
                 )
                 continue
 
-            path = id_to_path.get(rc.file_id, rc.file_name or rc.file_id)
+            # Resolve the correct relative path within the sync tree.
+            if is_tracked:
+                path = id_to_path[rc.file_id]
+            elif parent_path is not None and rc.file_name:
+                # Build full relative path from parent's known path
+                path = f"{parent_path}/{rc.file_name}" if parent_path else rc.file_name
+            else:
+                log.warning(
+                    "Cannot resolve path for remote change: %s (id=%s)",
+                    rc.file_name, rc.file_id,
+                )
+                continue
+
             change_dicts.append(
                 {
                     "path": path,
@@ -382,7 +474,7 @@ class SyncEngine:
         ps = self._pairs.get(pair_id)
         if not ps:
             return False
-        asyncio.create_task(self._initial_sync(ps))
+        asyncio.create_task(self._initial_sync(ps, is_manual=True))
         return True
 
     def get_status(self) -> dict:
@@ -399,3 +491,16 @@ class SyncEngine:
                 "errors": ps.errors[-5:],
             }
         return result
+
+    def get_active_transfers(self) -> list[dict]:
+        """Get live transfer info across all pairs."""
+        transfers = []
+        for pid, ps in self._pairs.items():
+            if ps.executor:
+                for path, info in ps.executor._active_transfers.items():
+                    transfers.append({
+                        "pair_id": pid,
+                        "path": path,
+                        **info,
+                    })
+        return transfers

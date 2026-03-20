@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from typing import Any
 
 from gdrive_sync.config import Config, SyncPair
@@ -27,6 +29,8 @@ class RequestHandler:
         self._auth_callback = None
         self._db = None
         self._drive_client = None
+        self._start_time = time.monotonic()
+        self._pid = os.getpid()
 
         self._handlers: dict[str, Any] = {
             "get_status": self._get_status,
@@ -98,6 +102,18 @@ class RequestHandler:
         return pair_id
 
     async def _get_status(self, params: dict) -> dict:
+        from gdrive_sync.util.paths import socket_path
+
+        uptime = time.monotonic() - self._start_time
+        sock_path = str(socket_path())
+
+        daemon_info = {
+            "pid": self._pid,
+            "uptime": int(uptime),
+            "uptime_formatted": self._format_uptime(uptime),
+            "socket_path": sock_path,
+        }
+
         if self._engine is None:
             return {
                 "connected": False,
@@ -107,14 +123,16 @@ class RequestHandler:
                 "last_sync": None,
                 "files_synced": 0,
                 "active_transfers": 0,
+                "live_transfers": [],
+                "daemon": daemon_info,
             }
 
         pairs = self._engine.get_status()
         syncing = any(p.get("active_transfers", 0) > 0 for p in pairs.values())
         paused = all(p.get("paused", False) for p in pairs.values()) if pairs else False
-        errors = []
+        all_errors = []
         for p in pairs.values():
-            errors.extend(p.get("errors", []))
+            all_errors.extend(p.get("errors", []))
         last_syncs = [p["last_sync"] for p in pairs.values() if p.get("last_sync")]
         total_transfers = sum(p.get("active_transfers", 0) for p in pairs.values())
 
@@ -127,15 +145,34 @@ class RequestHandler:
                 counts = await db.count_by_state(pair_id)
                 total_synced += counts.get("synced", 0)
 
+        # Live transfer info
+        live_transfers = self._engine.get_active_transfers()
+
         return {
             "connected": True,
             "syncing": syncing or total_transfers > 0,
             "paused": paused,
-            "error": errors[0] if errors else None,
+            "error": f"{len(all_errors)} sync error{'s' if len(all_errors) != 1 else ''} — check Activity for details" if all_errors else None,
             "last_sync": max(last_syncs) if last_syncs else None,
             "files_synced": total_synced,
-            "active_transfers": total_transfers,
+            "active_transfers": len(live_transfers),
+            "live_transfers": live_transfers,
+            "daemon": daemon_info,
         }
+
+    @staticmethod
+    def _format_uptime(seconds: float) -> str:
+        s = int(seconds)
+        days, s = divmod(s, 86400)
+        hours, s = divmod(s, 3600)
+        minutes, s = divmod(s, 60)
+        if days > 0:
+            return f"{days}d {hours}h {minutes}m"
+        elif hours > 0:
+            return f"{hours}h {minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m {s}s"
+        return f"{s}s"
 
     async def _get_sync_pairs(self, params: dict) -> list[dict]:
         return [
@@ -156,6 +193,13 @@ class RequestHandler:
         ignore_hidden = params.get("ignore_hidden", True)
         if not local_path:
             raise TypeError("local_path is required")
+
+        # Validate local_path is absolute and doesn't contain traversal
+        from pathlib import Path
+        if not Path(local_path).is_absolute():
+            raise TypeError("local_path must be an absolute path")
+        if ".." in Path(local_path).parts:
+            raise TypeError("local_path must not contain '..' components")
 
         # Prevent duplicate pairs
         for existing in self._config.sync.pairs:
@@ -256,6 +300,7 @@ class RequestHandler:
             "delete_remote": "Remote file deleted",
             "conflict": "Conflict detected",
             "auth": "Authentication",
+            "sync": "Sync",
         }
 
         result = []
@@ -267,13 +312,18 @@ class RequestHandler:
                 event_type = "download"
             elif e.action.startswith("delete"):
                 event_type = "delete"
+            elif e.action == "sync":
+                event_type = "sync"
             else:
                 event_type = e.action
 
             # Build a human-readable detail string
             detail = e.detail or ""
             label = _ACTION_LABELS.get(e.action, e.action)
-            if detail:
+            if e.action == "sync" and detail:
+                # Sync events already have self-explanatory detail
+                pass
+            elif detail:
                 detail = f"{label}: {detail}"
             else:
                 detail = label

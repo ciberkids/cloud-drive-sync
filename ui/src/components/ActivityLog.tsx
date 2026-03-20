@@ -9,6 +9,7 @@ const EVENT_ICONS: Record<string, string> = {
   conflict: "\u26A0",
   error: "\u2718",
   auth: "\u2699",
+  sync: "\u21BB",
 };
 
 type FilterType = "all" | LogEntry["event_type"];
@@ -27,7 +28,7 @@ export function ActivityLog() {
       <div className="activity-header">
         <h2>Activity</h2>
         <div className="activity-filters">
-          {(["all", "upload", "download", "delete", "conflict", "error", "auth"] as const).map(
+          {(["all", "upload", "download", "delete", "sync", "conflict", "error", "auth"] as const).map(
             (type) => (
               <button
                 key={type}
