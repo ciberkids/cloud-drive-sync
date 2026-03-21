@@ -25,7 +25,7 @@ dev-all: ## Start daemon + Tauri UI in demo mode
 	./dev.sh --with-ui
 
 dev-daemon: ## Run daemon in development mode
-	$(PYTHON) -m gdrive_sync --log-level debug
+	$(PYTHON) -m cloud_drive_sync --log-level debug
 
 dev-ui: ## Run Tauri UI in development mode
 	cd $(UI_DIR) && npm run tauri dev
@@ -38,14 +38,14 @@ clean: ## Clean build artifacts
 build: build-daemon build-ui ## Build both daemon and UI
 
 build-daemon: ## Build daemon with Docker (PyInstaller)
-	docker build -f docker/Dockerfile.daemon -t gdrive-sync-daemon-builder .
+	docker build -f docker/Dockerfile.daemon -t cloud-drive-sync-daemon-builder .
 	mkdir -p artifacts
-	docker run --rm -v $(PWD)/artifacts:/out gdrive-sync-daemon-builder
+	docker run --rm -v $(PWD)/artifacts:/out cloud-drive-sync-daemon-builder
 
 build-ui: ## Build Tauri UI with Docker
-	docker build -f docker/Dockerfile.ui -t gdrive-sync-ui-builder .
+	docker build -f docker/Dockerfile.ui -t cloud-drive-sync-ui-builder .
 	mkdir -p artifacts
-	docker run --rm -v $(PWD)/artifacts:/out gdrive-sync-ui-builder
+	docker run --rm -v $(PWD)/artifacts:/out cloud-drive-sync-ui-builder
 
 lint: ## Run linters
 	cd $(DAEMON_DIR) && $(VENV)/bin/ruff check src/ tests/
@@ -59,12 +59,12 @@ test-integration: ## Run integration tests (demo mode, no credentials)
 
 install-service: ## Install systemd user service
 	mkdir -p ~/.config/systemd/user
-	cp installer/gdrive-sync-daemon.service ~/.config/systemd/user/
+	cp installer/cloud-drive-sync-daemon.service ~/.config/systemd/user/
 	systemctl --user daemon-reload
-	systemctl --user enable gdrive-sync-daemon
+	systemctl --user enable cloud-drive-sync-daemon
 
 uninstall-service: ## Remove systemd user service
-	systemctl --user disable gdrive-sync-daemon || true
-	systemctl --user stop gdrive-sync-daemon || true
-	rm -f ~/.config/systemd/user/gdrive-sync-daemon.service
+	systemctl --user disable cloud-drive-sync-daemon || true
+	systemctl --user stop cloud-drive-sync-daemon || true
+	rm -f ~/.config/systemd/user/cloud-drive-sync-daemon.service
 	systemctl --user daemon-reload

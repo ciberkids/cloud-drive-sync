@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import (
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import (
     ChangeToken,
     ConflictRecord,
     FileState,

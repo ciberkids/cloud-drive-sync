@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gdrive_sync.drive.changes import ChangePoller, RemoteChange
+from cloud_drive_sync.drive.changes import ChangePoller, RemoteChange
 
 
 class TestRemoteChange:

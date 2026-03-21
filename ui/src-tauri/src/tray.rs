@@ -32,7 +32,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let _tray = TrayIconBuilder::with_id("main")
         .icon(tray_icon)
-        .tooltip("GDrive Sync")
+        .tooltip("Cloud Drive Sync")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -76,7 +76,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn update_tray_status(app: &AppHandle, status: &str) {
     if let Some(tray) = app.tray_by_id("main") {
-        let tooltip = format!("GDrive Sync - {}", status);
+        let tooltip = format!("Cloud Drive Sync - {}", status);
         let _ = tray.set_tooltip(Some(&tooltip));
 
         // Select icon based on status

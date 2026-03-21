@@ -5,22 +5,22 @@
 
 override_dh_auto_install:
 	# Binaries
-	install -Dm755 gdrive-sync-daemon $(CURDIR)/debian/gdrive-sync/usr/bin/gdrive-sync-daemon
-	install -Dm755 gdrive-sync-ui $(CURDIR)/debian/gdrive-sync/usr/bin/gdrive-sync-ui
+	install -Dm755 cloud-drive-sync-daemon $(CURDIR)/debian/cloud-drive-sync/usr/bin/cloud-drive-sync-daemon
+	install -Dm755 cloud-drive-sync-ui $(CURDIR)/debian/cloud-drive-sync/usr/bin/cloud-drive-sync-ui
 
 	# Systemd user service
-	install -Dm644 gdrive-sync-daemon.service \
-		$(CURDIR)/debian/gdrive-sync/usr/lib/systemd/user/gdrive-sync-daemon.service
+	install -Dm644 cloud-drive-sync-daemon.service \
+		$(CURDIR)/debian/cloud-drive-sync/usr/lib/systemd/user/cloud-drive-sync-daemon.service
 
 	# Desktop files
-	install -Dm644 gdrive-sync-ui.desktop \
-		$(CURDIR)/debian/gdrive-sync/etc/xdg/autostart/gdrive-sync-ui.desktop
-	install -Dm644 gdrive-sync.desktop \
-		$(CURDIR)/debian/gdrive-sync/usr/share/applications/gdrive-sync.desktop
+	install -Dm644 cloud-drive-sync-ui.desktop \
+		$(CURDIR)/debian/cloud-drive-sync/etc/xdg/autostart/cloud-drive-sync-ui.desktop
+	install -Dm644 cloud-drive-sync.desktop \
+		$(CURDIR)/debian/cloud-drive-sync/usr/share/applications/cloud-drive-sync.desktop
 
 	# Icons
-	install -Dm644 gdrive-sync.svg \
-		$(CURDIR)/debian/gdrive-sync/usr/share/icons/hicolor/scalable/apps/gdrive-sync.svg
+	install -Dm644 cloud-drive-sync.svg \
+		$(CURDIR)/debian/cloud-drive-sync/usr/share/icons/hicolor/scalable/apps/cloud-drive-sync.svg
 
 override_dh_auto_build:
 	# Pre-built binaries, nothing to build

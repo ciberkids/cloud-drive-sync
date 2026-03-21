@@ -1,0 +1,28 @@
+[Unit]
+Description=Google Drive Bidirectional Sync Daemon
+Documentation=https://github.com/cloud-drive-sync/cloud-drive-sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cloud-drive-sync-daemon start --foreground
+ExecStop=/bin/kill -SIGTERM $MAINPID
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# Environment
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+# Security hardening
+# Note: ProtectHome is not used because the daemon needs write access
+# to user-configurable sync directories under $HOME
+ProtectSystem=strict
+ReadWritePaths=%h
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

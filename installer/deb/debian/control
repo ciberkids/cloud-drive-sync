@@ -1,12 +1,12 @@
-Source: gdrive-sync
+Source: cloud-drive-sync
 Section: utils
 Priority: optional
-Maintainer: GDrive Sync <noreply@gdrive-sync.dev>
+Maintainer: Cloud Drive Sync <noreply@cloud-drive-sync.dev>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
-Homepage: https://github.com/gdrive-sync/gdrive-sync
+Homepage: https://github.com/cloud-drive-sync/cloud-drive-sync
 
-Package: gdrive-sync
+Package: cloud-drive-sync
 Architecture: amd64
 Depends: ${misc:Depends},
          libwebkit2gtk-4.1-0,

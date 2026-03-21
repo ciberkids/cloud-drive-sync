@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GDrive Sync installer
+# Cloud Drive Sync installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/ciberkids/cloud-drive-sync/main/install.sh | bash
 set -euo pipefail
 
@@ -52,9 +52,9 @@ download_asset() {
 install_daemon() {
     local tag="$1"
     mkdir -p "$INSTALL_DIR"
-    download_asset "$tag" "gdrive-sync-daemon" "$INSTALL_DIR/gdrive-sync-daemon"
-    chmod +x "$INSTALL_DIR/gdrive-sync-daemon"
-    info "Daemon installed to $INSTALL_DIR/gdrive-sync-daemon"
+    download_asset "$tag" "cloud-drive-sync-daemon" "$INSTALL_DIR/cloud-drive-sync-daemon"
+    chmod +x "$INSTALL_DIR/cloud-drive-sync-daemon"
+    info "Daemon installed to $INSTALL_DIR/cloud-drive-sync-daemon"
 }
 
 # ---------- install UI ----------
@@ -66,19 +66,19 @@ install_ui() {
 
     case "$distro" in
         deb)
-            download_asset "$tag" ".deb" "$tmpdir/gdrive-sync.deb"
+            download_asset "$tag" ".deb" "$tmpdir/cloud-drive-sync.deb"
             info "Installing .deb package (requires sudo)"
-            sudo dpkg -i "$tmpdir/gdrive-sync.deb" || sudo apt-get install -f -y
+            sudo dpkg -i "$tmpdir/cloud-drive-sync.deb" || sudo apt-get install -f -y
             ;;
         rpm)
-            download_asset "$tag" ".rpm" "$tmpdir/gdrive-sync.rpm"
+            download_asset "$tag" ".rpm" "$tmpdir/cloud-drive-sync.rpm"
             info "Installing .rpm package (requires sudo)"
-            sudo rpm -U --force "$tmpdir/gdrive-sync.rpm"
+            sudo rpm -U --force "$tmpdir/cloud-drive-sync.rpm"
             ;;
         *)
-            download_asset "$tag" ".AppImage" "$INSTALL_DIR/gdrive-sync-ui.AppImage"
-            chmod +x "$INSTALL_DIR/gdrive-sync-ui.AppImage"
-            info "AppImage installed to $INSTALL_DIR/gdrive-sync-ui.AppImage"
+            download_asset "$tag" ".AppImage" "$INSTALL_DIR/cloud-drive-sync-ui.AppImage"
+            chmod +x "$INSTALL_DIR/cloud-drive-sync-ui.AppImage"
+            info "AppImage installed to $INSTALL_DIR/cloud-drive-sync-ui.AppImage"
             ;;
     esac
 }
@@ -87,10 +87,10 @@ install_ui() {
 install_service() {
     local tag="$1"
     mkdir -p "$SERVICE_DIR"
-    download_asset "$tag" "gdrive-sync-daemon.service" "$SERVICE_DIR/gdrive-sync-daemon.service"
+    download_asset "$tag" "cloud-drive-sync-daemon.service" "$SERVICE_DIR/cloud-drive-sync-daemon.service"
     systemctl --user daemon-reload
-    systemctl --user enable gdrive-sync-daemon
-    info "Systemd user service enabled (start with: systemctl --user start gdrive-sync-daemon)"
+    systemctl --user enable cloud-drive-sync-daemon
+    info "Systemd user service enabled (start with: systemctl --user start cloud-drive-sync-daemon)"
 }
 
 # ---------- ensure ~/.local/bin is on PATH ----------
@@ -106,7 +106,7 @@ ensure_path() {
 
 # ---------- main ----------
 main() {
-    info "GDrive Sync installer"
+    info "Cloud Drive Sync installer"
 
     local distro
     distro=$(detect_distro)
@@ -124,8 +124,8 @@ main() {
 
     echo
     info "Installation complete!"
-    info "Start the daemon:  systemctl --user start gdrive-sync-daemon"
-    info "Open the UI:       gdrive-sync-ui (or launch from your app menu)"
+    info "Start the daemon:  systemctl --user start cloud-drive-sync-daemon"
+    info "Open the UI:       cloud-drive-sync-ui (or launch from your app menu)"
 }
 
 main "$@"

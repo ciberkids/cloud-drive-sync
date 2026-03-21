@@ -14,7 +14,7 @@ function NavBar() {
   return (
     <nav className="sidebar">
       <div className="sidebar-header">
-        <h1>GDrive Sync</h1>
+        <h1>Cloud Drive Sync</h1>
         <span className={`connection-dot ${status.connected ? "connected" : "disconnected"}`} />
       </div>
       <ul className="nav-list">
@@ -65,7 +65,7 @@ function DaemonBanner() {
   return (
     <div className="daemon-banner">
       <span className="daemon-banner-icon">&#x25CB;</span>
-      <span>Daemon not connected. Make sure <code>gdrive-sync-daemon start</code> is running.</span>
+      <span>Daemon not connected. Make sure <code>cloud-drive-sync-daemon start</code> is running.</span>
       {error && <span className="daemon-banner-error">{error}</span>}
       <button
         className="btn btn-sm btn-primary"

@@ -1,4 +1,4 @@
-**GDrive Sync**
+**Cloud Drive Sync**
 
 - [[Home]]
 - [[Installation]]

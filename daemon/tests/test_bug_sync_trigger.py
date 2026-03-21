@@ -16,11 +16,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
-from gdrive_sync.sync.engine import SyncEngine
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.sync.engine import SyncEngine
 
 
 @pytest.fixture
@@ -211,7 +211,7 @@ async def test_engine_emits_sync_complete_notification(db: Database, config: Con
 
     The engine has a _notify_callback but never calls it after sync.
     """
-    from gdrive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
+    from cloud_drive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
 
     local_dir = tmp_path / "local"
     local_dir.mkdir(exist_ok=True)

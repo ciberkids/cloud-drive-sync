@@ -1,6 +1,6 @@
-# GDrive Sync UI
+# Cloud Drive Sync UI
 
-Desktop application for monitoring and managing GDrive Sync, built with Tauri v2 and React.
+Desktop application for monitoring and managing Cloud Drive Sync, built with Tauri v2 and React.
 
 ## Overview
 
@@ -88,7 +88,7 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 
 The UI automatically connects to the daemon's Unix socket at startup:
 
-1. On launch, the Rust backend attempts to connect to `$XDG_RUNTIME_DIR/gdrive-sync.sock`
+1. On launch, the Rust backend attempts to connect to `$XDG_RUNTIME_DIR/cloud-drive-sync.sock`
 2. Connection retries up to 10 times with 3-second intervals
 3. On success, the `daemon-connected` event is emitted to the frontend
 4. On failure, the `daemon-offline` event is emitted

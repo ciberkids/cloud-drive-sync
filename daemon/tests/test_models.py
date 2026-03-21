@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from gdrive_sync.db.models import (
+from cloud_drive_sync.db.models import (
     ChangeToken,
     ConflictRecord,
     FileState,
@@ -30,7 +30,7 @@ class TestSyncEntry:
         row = entry.to_row()
         assert row == (
             "docs/readme.md", "abc", "def", "rid1", "synced",
-            1000.0, 2000.0, dt.isoformat(), "p0",
+            1000.0, 2000.0, dt.isoformat(), "p0", None,
         )
 
     def test_to_row_none_fields(self):

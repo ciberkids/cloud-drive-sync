@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from gdrive_sync.db.models import FileState
-from gdrive_sync.sync.state import VALID_TRANSITIONS, can_transition, transition
+from cloud_drive_sync.db.models import FileState
+from cloud_drive_sync.sync.state import VALID_TRANSITIONS, can_transition, transition
 
 
 class TestCanTransition:

@@ -32,18 +32,18 @@ jobs:
           cd daemon
           pyinstaller \
             --onefile \
-            --name gdrive-sync-daemon \
-            --hidden-import=gdrive_sync \
+            --name cloud-drive-sync-daemon \
+            --hidden-import=cloud_drive_sync \
             --hidden-import=google.auth.transport.requests \
             --hidden-import=google.auth.transport._http_client \
             --collect-all=googleapiclient \
-            src/gdrive_sync/__main__.py
+            src/cloud_drive_sync/__main__.py
 
       - name: Upload daemon artifact
         uses: actions/upload-artifact@v4
         with:
           name: daemon-binary
-          path: daemon/dist/gdrive-sync-daemon
+          path: daemon/dist/cloud-drive-sync-daemon
 
   build-ui:
     name: Build Tauri UI
@@ -110,11 +110,11 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          cp release-artifacts/daemon-binary/gdrive-sync-daemon release/
+          cp release-artifacts/daemon-binary/cloud-drive-sync-daemon release/
           cp release-artifacts/ui-deb/*.deb release/
           cp release-artifacts/ui-appimage/*.AppImage release/
           cp release-artifacts/ui-rpm/*.rpm release/
-          chmod +x release/gdrive-sync-daemon
+          chmod +x release/cloud-drive-sync-daemon
           chmod +x release/*.AppImage
           ls -lh release/
 
@@ -125,4 +125,4 @@ jobs:
           files: |
             release/*
             install.sh
-            installer/gdrive-sync-daemon.service
+            installer/cloud-drive-sync-daemon.service

@@ -1,5 +1,5 @@
-gdrive-sync (0.1.0-1) unstable; urgency=low
+cloud-drive-sync (0.1.0-1) unstable; urgency=low
 
   * Initial release.
 
- -- GDrive Sync <noreply@gdrive-sync.dev>  Wed, 26 Feb 2026 00:00:00 +0000
+ -- Cloud Drive Sync <noreply@cloud-drive-sync.dev>  Wed, 26 Feb 2026 00:00:00 +0000

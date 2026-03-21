@@ -3,8 +3,8 @@
 ## Dev Setup
 
 ```bash
-git clone https://github.com/gdrive-sync/gdrive-sync.git
-cd gdrive-sync
+git clone https://github.com/cloud-drive-sync/cloud-drive-sync.git
+cd cloud-drive-sync
 ./dev.sh          # Sets up both daemon and UI, starts in demo mode
 ```
 
@@ -55,7 +55,7 @@ make lint   # Runs ruff + tsc
 cd daemon
 source .venv/bin/activate
 pytest -v                    # Run all tests
-pytest --cov=gdrive_sync     # With coverage
+pytest --cov=cloud_drive_sync     # With coverage
 pytest tests/test_planner.py # Run a specific file
 ```
 
@@ -116,9 +116,9 @@ Before submitting a PR:
 ## Architecture Overview
 
 ```
-gdrive-sync/
+cloud-drive-sync/
 ├── daemon/                  # Python sync daemon
-│   ├── src/gdrive_sync/
+│   ├── src/cloud_drive_sync/
 │   │   ├── sync/            # Sync engine, planner, executor, conflicts
 │   │   ├── drive/           # Google Drive API client
 │   │   ├── local/           # Filesystem watcher, scanner, hasher
@@ -143,7 +143,7 @@ For full architectural details, see [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## How to Add a New IPC Method
 
-1. **Define the method name** in `daemon/src/gdrive_sync/ipc/protocol.py`:
+1. **Define the method name** in `daemon/src/cloud_drive_sync/ipc/protocol.py`:
 
    ```python
    METHOD_MY_METHOD = "my_method"
@@ -151,7 +151,7 @@ For full architectural details, see [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
    Add it to the `ALL_METHODS` list.
 
-2. **Add the handler** in `daemon/src/gdrive_sync/ipc/handlers.py`:
+2. **Add the handler** in `daemon/src/cloud_drive_sync/ipc/handlers.py`:
 
    Register it in the `self._handlers` dict in `RequestHandler.__init__`:
    ```python

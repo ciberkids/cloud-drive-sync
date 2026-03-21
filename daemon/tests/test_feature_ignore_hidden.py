@@ -21,8 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ def test_sync_pair_ignore_hidden_false():
 @pytest.mark.asyncio
 async def test_scanner_excludes_dotfiles_by_default(tmp_path: Path):
     """Scanner should skip dotfiles/dotdirs when ignore_hidden=True."""
-    from gdrive_sync.local.scanner import scan_directory
+    from cloud_drive_sync.local.scanner import scan_directory
 
     scan_dir = tmp_path / "scan_test"
     scan_dir.mkdir()
@@ -137,7 +137,7 @@ async def test_scanner_excludes_dotfiles_by_default(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_scanner_includes_dotfiles_when_not_hidden(tmp_path: Path):
     """When ignore_hidden=False, dotfiles should be included in scan."""
-    from gdrive_sync.local.scanner import scan_directory
+    from cloud_drive_sync.local.scanner import scan_directory
 
     scan_dir = tmp_path / "scan_all"
     scan_dir.mkdir()
@@ -169,7 +169,7 @@ async def test_watcher_filters_dotfile_events(tmp_path: Path):
     FEATURE: DirectoryWatcher doesn't currently have ignore_hidden support.
     """
     import asyncio
-    from gdrive_sync.local.watcher import DirectoryWatcher
+    from cloud_drive_sync.local.watcher import DirectoryWatcher
 
     watch_dir = tmp_path / "watch_test"
     watch_dir.mkdir()
@@ -248,8 +248,8 @@ def test_config_save_load_ignore_hidden(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_add_sync_pair_accepts_ignore_hidden(config: Config, db: Database, tmp_path: Path):
     """add_sync_pair handler should accept ignore_hidden parameter."""
-    from gdrive_sync.ipc.handlers import RequestHandler
-    from gdrive_sync.ipc.protocol import JsonRpcRequest
+    from cloud_drive_sync.ipc.handlers import RequestHandler
+    from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
     config_file = tmp_path / "config.toml"
     config.save(config_file)
@@ -284,8 +284,8 @@ async def test_add_sync_pair_accepts_ignore_hidden(config: Config, db: Database,
 @pytest.mark.asyncio
 async def test_set_ignore_hidden_handler(config: Config, db: Database, tmp_path: Path):
     """There should be a set_ignore_hidden IPC handler to toggle the setting."""
-    from gdrive_sync.ipc.handlers import RequestHandler
-    from gdrive_sync.ipc.protocol import JsonRpcRequest
+    from cloud_drive_sync.ipc.handlers import RequestHandler
+    from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
     config_file = tmp_path / "config.toml"
     config.save(config_file)
@@ -315,8 +315,8 @@ async def test_set_ignore_hidden_handler(config: Config, db: Database, tmp_path:
 
 def test_planner_excludes_hidden_files_in_initial_sync():
     """Initial sync planner should exclude hidden files when ignore_hidden=True."""
-    from gdrive_sync.local.scanner import LocalFileInfo
-    from gdrive_sync.sync.planner import ActionType, plan_initial_sync
+    from cloud_drive_sync.local.scanner import LocalFileInfo
+    from cloud_drive_sync.sync.planner import ActionType, plan_initial_sync
 
     local_files = {
         "readme.txt": LocalFileInfo(md5="aaa", mtime=100.0, size=10),

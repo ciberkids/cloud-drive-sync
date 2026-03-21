@@ -102,9 +102,28 @@ export function Settings() {
     }
   };
 
+  const [notifPrefs, setNotifPrefs] = useState({
+    notify_sync_complete: true,
+    notify_conflicts: true,
+    notify_errors: true,
+  });
+
+  useEffect(() => {
+    ipc.getNotificationPrefs().then(setNotifPrefs).catch(() => {});
+  }, []);
+
+  const handleNotifChange = async (key: string, value: boolean) => {
+    try {
+      const updated = await ipc.setNotificationPrefs({ [key]: value });
+      setNotifPrefs(updated);
+    } catch (e) {
+      console.error("Failed to set notification prefs:", e);
+    }
+  };
+
   const existingRemoteIds = new Set(pairs.map((p) => p.remote_folder_id));
-  const configPath = `${homeDir}/.config/gdrive-sync/config.toml`;
-  const dataPath = `${homeDir}/.local/share/gdrive-sync/`;
+  const configPath = `${homeDir}/.config/cloud-drive-sync/config.toml`;
+  const dataPath = `${homeDir}/.local/share/cloud-drive-sync/`;
 
   return (
     <div className="settings">
@@ -120,6 +139,9 @@ export function Settings() {
                 <span className="sync-pair-remote">
                   Remote: {pair.remote_folder_id === "root" ? "My Drive" : pair.remote_folder_id}
                 </span>
+                {pair.provider && pair.provider !== "gdrive" && (
+                  <span className="provider-badge">{pair.provider}</span>
+                )}
               </div>
               <div className="sync-pair-actions">
                 <select
@@ -230,6 +252,39 @@ export function Settings() {
             <option value="newest_wins">Newest wins (overwrite older)</option>
             <option value="ask_user">Ask me (show dialog)</option>
           </select>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Notifications</h3>
+        <div className="notification-prefs">
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={notifPrefs.notify_sync_complete}
+              onChange={(e) => handleNotifChange("notify_sync_complete", e.target.checked)}
+            />
+            <span className="toggle-slider" />
+            <span className="toggle-label">Sync complete</span>
+          </label>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={notifPrefs.notify_conflicts}
+              onChange={(e) => handleNotifChange("notify_conflicts", e.target.checked)}
+            />
+            <span className="toggle-slider" />
+            <span className="toggle-label">Conflict detected</span>
+          </label>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={notifPrefs.notify_errors}
+              onChange={(e) => handleNotifChange("notify_errors", e.target.checked)}
+            />
+            <span className="toggle-slider" />
+            <span className="toggle-label">Sync errors</span>
+          </label>
         </div>
       </section>
 

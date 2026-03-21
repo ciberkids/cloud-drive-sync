@@ -45,7 +45,7 @@ python3 -m venv .venv
 Verify the installation:
 
 ```bash
-.venv/bin/python -m gdrive_sync --help
+.venv/bin/python -m cloud_drive_sync --help
 ```
 
 ### 3. Install the UI
@@ -60,7 +60,7 @@ npm install
 npm run tauri build
 ```
 
-The compiled binary will be at `ui/src-tauri/target/release/gdrive-sync-ui`.
+The compiled binary will be at `ui/src-tauri/target/release/cloud-drive-sync-ui`.
 
 ## Running
 
@@ -72,16 +72,16 @@ The daemon must be running before the UI can connect to it.
 cd daemon
 
 # Foreground (see logs in terminal)
-.venv/bin/python -m gdrive_sync --log-level debug start --foreground
+.venv/bin/python -m cloud_drive_sync --log-level debug start --foreground
 
 # Background (daemonize)
-.venv/bin/python -m gdrive_sync start
+.venv/bin/python -m cloud_drive_sync start
 
 # Check status
-.venv/bin/python -m gdrive_sync status
+.venv/bin/python -m cloud_drive_sync status
 
 # Stop
-.venv/bin/python -m gdrive_sync stop
+.venv/bin/python -m cloud_drive_sync stop
 ```
 
 On first launch without existing credentials, the daemon starts and waits for authentication. Connect via the UI and click **Sign in with Google** on the Account page.
@@ -97,10 +97,10 @@ cd ui
 npm run tauri dev
 
 # Or run a release build directly
-./src-tauri/target/release/gdrive-sync-ui
+./src-tauri/target/release/cloud-drive-sync-ui
 ```
 
-The UI connects to the daemon via a Unix socket at `$XDG_RUNTIME_DIR/gdrive-sync.sock` (typically `/run/user/1000/gdrive-sync.sock`).
+The UI connects to the daemon via a Unix socket at `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (typically `/run/user/1000/cloud-drive-sync.sock`).
 
 ## Run as a systemd service
 
@@ -109,39 +109,39 @@ To start the daemon automatically on login:
 ```bash
 # Install the service
 mkdir -p ~/.config/systemd/user
-cp installer/gdrive-sync-daemon.service ~/.config/systemd/user/
+cp installer/cloud-drive-sync-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now gdrive-sync-daemon
+systemctl --user enable --now cloud-drive-sync-daemon
 
 # Check logs
-journalctl --user -u gdrive-sync-daemon -f
+journalctl --user -u cloud-drive-sync-daemon -f
 
 # Uninstall
-systemctl --user disable --now gdrive-sync-daemon
-rm ~/.config/systemd/user/gdrive-sync-daemon.service
+systemctl --user disable --now cloud-drive-sync-daemon
+rm ~/.config/systemd/user/cloud-drive-sync-daemon.service
 systemctl --user daemon-reload
 ```
 
-**Note:** The systemd service expects the daemon binary at `~/.local/bin/gdrive-sync-daemon`. You can create a symlink:
+**Note:** The systemd service expects the daemon binary at `~/.local/bin/cloud-drive-sync-daemon`. You can create a symlink:
 
 ```bash
 mkdir -p ~/.local/bin
-ln -sf "$(pwd)/daemon/.venv/bin/python -m gdrive_sync" ~/.local/bin/gdrive-sync-daemon
+ln -sf "$(pwd)/daemon/.venv/bin/python -m cloud_drive_sync" ~/.local/bin/cloud-drive-sync-daemon
 ```
 
 Or create a wrapper script:
 
 ```bash
-cat > ~/.local/bin/gdrive-sync-daemon << 'EOF'
+cat > ~/.local/bin/cloud-drive-sync-daemon << 'EOF'
 #!/bin/sh
-exec /path/to/gdrive-sync/daemon/.venv/bin/python -m gdrive_sync "$@"
+exec /path/to/cloud-drive-sync/daemon/.venv/bin/python -m cloud_drive_sync "$@"
 EOF
-chmod +x ~/.local/bin/gdrive-sync-daemon
+chmod +x ~/.local/bin/cloud-drive-sync-daemon
 ```
 
 ## Configuration
 
-The daemon reads `~/.config/gdrive-sync/config.toml` (created automatically on first run):
+The daemon reads `~/.config/cloud-drive-sync/config.toml` (created automatically on first run):
 
 ```toml
 [general]

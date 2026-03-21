@@ -1,7 +1,7 @@
 """Tests for selective sync ignore patterns."""
 import pytest
-from gdrive_sync.local.scanner import _is_ignored, load_ignore_file, scan_directory, DEFAULT_IGNORE_PATTERNS
-from gdrive_sync.config import SyncPair, Config
+from cloud_drive_sync.local.scanner import _is_ignored, load_ignore_file, scan_directory, DEFAULT_IGNORE_PATTERNS
+from cloud_drive_sync.config import SyncPair, Config
 
 
 class TestIsIgnored:
@@ -27,7 +27,7 @@ class TestIsIgnored:
 
 class TestLoadIgnoreFile:
     def test_load_existing_file(self, tmp_path):
-        ignore_file = tmp_path / ".gdrive-sync-ignore"
+        ignore_file = tmp_path / ".cloud-drive-sync-ignore"
         ignore_file.write_text("*.log\n# comment\n\nbuild/\n  spaces  \n")
         patterns = load_ignore_file(tmp_path)
         assert patterns == ["*.log", "build/", "spaces"]

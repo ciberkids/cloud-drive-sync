@@ -17,16 +17,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import ConflictRecord, FileState, SyncEntry
-from gdrive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
-from gdrive_sync.sync.conflict import ConflictResolver
-from gdrive_sync.sync.engine import SyncEngine
-from gdrive_sync.sync.executor import SyncExecutor
-from gdrive_sync.sync.planner import ActionType, SyncAction
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import ConflictRecord, FileState, SyncEntry
+from cloud_drive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.sync.conflict import ConflictResolver
+from cloud_drive_sync.sync.engine import SyncEngine
+from cloud_drive_sync.sync.executor import SyncExecutor
+from cloud_drive_sync.sync.planner import ActionType, SyncAction
 
 
 # ── Shared fixtures ──────────────────────────────────────────────────

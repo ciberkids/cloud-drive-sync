@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Cloud Drive Sync
+GenericName=File Synchronization
+Comment=Bidirectional Google Drive sync for Linux
+Exec=cloud-drive-sync-ui
+Icon=cloud-drive-sync
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+Keywords=google;drive;sync;cloud;backup;
+StartupNotify=true
+MimeType=x-scheme-handler/cloud-drive-sync;

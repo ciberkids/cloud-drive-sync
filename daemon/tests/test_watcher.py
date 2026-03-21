@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.local.watcher import ChangeType, DirectoryWatcher, LocalChange
+from cloud_drive_sync.local.watcher import ChangeType, DirectoryWatcher, LocalChange
 
 
 @pytest.mark.asyncio

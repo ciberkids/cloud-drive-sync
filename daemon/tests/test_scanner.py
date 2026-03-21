@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.local.scanner import (
+from cloud_drive_sync.local.scanner import (
     DEFAULT_IGNORE_PATTERNS,
     LocalFileInfo,
     _is_ignored,
@@ -36,8 +36,8 @@ class TestIsIgnored:
     def test_thumbs_db(self):
         assert _is_ignored("Thumbs.db", DEFAULT_IGNORE_PATTERNS) is True
 
-    def test_gdrive_sync_marker(self):
-        assert _is_ignored(".gdrive-sync-state", DEFAULT_IGNORE_PATTERNS) is True
+    def test_cloud_drive_sync_marker(self):
+        assert _is_ignored(".cloud-drive-sync-state", DEFAULT_IGNORE_PATTERNS) is True
 
     def test_normal_file_not_ignored(self):
         assert _is_ignored("document.txt", DEFAULT_IGNORE_PATTERNS) is False

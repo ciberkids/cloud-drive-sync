@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from gdrive_sync.db.models import FileState, SyncEntry
-from gdrive_sync.local.scanner import LocalFileInfo
-from gdrive_sync.sync.planner import ActionType, plan_continuous_sync, plan_initial_sync
+from cloud_drive_sync.db.models import FileState, SyncEntry
+from cloud_drive_sync.local.scanner import LocalFileInfo
+from cloud_drive_sync.sync.planner import ActionType, plan_continuous_sync, plan_initial_sync
 
 
 class TestInitialSync:

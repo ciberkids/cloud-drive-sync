@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from gdrive_sync.ipc.protocol import (
+from cloud_drive_sync.ipc.protocol import (
     JSONRPC_VERSION,
     JsonRpcNotification,
     JsonRpcRequest,

@@ -12,11 +12,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import FileState, SyncEntry
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import FileState, SyncEntry
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
 
 @pytest.fixture

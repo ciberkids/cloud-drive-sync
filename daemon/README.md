@@ -1,4 +1,4 @@
-# GDrive Sync Daemon
+# Cloud Drive Sync Daemon
 
 The Python daemon that performs bidirectional Google Drive synchronization.
 
@@ -15,14 +15,14 @@ The daemon runs as a background process (or systemd user service) and handles:
 ## CLI Usage
 
 ```
-gdrive-sync-daemon [OPTIONS] COMMAND
+cloud-drive-sync-daemon [OPTIONS] COMMAND
 ```
 
 ### Global Options
 
 | Option | Description |
 |---|---|
-| `--config PATH` | Path to `config.toml` (default: `~/.config/gdrive-sync/config.toml`) |
+| `--config PATH` | Path to `config.toml` (default: `~/.config/cloud-drive-sync/config.toml`) |
 | `--log-level LEVEL` | Override log level: `debug`, `info`, `warning`, `error` |
 
 ### Commands
@@ -32,9 +32,9 @@ gdrive-sync-daemon [OPTIONS] COMMAND
 Start the sync daemon.
 
 ```bash
-gdrive-sync-daemon start              # Daemonize (fork to background)
-gdrive-sync-daemon start --foreground  # Run in foreground (for development/systemd)
-gdrive-sync-daemon start --demo        # Run with mock Drive API (no Google account needed)
+cloud-drive-sync-daemon start              # Daemonize (fork to background)
+cloud-drive-sync-daemon start --foreground  # Run in foreground (for development/systemd)
+cloud-drive-sync-daemon start --demo        # Run with mock Drive API (no Google account needed)
 ```
 
 | Flag | Description |
@@ -50,7 +50,7 @@ In demo mode, the daemon creates sample files and simulates sync activity. This 
 Stop a running daemon by sending SIGTERM.
 
 ```bash
-gdrive-sync-daemon stop
+cloud-drive-sync-daemon stop
 ```
 
 #### `status`
@@ -58,7 +58,7 @@ gdrive-sync-daemon stop
 Check whether the daemon is running.
 
 ```bash
-gdrive-sync-daemon status
+cloud-drive-sync-daemon status
 # Output: "Daemon is running (PID 12345)" or "Daemon is not running."
 ```
 
@@ -67,13 +67,13 @@ gdrive-sync-daemon status
 Run the OAuth2 authorization flow interactively. Opens a browser for Google account authorization.
 
 ```bash
-gdrive-sync-daemon auth
+cloud-drive-sync-daemon auth
 # Output: "Authorization successful. Credentials stored and ready to use."
 ```
 
 ## Configuration Reference
 
-The daemon reads configuration from `~/.config/gdrive-sync/config.toml` (or the path specified by `--config`). All values have sensible defaults.
+The daemon reads configuration from `~/.config/cloud-drive-sync/config.toml` (or the path specified by `--config`). All values have sensible defaults.
 
 ### `[general]`
 
@@ -134,7 +134,7 @@ ignore_hidden = true
 Demo mode runs the full daemon with a mock Drive client instead of connecting to Google's API. It is activated with the `--demo` flag:
 
 ```bash
-gdrive-sync-daemon start --foreground --demo
+cloud-drive-sync-daemon start --foreground --demo
 ```
 
 What demo mode does:
@@ -161,17 +161,17 @@ pip install -e ".[dev]"
 
 ```bash
 # With real Drive API
-python -m gdrive_sync --log-level debug start --foreground
+python -m cloud_drive_sync --log-level debug start --foreground
 
 # With demo mode
-python -m gdrive_sync start --foreground --demo
+python -m cloud_drive_sync start --foreground --demo
 ```
 
 ### Run Tests
 
 ```bash
 pytest -v
-pytest --cov=gdrive_sync  # With coverage
+pytest --cov=cloud_drive_sync  # With coverage
 ```
 
 ### Lint

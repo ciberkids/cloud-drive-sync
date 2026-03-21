@@ -63,7 +63,7 @@ export function AccountManager() {
 
   return (
     <div className="account-manager">
-      <h3>Google Accounts</h3>
+      <h3>Cloud Accounts</h3>
 
       {accounts.length > 0 ? (
         <div className="accounts-list">
@@ -71,6 +71,7 @@ export function AccountManager() {
             <div key={acct.email} className="account-item">
               <div className="account-item-info">
                 <span className="account-email">{acct.email}</span>
+                <span className="provider-badge">{acct.provider || "gdrive"}</span>
                 <span className={`account-badge ${acct.status}`}>
                   {acct.status === "connected" ? "Connected" : "Disconnected"}
                 </span>
@@ -85,7 +86,7 @@ export function AccountManager() {
           ))}
         </div>
       ) : (
-        <p>No accounts configured. Add a Google account to start syncing.</p>
+        <p>No accounts configured. Add a cloud account to start syncing.</p>
       )}
 
       {authMessage && <p className="auth-message">{authMessage}</p>}
@@ -95,11 +96,11 @@ export function AccountManager() {
         disabled={authInProgress}
         className="btn btn-primary"
       >
-        {authInProgress ? "Waiting for browser..." : "Add Google Account"}
+        {authInProgress ? "Waiting for browser..." : "Add Cloud Account"}
       </button>
       {authInProgress && (
         <p className="auth-message">
-          A browser window should open for Google sign-in. Complete the
+          A browser window should open for cloud provider sign-in. Complete the
           authorization there, then return here.
         </p>
       )}

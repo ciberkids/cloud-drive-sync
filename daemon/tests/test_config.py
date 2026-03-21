@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncPair
+from cloud_drive_sync.config import Config, SyncPair
 
 
 @pytest.fixture

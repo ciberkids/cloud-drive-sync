@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicknisi/tauri-v2-vite-react/main/src-tauri/gen/schemas/desktop-schema.json",
-  "productName": "GDrive Sync",
+  "productName": "Cloud Drive Sync",
   "version": "0.1.0",
-  "identifier": "com.gdrive-sync.app",
+  "identifier": "com.cloud-drive-sync.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "GDrive Sync",
+        "title": "Cloud Drive Sync",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -26,7 +26,7 @@
     "trayIcon": {
       "iconPath": "icons/icon-idle.png",
       "iconAsTemplate": true,
-      "tooltip": "GDrive Sync"
+      "tooltip": "Cloud Drive Sync"
     }
   },
   "bundle": {

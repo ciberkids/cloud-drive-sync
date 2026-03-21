@@ -25,12 +25,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import SyncLogEntry
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
-from gdrive_sync.ipc.server import IpcServer
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import SyncLogEntry
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.ipc.server import IpcServer
 
 
 # ── Fixtures ───────────────────────────────────────────────────────
@@ -536,7 +536,7 @@ class TestStaleSocketCleanup:
     async def test_start_removes_existing_socket_file(self, tmp_path: Path, handler: RequestHandler):
         """EXPECTED: If a socket file already exists (from a crash), IpcServer.start()
         should remove it before binding a new one."""
-        socket_file = tmp_path / "gdrive_sync.sock"
+        socket_file = tmp_path / "cloud_drive_sync.sock"
         # Create a stale socket file (simulating a daemon crash)
         socket_file.write_text("stale")
 
@@ -556,7 +556,7 @@ class TestStaleSocketCleanup:
     @pytest.mark.asyncio
     async def test_start_works_when_no_existing_socket(self, tmp_path: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.start() works fine when no socket file exists."""
-        socket_file = tmp_path / "gdrive_sync.sock"
+        socket_file = tmp_path / "cloud_drive_sync.sock"
         assert not socket_file.exists()
 
         server = IpcServer(handler, path=socket_file)
@@ -570,7 +570,7 @@ class TestStaleSocketCleanup:
     @pytest.mark.asyncio
     async def test_stop_removes_socket_file(self, tmp_path: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.stop() cleans up the socket file."""
-        socket_file = tmp_path / "gdrive_sync.sock"
+        socket_file = tmp_path / "cloud_drive_sync.sock"
 
         server = IpcServer(handler, path=socket_file)
         await server.start()
@@ -582,7 +582,7 @@ class TestStaleSocketCleanup:
     @pytest.mark.asyncio
     async def test_start_creates_parent_directory(self, tmp_path: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.start() creates the parent directory if needed."""
-        socket_file = tmp_path / "subdir" / "nested" / "gdrive_sync.sock"
+        socket_file = tmp_path / "subdir" / "nested" / "cloud_drive_sync.sock"
         assert not socket_file.parent.exists()
 
         server = IpcServer(handler, path=socket_file)

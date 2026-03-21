@@ -1,4 +1,4 @@
-# Multi-stage build for gdrive-sync daemon
+# Multi-stage build for cloud-drive-sync daemon
 # Produces a standalone binary via PyInstaller
 
 # Stage 1: Build
@@ -16,13 +16,13 @@ COPY daemon/ .
 RUN pip install --no-cache-dir .
 RUN pyinstaller \
     --onefile \
-    --name gdrive-sync-daemon \
-    --hidden-import=gdrive_sync \
+    --name cloud-drive-sync-daemon \
+    --hidden-import=cloud_drive_sync \
     --hidden-import=google.auth.transport.requests \
     --hidden-import=google.auth.transport._http_client \
     --collect-all=googleapiclient \
-    src/gdrive_sync/__main__.py
+    src/cloud_drive_sync/__main__.py
 
 # Stage 2: Output
 FROM scratch AS output
-COPY --from=builder /build/dist/gdrive-sync-daemon /out/gdrive-sync-daemon
+COPY --from=builder /build/dist/cloud-drive-sync-daemon /out/cloud-drive-sync-daemon

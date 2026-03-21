@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import (
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
@@ -270,7 +270,7 @@ async def test_get_activity_log_empty(handler: RequestHandler):
 
 @pytest.mark.asyncio
 async def test_get_activity_log_with_entries(handler: RequestHandler, db: Database):
-    from gdrive_sync.db.models import SyncLogEntry
+    from cloud_drive_sync.db.models import SyncLogEntry
 
     await db.add_log_entry(SyncLogEntry(
         action="upload", path="file.txt", pair_id="pair_0", status="ok", detail="done",
@@ -296,7 +296,7 @@ async def test_get_conflicts_empty(handler: RequestHandler):
 
 @pytest.mark.asyncio
 async def test_get_conflicts_with_entries(handler: RequestHandler, db: Database):
-    from gdrive_sync.db.models import ConflictRecord
+    from cloud_drive_sync.db.models import ConflictRecord
 
     await db.add_conflict(ConflictRecord(
         path="c.txt", pair_id="p0",
@@ -337,8 +337,8 @@ async def test_start_auth_with_callback(handler: RequestHandler):
 async def test_logout(handler: RequestHandler, db: Database, tmp_path: Path):
     from unittest.mock import patch
 
-    with patch("gdrive_sync.util.paths.credentials_path", return_value=tmp_path / "creds.enc"), \
-         patch("gdrive_sync.util.paths.data_dir", return_value=tmp_path):
+    with patch("cloud_drive_sync.util.paths.credentials_path", return_value=tmp_path / "creds.enc"), \
+         patch("cloud_drive_sync.util.paths.data_dir", return_value=tmp_path):
         # Create dummy credential files
         (tmp_path / "creds.enc").write_text("secret")
         (tmp_path / "token_salt").write_text("salt")

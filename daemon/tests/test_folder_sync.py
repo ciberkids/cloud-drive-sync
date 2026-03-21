@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import FileState, SyncEntry
-from gdrive_sync.drive.mock_client import MockDriveClient, MockFileOperations
-from gdrive_sync.local.scanner import LocalFileInfo
-from gdrive_sync.sync.executor import SyncExecutor
-from gdrive_sync.sync.planner import (
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import FileState, SyncEntry
+from cloud_drive_sync.drive.mock_client import MockDriveClient, MockFileOperations
+from cloud_drive_sync.local.scanner import LocalFileInfo
+from cloud_drive_sync.sync.executor import SyncExecutor
+from cloud_drive_sync.sync.planner import (
     FOLDER_MIME,
     ActionType,
     SyncAction,

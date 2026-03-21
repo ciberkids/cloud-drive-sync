@@ -49,6 +49,7 @@ pub struct SyncPair {
     pub ignore_hidden: Option<bool>,
     pub ignore_patterns: Option<Vec<String>>,
     pub account_id: Option<String>,
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -343,4 +344,31 @@ pub async fn remove_account(
 pub async fn list_accounts(bridge: State<'_, BridgeState>) -> Result<Value, String> {
     let bridge = bridge.0.lock().await;
     bridge.call("list_accounts", None).await
+}
+
+#[tauri::command]
+pub async fn set_notification_prefs(
+    bridge: State<'_, BridgeState>,
+    notify_sync_complete: Option<bool>,
+    notify_conflicts: Option<bool>,
+    notify_errors: Option<bool>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let mut params = json!({});
+    if let Some(v) = notify_sync_complete {
+        params["notify_sync_complete"] = json!(v);
+    }
+    if let Some(v) = notify_conflicts {
+        params["notify_conflicts"] = json!(v);
+    }
+    if let Some(v) = notify_errors {
+        params["notify_errors"] = json!(v);
+    }
+    bridge.call("set_notification_prefs", Some(params)).await
+}
+
+#[tauri::command]
+pub async fn get_notification_prefs(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("get_notification_prefs", None).await
 }

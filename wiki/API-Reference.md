@@ -1,8 +1,8 @@
 # API Reference
 
-GDrive Sync uses **JSON-RPC 2.0 over a Unix domain socket** for communication between the daemon and the UI.
+Cloud Drive Sync uses **JSON-RPC 2.0 over a Unix domain socket** for communication between the daemon and the UI.
 
-- **Socket**: `$XDG_RUNTIME_DIR/gdrive-sync.sock`
+- **Socket**: `$XDG_RUNTIME_DIR/cloud-drive-sync.sock`
 - **Framing**: newline-delimited JSON (`\n` after each message)
 - **Protocol**: JSON-RPC 2.0 — requests have an `id`, notifications do not
 

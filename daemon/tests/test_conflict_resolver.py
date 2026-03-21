@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.db.models import ConflictRecord
-from gdrive_sync.sync.conflict import ConflictResolver, resolve_ask_user
-from gdrive_sync.sync.planner import ActionType
+from cloud_drive_sync.db.models import ConflictRecord
+from cloud_drive_sync.sync.conflict import ConflictResolver, resolve_ask_user
+from cloud_drive_sync.sync.planner import ActionType
 
 
 class TestConflictResolver:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gdrive_sync.util.retry import async_retry
+from cloud_drive_sync.util.retry import async_retry
 
 
 @pytest.mark.asyncio

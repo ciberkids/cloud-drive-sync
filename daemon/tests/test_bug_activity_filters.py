@@ -21,11 +21,11 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import SyncLogEntry
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import SyncLogEntry
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
 
 @pytest.fixture
@@ -276,8 +276,8 @@ async def test_logout_logs_auth_event(handler: RequestHandler, db: Database, tmp
     """Verify that logout DOES log an auth event (this works correctly)."""
     from unittest.mock import patch
 
-    with patch("gdrive_sync.util.paths.credentials_path", return_value=tmp_path / "creds.enc"), \
-         patch("gdrive_sync.util.paths.data_dir", return_value=tmp_path):
+    with patch("cloud_drive_sync.util.paths.credentials_path", return_value=tmp_path / "creds.enc"), \
+         patch("cloud_drive_sync.util.paths.data_dir", return_value=tmp_path):
 
         req = JsonRpcRequest(method="logout", params={}, id=8)
         resp = await handler.handle(req)

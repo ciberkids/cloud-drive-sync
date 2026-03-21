@@ -1,10 +1,10 @@
-# GDrive Sync
+# Cloud Drive Sync
 
 Bidirectional Google Drive sync for Linux, with a native desktop UI.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                         GDrive Sync                                  │
+│                         Cloud Drive Sync                                  │
 │                                                                      │
 │  ┌─────────────────────────┐        ┌─────────────────────────────┐  │
 │  │    Daemon (Python)      │        │      UI (Tauri/React)       │  │
@@ -58,9 +58,9 @@ cd cloud-drive-sync
 ## Project Structure
 
 ```
-gdrive-sync/
+cloud-drive-sync/
 ├── daemon/              # Python sync daemon
-│   ├── src/gdrive_sync/ # Source code
+│   ├── src/cloud_drive_sync/ # Source code
 │   └── tests/           # pytest test suite
 ├── ui/                  # Tauri + React desktop UI
 │   ├── src/             # React components

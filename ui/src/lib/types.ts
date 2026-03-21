@@ -40,6 +40,7 @@ export interface SyncPair {
   ignore_hidden: boolean;
   ignore_patterns?: string[];
   account_id?: string;
+  provider?: string;
 }
 
 export interface ConflictRecord {
@@ -67,4 +68,5 @@ export interface Account {
   email: string;
   display_name: string;
   status: "connected" | "disconnected";
+  provider?: string;
 }

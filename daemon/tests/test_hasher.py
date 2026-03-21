@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.local.hasher import md5_hash
+from cloud_drive_sync.local.hasher import md5_hash
 
 
 @pytest.mark.asyncio

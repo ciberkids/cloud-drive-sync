@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import FileState, SyncEntry
-from gdrive_sync.drive.changes import RemoteChange
-from gdrive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
-from gdrive_sync.sync.engine import SyncEngine
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import FileState, SyncEntry
+from cloud_drive_sync.drive.changes import RemoteChange
+from cloud_drive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
+from cloud_drive_sync.sync.engine import SyncEngine
 
 
 @pytest.fixture

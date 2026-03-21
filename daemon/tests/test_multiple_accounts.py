@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 
-from gdrive_sync.config import Account, Config, SyncPair
+from cloud_drive_sync.config import Account, Config, SyncPair
 
 
 class TestAccountDataclass:
@@ -31,7 +31,7 @@ class TestSyncPairAccountId:
 
 class TestAccountCredentialsPath:
     def test_path_sanitization(self):
-        from gdrive_sync.util.paths import account_credentials_path
+        from cloud_drive_sync.util.paths import account_credentials_path
 
         path = account_credentials_path("user@example.com")
         assert "user_at_example_com" in path.name
@@ -39,7 +39,7 @@ class TestAccountCredentialsPath:
         assert path.name.endswith(".enc")
 
     def test_different_accounts_different_paths(self):
-        from gdrive_sync.util.paths import account_credentials_path
+        from cloud_drive_sync.util.paths import account_credentials_path
 
         path1 = account_credentials_path("alice@example.com")
         path2 = account_credentials_path("bob@example.com")

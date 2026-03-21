@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from gdrive_sync.util.paths import (
+from cloud_drive_sync.util.paths import (
     config_dir,
     config_path,
     credentials_path,
@@ -24,12 +24,12 @@ class TestConfigDir:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_CONFIG_HOME", None)
             result = config_dir()
-            assert result == Path.home() / ".config" / "gdrive-sync"
+            assert result == Path.home() / ".config" / "cloud-drive-sync"
 
     def test_respects_xdg_config_home(self):
         with patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/config"}):
             result = config_dir()
-            assert result == Path("/custom/config/gdrive-sync")
+            assert result == Path("/custom/config/cloud-drive-sync")
 
 
 class TestDataDir:
@@ -37,12 +37,12 @@ class TestDataDir:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_DATA_HOME", None)
             result = data_dir()
-            assert result == Path.home() / ".local" / "share" / "gdrive-sync"
+            assert result == Path.home() / ".local" / "share" / "cloud-drive-sync"
 
     def test_respects_xdg_data_home(self):
         with patch.dict(os.environ, {"XDG_DATA_HOME": "/custom/data"}):
             result = data_dir()
-            assert result == Path("/custom/data/gdrive-sync")
+            assert result == Path("/custom/data/cloud-drive-sync")
 
 
 class TestRuntimeDir:
@@ -71,11 +71,11 @@ class TestSpecificPaths:
 
     def test_socket_path(self):
         result = socket_path()
-        assert result.name == "gdrive-sync.sock"
+        assert result.name == "cloud-drive-sync.sock"
 
     def test_pid_path(self):
         result = pid_path()
-        assert result.name == "gdrive-sync.pid"
+        assert result.name == "cloud-drive-sync.pid"
 
     def test_credentials_path(self):
         result = credentials_path()
@@ -90,8 +90,8 @@ class TestEnsureDirs:
             "XDG_DATA_HOME": str(tmp_path / "data"),
         }):
             ensure_dirs()
-            assert (tmp_path / "config" / "gdrive-sync").is_dir()
-            assert (tmp_path / "data" / "gdrive-sync").is_dir()
+            assert (tmp_path / "config" / "cloud-drive-sync").is_dir()
+            assert (tmp_path / "data" / "cloud-drive-sync").is_dir()
 
     def test_idempotent(self, tmp_path: Path):
         with patch.dict(os.environ, {
@@ -100,4 +100,4 @@ class TestEnsureDirs:
         }):
             ensure_dirs()
             ensure_dirs()  # Should not raise
-            assert (tmp_path / "config" / "gdrive-sync").is_dir()
+            assert (tmp_path / "config" / "cloud-drive-sync").is_dir()

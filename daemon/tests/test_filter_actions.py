@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gdrive_sync.sync.planner import ActionType, SyncAction, filter_actions_by_mode
+from cloud_drive_sync.sync.planner import ActionType, SyncAction, filter_actions_by_mode
 
 
 def _make_actions():
@@ -71,7 +71,7 @@ class TestFilterActionsByMode:
         assert result == []
 
     def test_preserves_action_data(self):
-        from gdrive_sync.local.scanner import LocalFileInfo
+        from cloud_drive_sync.local.scanner import LocalFileInfo
 
         info = LocalFileInfo(md5="abc", mtime=1000, size=100)
         actions = [

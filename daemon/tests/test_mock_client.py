@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
+from cloud_drive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
 
 
 @pytest.fixture
@@ -153,7 +153,7 @@ class TestMockDriveClient:
     async def test_get_about(self, client: MockDriveClient):
         about = await client.get_about()
         assert about["user"]["displayName"] == "Demo User"
-        assert about["user"]["emailAddress"] == "demo@gdrive-sync.local"
+        assert about["user"]["emailAddress"] == "demo@cloud-drive-sync.local"
         assert "storageQuota" in about
 
 

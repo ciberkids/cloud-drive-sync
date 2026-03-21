@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# dev.sh — One-command development environment for gdrive-sync
+# dev.sh — One-command development environment for cloud-drive-sync
 #
 # Usage:
 #   ./dev.sh              Setup + start daemon in demo mode
@@ -16,7 +16,7 @@ VENV="$DAEMON_DIR/.venv"
 PYTHON="$VENV/bin/python"
 PIP="$VENV/bin/pip"
 
-DEMO_BASE="$HOME/gdrive-sync-demo"
+DEMO_BASE="$HOME/cloud-drive-sync-demo"
 DEMO_LOCAL="$DEMO_BASE/local"
 DEMO_REMOTE="$DEMO_BASE/remote"
 
@@ -110,7 +110,7 @@ setup_demo_dirs() {
 # ── Wait for socket ─────────────────────────────────────────────
 wait_for_socket() {
     local socket_path
-    socket_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gdrive-sync.sock"
+    socket_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cloud-drive-sync.sock"
     local timeout=15
     local elapsed=0
 
@@ -133,7 +133,7 @@ wait_for_socket() {
 
 # ── Main ────────────────────────────────────────────────────────
 echo "========================================"
-echo "  gdrive-sync development environment"
+echo "  cloud-drive-sync development environment"
 echo "========================================"
 echo ""
 
@@ -156,7 +156,7 @@ fi
 
 # Step 4: Start daemon in demo mode
 echo "[3/4] Starting daemon in demo mode..."
-"$PYTHON" -m gdrive_sync --log-level debug start --foreground --demo &
+"$PYTHON" -m cloud_drive_sync --log-level debug start --foreground --demo &
 DAEMON_PID=$!
 echo "  Daemon PID: $DAEMON_PID"
 wait_for_socket || true
@@ -185,7 +185,7 @@ echo ""
 echo "  Daemon:  running in demo mode (PID $DAEMON_PID)"
 echo "  Local:   $DEMO_LOCAL"
 echo "  Remote:  $DEMO_REMOTE"
-echo "  Socket:  ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gdrive-sync.sock"
+echo "  Socket:  ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cloud-drive-sync.sock"
 if [ "$WITH_UI" = true ]; then
     echo "  UI:      http://localhost:1420"
 fi

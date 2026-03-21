@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: gdrive-sync
-Upstream-Contact: noreply@gdrive-sync.dev
-Source: https://github.com/gdrive-sync/gdrive-sync
+Upstream-Name: cloud-drive-sync
+Upstream-Contact: noreply@cloud-drive-sync.dev
+Source: https://github.com/cloud-drive-sync/cloud-drive-sync
 
 Files: *
-Copyright: 2026 GDrive Sync Contributors
+Copyright: 2026 Cloud Drive Sync Contributors
 License: MIT
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal

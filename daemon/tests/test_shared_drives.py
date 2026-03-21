@@ -1,7 +1,7 @@
 """Tests for Shared Drives support."""
 import pytest
 from unittest.mock import MagicMock, patch
-from gdrive_sync.drive.client import DriveClient
+from cloud_drive_sync.drive.client import DriveClient
 
 
 class TestSharedDrivesFlags:

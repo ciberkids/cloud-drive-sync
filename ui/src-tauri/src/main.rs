@@ -9,6 +9,7 @@ use commands::BridgeState;
 use ipc_bridge::DaemonBridge;
 use std::sync::Arc;
 use tauri::{image::Image, Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{mpsc, Mutex};
 
 fn main() {
@@ -44,6 +45,8 @@ fn main() {
             commands::add_account,
             commands::remove_account,
             commands::list_accounts,
+            commands::set_notification_prefs,
+            commands::get_notification_prefs,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -96,6 +99,15 @@ fn main() {
                         "sync_progress" => {
                             tray::update_tray_status(&event_handle, "Syncing");
                         }
+                        "sync_complete" => {
+                            if let Ok(perm) = event_handle.notification().permission_state() {
+                                if perm == tauri_plugin_notification::PermissionState::Granted {
+                                    let title = "Sync Complete";
+                                    let body = params.get("detail").and_then(|d| d.as_str()).unwrap_or("Sync finished");
+                                    let _ = event_handle.notification().builder().title(title).body(body).show();
+                                }
+                            }
+                        }
                         "status_changed" => {
                             if let Some(status) = params.get("status").and_then(|s| s.as_str()) {
                                 let display = match status {
@@ -110,9 +122,22 @@ fn main() {
                         }
                         "conflict_detected" => {
                             tray::update_tray_status(&event_handle, "Conflict detected");
+                            if let Ok(perm) = event_handle.notification().permission_state() {
+                                if perm == tauri_plugin_notification::PermissionState::Granted {
+                                    let path = params.get("path").and_then(|p| p.as_str()).unwrap_or("Unknown file");
+                                    let body = format!("Conflict detected: {}", path);
+                                    let _ = event_handle.notification().builder().title("Sync Conflict").body(&body).show();
+                                }
+                            }
                         }
                         "error" => {
                             tray::update_tray_status(&event_handle, "Error");
+                            if let Ok(perm) = event_handle.notification().permission_state() {
+                                if perm == tauri_plugin_notification::PermissionState::Granted {
+                                    let detail = params.get("detail").and_then(|d| d.as_str()).unwrap_or("A sync error occurred");
+                                    let _ = event_handle.notification().builder().title("Sync Error").body(detail).show();
+                                }
+                            }
                         }
                         _ => {}
                     }

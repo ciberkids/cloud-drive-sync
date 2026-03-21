@@ -55,7 +55,7 @@ make lint   # Runs ruff + tsc
 cd daemon
 source .venv/bin/activate
 pytest -v                    # Run all tests
-pytest --cov=gdrive_sync     # With coverage
+pytest --cov=cloud_drive_sync     # With coverage
 pytest tests/test_planner.py # Run a specific file
 ```
 
@@ -113,8 +113,8 @@ Before submitting a PR:
 
 ## How to Add a New IPC Method
 
-1. **Define the method name** in `daemon/src/gdrive_sync/ipc/protocol.py`
-2. **Add the handler** in `daemon/src/gdrive_sync/ipc/handlers.py`
+1. **Define the method name** in `daemon/src/cloud_drive_sync/ipc/protocol.py`
+2. **Add the handler** in `daemon/src/cloud_drive_sync/ipc/handlers.py`
 3. **Add the Tauri command** in `ui/src-tauri/src/commands.rs` and register in `main.rs`
 4. **Add the TypeScript client** in `ui/src/lib/ipc.ts`
 5. **Add types** in `ui/src/lib/types.ts` if needed

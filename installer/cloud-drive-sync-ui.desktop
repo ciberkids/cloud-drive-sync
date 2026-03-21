@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Cloud Drive Sync Tray
+Comment=System tray icon for Google Drive sync status
+Exec=cloud-drive-sync-ui --tray
+Icon=cloud-drive-sync
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel

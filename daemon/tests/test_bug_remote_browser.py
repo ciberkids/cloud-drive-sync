@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config
-from gdrive_sync.drive.mock_client import MockDriveClient
-from gdrive_sync.ipc.handlers import RequestHandler
-from gdrive_sync.ipc.protocol import JsonRpcRequest
+from cloud_drive_sync.config import Config
+from cloud_drive_sync.drive.mock_client import MockDriveClient
+from cloud_drive_sync.ipc.handlers import RequestHandler
+from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
 
 @pytest.fixture

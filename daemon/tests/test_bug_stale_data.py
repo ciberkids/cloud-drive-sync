@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from gdrive_sync.config import Config, SyncConfig, SyncPair
-from gdrive_sync.db.database import Database
-from gdrive_sync.db.models import (
+from cloud_drive_sync.config import Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.db.models import (
     ChangeToken,
     ConflictRecord,
     FileState,
@@ -218,7 +218,7 @@ async def test_engine_startup_does_not_clean_stale_pairs(
 
     On daemon restart, old pair data should be purged.
     """
-    from gdrive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
+    from cloud_drive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
 
     await _populate_stale_entries(db)
 
@@ -231,7 +231,7 @@ async def test_engine_startup_does_not_clean_stale_pairs(
     mock_ops = MockFileOperations(mock_client)
     mock_poller = MockChangePoller(mock_client)
 
-    from gdrive_sync.sync.engine import SyncEngine
+    from cloud_drive_sync.sync.engine import SyncEngine
 
     engine = SyncEngine(
         config=config_with_one_pair,

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "gdrive-sync"
+name = "cloud-drive-sync"
 version = "0.1.0"
-description = "Bidirectional Google Drive sync daemon for Linux"
+description = "Multi-cloud bidirectional file sync daemon for Linux"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
@@ -21,6 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dropbox = ["dropbox>=12.0.0"]
+onedrive = ["msgraph-sdk>=1.0.0", "azure-identity>=1.15.0"]
+nextcloud = ["nc-py-api>=0.17.0"]
+box = ["box-sdk-gen>=1.0.0"]
+all-providers = ["cloud-drive-sync[dropbox,onedrive,nextcloud,box]"]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
@@ -29,10 +34,10 @@ dev = [
 ]
 
 [project.scripts]
-gdrive-sync-daemon = "gdrive_sync.__main__:main"
+cloud-drive-sync-daemon = "cloud_drive_sync.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gdrive_sync"]
+packages = ["src/cloud_drive_sync"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

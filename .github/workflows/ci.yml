@@ -30,7 +30,7 @@ jobs:
         run: .venv/bin/ruff check src/ tests/
 
       - name: Test
-        run: .venv/bin/pytest -v --cov=gdrive_sync --cov-report=xml
+        run: .venv/bin/pytest -v --cov=cloud_drive_sync --cov-report=xml
 
   ui-typecheck:
     name: UI – Type Check

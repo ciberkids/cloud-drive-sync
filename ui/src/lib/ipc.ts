@@ -111,6 +111,30 @@ export async function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>("list_accounts");
 }
 
+export async function setNotificationPrefs(prefs: {
+  notify_sync_complete?: boolean;
+  notify_conflicts?: boolean;
+  notify_errors?: boolean;
+}): Promise<{
+  notify_sync_complete: boolean;
+  notify_conflicts: boolean;
+  notify_errors: boolean;
+}> {
+  return invoke("set_notification_prefs", {
+    notifySyncComplete: prefs.notify_sync_complete,
+    notifyConflicts: prefs.notify_conflicts,
+    notifyErrors: prefs.notify_errors,
+  });
+}
+
+export async function getNotificationPrefs(): Promise<{
+  notify_sync_complete: boolean;
+  notify_conflicts: boolean;
+  notify_errors: boolean;
+}> {
+  return invoke("get_notification_prefs");
+}
+
 export async function listRemoteFolders(
   parentId: string
 ): Promise<{

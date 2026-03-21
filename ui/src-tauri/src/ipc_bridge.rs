@@ -202,9 +202,9 @@ impl DaemonBridge {
 
 fn get_socket_path() -> String {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        format!("{}/gdrive-sync.sock", runtime_dir)
+        format!("{}/cloud-drive-sync.sock", runtime_dir)
     } else {
         let uid = unsafe { libc::getuid() };
-        format!("/run/user/{}/gdrive-sync.sock", uid)
+        format!("/run/user/{}/cloud-drive-sync.sock", uid)
     }
 }

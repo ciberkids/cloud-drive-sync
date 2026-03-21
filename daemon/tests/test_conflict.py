@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gdrive_sync.db.models import FileState, SyncEntry
-from gdrive_sync.sync.conflict import (
+from cloud_drive_sync.db.models import FileState, SyncEntry
+from cloud_drive_sync.sync.conflict import (
     detect_conflict,
     resolve_keep_both,
     resolve_newest_wins,
 )
-from gdrive_sync.sync.planner import ActionType
+from cloud_drive_sync.sync.planner import ActionType
 
 
 class TestDetectConflict:

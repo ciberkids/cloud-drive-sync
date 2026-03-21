@@ -1,6 +1,6 @@
 # Architecture
 
-GDrive Sync is a two-process system: a Python daemon that performs all sync operations, and a Tauri/React desktop UI that communicates with the daemon over a Unix domain socket.
+Cloud Drive Sync is a two-process system: a Python daemon that performs all sync operations, and a Tauri/React desktop UI that communicates with the daemon over a Unix domain socket.
 
 ## System Overview
 
@@ -209,7 +209,7 @@ The daemon and UI communicate via **JSON-RPC 2.0 over a Unix domain socket** wit
 
 ### Transport
 
-- **Socket**: `$XDG_RUNTIME_DIR/gdrive-sync.sock` (typically `/run/user/1000/gdrive-sync.sock`)
+- **Socket**: `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (typically `/run/user/1000/cloud-drive-sync.sock`)
 - **Permissions**: `0600` (user-only read/write)
 - **Framing**: each message is a single JSON object terminated by `\n`
 
@@ -239,7 +239,7 @@ See the [[API Reference|API-Reference]] for the full list of methods and notific
 
 ## Database Schema
 
-The daemon stores sync state in an SQLite database at `~/.local/share/gdrive-sync/state.db`. WAL journal mode is enabled for concurrent reads.
+The daemon stores sync state in an SQLite database at `~/.local/share/cloud-drive-sync/state.db`. WAL journal mode is enabled for concurrent reads.
 
 ### Tables
 
@@ -321,12 +321,12 @@ Activity log of all sync operations.
 
 - **OAuth2** with Google Drive API v3 scopes
 - Credentials obtained via browser-based OAuth flow (`google-auth-oauthlib`)
-- Tokens stored encrypted at `~/.local/share/gdrive-sync/credentials.enc` using `cryptography` (Fernet)
-- A random salt is stored alongside at `~/.local/share/gdrive-sync/token_salt`
+- Tokens stored encrypted at `~/.local/share/cloud-drive-sync/credentials.enc` using `cryptography` (Fernet)
+- A random salt is stored alongside at `~/.local/share/cloud-drive-sync/token_salt`
 
 ### IPC Socket
 
-- Unix domain socket at `$XDG_RUNTIME_DIR/gdrive-sync.sock`
+- Unix domain socket at `$XDG_RUNTIME_DIR/cloud-drive-sync.sock`
 - Permissions set to `0600` (owner read/write only)
 - No authentication on the socket — relies on filesystem permissions
 
@@ -334,7 +334,7 @@ Activity log of all sync operations.
 
 - Runs as a user-level systemd service (no root)
 - systemd hardening: `ProtectSystem=strict`, `PrivateTmp=true`, `NoNewPrivileges=true`
-- PID file at `$XDG_RUNTIME_DIR/gdrive-sync.pid`
+- PID file at `$XDG_RUNTIME_DIR/cloud-drive-sync.pid`
 
 ## File Path Conventions
 
@@ -342,9 +342,9 @@ All paths follow the [XDG Base Directory Specification](https://specifications.f
 
 | Purpose | Path |
 |---|---|
-| Configuration | `$XDG_CONFIG_HOME/gdrive-sync/config.toml` (default: `~/.config/gdrive-sync/config.toml`) |
-| Database | `$XDG_DATA_HOME/gdrive-sync/state.db` (default: `~/.local/share/gdrive-sync/state.db`) |
-| Credentials | `$XDG_DATA_HOME/gdrive-sync/credentials.enc` |
-| Token salt | `$XDG_DATA_HOME/gdrive-sync/token_salt` |
-| Unix socket | `$XDG_RUNTIME_DIR/gdrive-sync.sock` (default: `/run/user/$UID/gdrive-sync.sock`) |
-| PID file | `$XDG_RUNTIME_DIR/gdrive-sync.pid` |
+| Configuration | `$XDG_CONFIG_HOME/cloud-drive-sync/config.toml` (default: `~/.config/cloud-drive-sync/config.toml`) |
+| Database | `$XDG_DATA_HOME/cloud-drive-sync/state.db` (default: `~/.local/share/cloud-drive-sync/state.db`) |
+| Credentials | `$XDG_DATA_HOME/cloud-drive-sync/credentials.enc` |
+| Token salt | `$XDG_DATA_HOME/cloud-drive-sync/token_salt` |
+| Unix socket | `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (default: `/run/user/$UID/cloud-drive-sync.sock`) |
+| PID file | `$XDG_RUNTIME_DIR/cloud-drive-sync.pid` |
