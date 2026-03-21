@@ -6,7 +6,7 @@ import os
 import time
 from typing import Any
 
-from cloud_drive_sync.config import Config, SyncPair
+from cloud_drive_sync.config import Config, SyncPair, SyncRules
 from cloud_drive_sync.ipc.protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -55,6 +55,13 @@ class RequestHandler:
             "list_accounts": self._list_accounts,
             "set_notification_prefs": self._set_notification_prefs,
             "get_notification_prefs": self._get_notification_prefs,
+            "set_bandwidth_limits": self._set_bandwidth_limits,
+            "get_bandwidth_limits": self._get_bandwidth_limits,
+            "set_sync_rules": self._set_sync_rules,
+            "get_sync_rules": self._get_sync_rules,
+            "set_proxy": self._set_proxy,
+            "get_proxy": self._get_proxy,
+            "get_file_status": self._get_file_status,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -605,3 +612,133 @@ class RequestHandler:
             await self._db.add_log_entry(entry)
 
         return {"status": "logged_out"}
+
+    async def _set_bandwidth_limits(self, params: dict) -> dict:
+        """Set upload and/or download bandwidth limits (KB/s, 0=unlimited)."""
+        params = params or {}
+        if "max_upload_kbps" in params:
+            self._config.sync.max_upload_kbps = int(params["max_upload_kbps"])
+        if "max_download_kbps" in params:
+            self._config.sync.max_download_kbps = int(params["max_download_kbps"])
+        self._config.save()
+        return {
+            "max_upload_kbps": self._config.sync.max_upload_kbps,
+            "max_download_kbps": self._config.sync.max_download_kbps,
+        }
+
+    async def _get_bandwidth_limits(self, params: dict) -> dict:
+        """Return current bandwidth limits."""
+        return {
+            "max_upload_kbps": self._config.sync.max_upload_kbps,
+            "max_download_kbps": self._config.sync.max_download_kbps,
+        }
+
+    async def _set_sync_rules(self, params: dict) -> dict:
+        """Set advanced sync rules for a given pair."""
+        params = params or {}
+        pair_id = params.get("pair_id")
+        if pair_id is None:
+            raise TypeError("pair_id is required")
+        try:
+            index = int(pair_id)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id")
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+
+        rules_data = params.get("rules", {})
+        pair = self._config.sync.pairs[index]
+        pair.sync_rules = SyncRules(
+            max_file_size_mb=float(rules_data.get("max_file_size_mb", 0)),
+            include_regex=rules_data.get("include_regex", []),
+            exclude_regex=rules_data.get("exclude_regex", []),
+            min_date=rules_data.get("min_date", ""),
+        )
+        self._config.save()
+        return {
+            "status": "ok",
+            "sync_rules": {
+                "max_file_size_mb": pair.sync_rules.max_file_size_mb,
+                "include_regex": pair.sync_rules.include_regex,
+                "exclude_regex": pair.sync_rules.exclude_regex,
+                "min_date": pair.sync_rules.min_date,
+            },
+        }
+
+    async def _get_sync_rules(self, params: dict) -> dict:
+        """Return advanced sync rules for a given pair."""
+        params = params or {}
+        pair_id = params.get("pair_id")
+        if pair_id is None:
+            raise TypeError("pair_id is required")
+        try:
+            index = int(pair_id)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id")
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+
+        rules = self._config.sync.pairs[index].sync_rules
+        return {
+            "max_file_size_mb": rules.max_file_size_mb,
+            "include_regex": rules.include_regex,
+            "exclude_regex": rules.exclude_regex,
+            "min_date": rules.min_date,
+        }
+
+    async def _set_proxy(self, params: dict) -> dict:
+        """Update proxy settings."""
+        params = params or {}
+        if "http_proxy" in params:
+            self._config.proxy.http_proxy = str(params["http_proxy"])
+        if "https_proxy" in params:
+            self._config.proxy.https_proxy = str(params["https_proxy"])
+        if "no_proxy" in params:
+            self._config.proxy.no_proxy = str(params["no_proxy"])
+        self._config.save()
+        return {
+            "http_proxy": self._config.proxy.http_proxy,
+            "https_proxy": self._config.proxy.https_proxy,
+            "no_proxy": self._config.proxy.no_proxy,
+        }
+
+    async def _get_proxy(self, params: dict) -> dict:
+        """Return current proxy settings."""
+        return {
+            "http_proxy": self._config.proxy.http_proxy,
+            "https_proxy": self._config.proxy.https_proxy,
+            "no_proxy": self._config.proxy.no_proxy,
+        }
+
+    async def _get_file_status(self, params: dict) -> dict:
+        """Return the sync state for a specific file path.
+
+        Params:
+            path: Absolute filesystem path to query.
+
+        Returns:
+            {"state": "synced"|"uploading"|"downloading"|...} or
+            {"state": "unknown"} if the file is not tracked.
+        """
+        params = params or {}
+        abs_path = params.get("path")
+        if not abs_path:
+            raise TypeError("path is required")
+
+
+        db = self._db or (self._engine._db if self._engine else None)
+        if db is None:
+            return {"state": "unknown"}
+
+        # Determine which sync pair (if any) this path belongs to
+        for i, pair in enumerate(self._config.sync.pairs):
+            local_root = pair.local_path.rstrip("/")
+            if abs_path == local_root or abs_path.startswith(local_root + "/"):
+                rel_path = abs_path[len(local_root) + 1:] if abs_path != local_root else ""
+                pair_id = f"pair_{i}"
+                entry = await db.get_sync_entry(rel_path, pair_id)
+                if entry:
+                    return {"state": entry.state.value}
+                return {"state": "unknown"}
+
+        return {"state": "unknown"}

@@ -372,3 +372,82 @@ pub async fn get_notification_prefs(bridge: State<'_, BridgeState>) -> Result<Va
     let bridge = bridge.0.lock().await;
     bridge.call("get_notification_prefs", None).await
 }
+
+#[tauri::command]
+pub async fn set_bandwidth_limits(
+    bridge: State<'_, BridgeState>,
+    max_upload_kbps: Option<u64>,
+    max_download_kbps: Option<u64>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let mut params = json!({});
+    if let Some(v) = max_upload_kbps {
+        params["max_upload_kbps"] = json!(v);
+    }
+    if let Some(v) = max_download_kbps {
+        params["max_download_kbps"] = json!(v);
+    }
+    bridge.call("set_bandwidth_limits", Some(params)).await
+}
+
+#[tauri::command]
+pub async fn get_bandwidth_limits(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("get_bandwidth_limits", None).await
+}
+
+#[tauri::command]
+pub async fn set_sync_rules(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+    rules: Value,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "set_sync_rules",
+            Some(json!({
+                "pair_id": pair_id,
+                "rules": rules
+            })),
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn get_sync_rules(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call("get_sync_rules", Some(json!({ "pair_id": pair_id })))
+        .await
+}
+
+#[tauri::command]
+pub async fn set_proxy(
+    bridge: State<'_, BridgeState>,
+    http_proxy: Option<String>,
+    https_proxy: Option<String>,
+    no_proxy: Option<String>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let mut params = json!({});
+    if let Some(v) = http_proxy {
+        params["http_proxy"] = json!(v);
+    }
+    if let Some(v) = https_proxy {
+        params["https_proxy"] = json!(v);
+    }
+    if let Some(v) = no_proxy {
+        params["no_proxy"] = json!(v);
+    }
+    bridge.call("set_proxy", Some(params)).await
+}
+
+#[tauri::command]
+pub async fn get_proxy(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("get_proxy", None).await
+}

@@ -15,12 +15,29 @@ log = get_logger("config")
 
 
 @dataclass
+class ProxyConfig:
+    """Proxy settings."""
+    http_proxy: str = ""
+    https_proxy: str = ""
+    no_proxy: str = ""
+
+
+@dataclass
 class Account:
     """A registered cloud account."""
     email: str = ""
     display_name: str = ""
     provider: str = "gdrive"
     server_url: str = ""  # For self-hosted providers (e.g. Nextcloud)
+
+
+@dataclass
+class SyncRules:
+    """Advanced sync filtering rules for a pair."""
+    max_file_size_mb: float = 0
+    include_regex: list[str] = field(default_factory=list)
+    exclude_regex: list[str] = field(default_factory=list)
+    min_date: str = ""
 
 
 @dataclass
@@ -35,6 +52,7 @@ class SyncPair:
     ignore_patterns: list[str] = field(default_factory=list)
     account_id: str = ""
     provider: str = "gdrive"
+    sync_rules: SyncRules = field(default_factory=SyncRules)
 
 
 @dataclass
@@ -49,6 +67,8 @@ class SyncConfig:
     notify_sync_complete: bool = True
     notify_conflicts: bool = True
     notify_errors: bool = True
+    max_upload_kbps: int = 0
+    max_download_kbps: int = 0
     pairs: list[SyncPair] = field(default_factory=list)
 
 
@@ -66,6 +86,7 @@ class Config:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     accounts: list[Account] = field(default_factory=list)
+    proxy: ProxyConfig = field(default_factory=ProxyConfig)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
@@ -95,9 +116,18 @@ class Config:
         cfg.sync.notify_sync_complete = sync.get("notify_sync_complete", cfg.sync.notify_sync_complete)
         cfg.sync.notify_conflicts = sync.get("notify_conflicts", cfg.sync.notify_conflicts)
         cfg.sync.notify_errors = sync.get("notify_errors", cfg.sync.notify_errors)
+        cfg.sync.max_upload_kbps = sync.get("max_upload_kbps", cfg.sync.max_upload_kbps)
+        cfg.sync.max_download_kbps = sync.get("max_download_kbps", cfg.sync.max_download_kbps)
 
         # Sync pairs
         for pair_data in sync.get("pairs", []):
+            rules_data = pair_data.get("sync_rules", {})
+            sync_rules = SyncRules(
+                max_file_size_mb=rules_data.get("max_file_size_mb", 0),
+                include_regex=rules_data.get("include_regex", []),
+                exclude_regex=rules_data.get("exclude_regex", []),
+                min_date=rules_data.get("min_date", ""),
+            )
             cfg.sync.pairs.append(
                 SyncPair(
                     local_path=pair_data.get("local_path", ""),
@@ -108,6 +138,7 @@ class Config:
                     ignore_patterns=pair_data.get("ignore_patterns", []),
                     account_id=pair_data.get("account_id", ""),
                     provider=pair_data.get("provider", "gdrive"),
+                    sync_rules=sync_rules,
                 )
             )
 
@@ -121,6 +152,12 @@ class Config:
                     server_url=acct_data.get("server_url", ""),
                 )
             )
+
+        # Proxy section
+        proxy_data = data.get("proxy", {})
+        cfg.proxy.http_proxy = proxy_data.get("http_proxy", cfg.proxy.http_proxy)
+        cfg.proxy.https_proxy = proxy_data.get("https_proxy", cfg.proxy.https_proxy)
+        cfg.proxy.no_proxy = proxy_data.get("no_proxy", cfg.proxy.no_proxy)
 
         return cfg
 
@@ -142,6 +179,8 @@ class Config:
                 "notify_sync_complete": self.sync.notify_sync_complete,
                 "notify_conflicts": self.sync.notify_conflicts,
                 "notify_errors": self.sync.notify_errors,
+                "max_upload_kbps": self.sync.max_upload_kbps,
+                "max_download_kbps": self.sync.max_download_kbps,
                 "pairs": [
                     {
                         "local_path": p.local_path,
@@ -152,6 +191,12 @@ class Config:
                         "ignore_patterns": p.ignore_patterns,
                         "account_id": p.account_id,
                         "provider": p.provider,
+                        "sync_rules": {
+                            "max_file_size_mb": p.sync_rules.max_file_size_mb,
+                            "include_regex": p.sync_rules.include_regex,
+                            "exclude_regex": p.sync_rules.exclude_regex,
+                            "min_date": p.sync_rules.min_date,
+                        },
                     }
                     for p in self.sync.pairs
                 ],
@@ -165,6 +210,13 @@ class Config:
                 }
                 for a in self.accounts
             ],
+        }
+
+        # Proxy section
+        data["proxy"] = {
+            "http_proxy": self.proxy.http_proxy,
+            "https_proxy": self.proxy.https_proxy,
+            "no_proxy": self.proxy.no_proxy,
         }
 
         with open(path, "wb") as f:

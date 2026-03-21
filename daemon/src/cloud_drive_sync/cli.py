@@ -342,6 +342,32 @@ def resolve(conflict_id: str, resolution: str):
         sys.exit(1)
 
 
+@cli.command("install-nautilus")
+def install_nautilus():
+    """Install the Nautilus file manager overlay extension."""
+    from cloud_drive_sync.extensions.install import install
+
+    try:
+        link = install()
+        click.echo(f"Nautilus overlay extension installed: {link}")
+        click.echo("Restart Nautilus to activate: nautilus -q")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("uninstall-nautilus")
+def uninstall_nautilus():
+    """Uninstall the Nautilus file manager overlay extension."""
+    from cloud_drive_sync.extensions.install import uninstall
+
+    if uninstall():
+        click.echo("Nautilus overlay extension uninstalled.")
+        click.echo("Restart Nautilus to deactivate: nautilus -q")
+    else:
+        click.echo("No extension found to uninstall.")
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()

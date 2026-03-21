@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -11,6 +11,7 @@ from cloud_drive_sync.db.models import (
     ChangeToken,
     ConflictRecord,
     FileState,
+    PartialTransfer,
     SyncEntry,
     SyncLogEntry,
 )
@@ -19,7 +20,7 @@ from cloud_drive_sync.util.paths import db_path
 
 log = get_logger("database")
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -69,10 +70,24 @@ CREATE TABLE IF NOT EXISTS sync_log (
     detail TEXT
 );
 
+CREATE TABLE IF NOT EXISTS partial_transfers (
+    path TEXT NOT NULL,
+    pair_id TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    remote_id TEXT,
+    upload_uri TEXT,
+    bytes_transferred INTEGER NOT NULL DEFAULT 0,
+    total_size INTEGER NOT NULL DEFAULT 0,
+    temp_path TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (path, pair_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sync_state_pair ON sync_state(pair_id);
 CREATE INDEX IF NOT EXISTS idx_sync_state_state ON sync_state(state);
 CREATE INDEX IF NOT EXISTS idx_conflicts_unresolved ON conflicts(resolved) WHERE resolved = 0;
 CREATE INDEX IF NOT EXISTS idx_sync_log_ts ON sync_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_partial_transfers_pair ON partial_transfers(pair_id);
 """
 
 
@@ -126,6 +141,30 @@ class Database:
                     log.info("Migrated database to v2: added remote_native_mime column")
                 except Exception:
                     pass  # Column may already exist
+            # Migration from v2 -> v3: add partial_transfers table
+            if current_version < 3:
+                try:
+                    await self.db.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS partial_transfers (
+                            path TEXT NOT NULL,
+                            pair_id TEXT NOT NULL,
+                            direction TEXT NOT NULL,
+                            remote_id TEXT,
+                            upload_uri TEXT,
+                            bytes_transferred INTEGER NOT NULL DEFAULT 0,
+                            total_size INTEGER NOT NULL DEFAULT 0,
+                            temp_path TEXT,
+                            created_at TEXT NOT NULL,
+                            PRIMARY KEY (path, pair_id)
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_partial_transfers_pair
+                            ON partial_transfers(pair_id);
+                        """
+                    )
+                    log.info("Migrated database to v3: added partial_transfers table")
+                except Exception:
+                    pass  # Table may already exist
             await self.db.execute(
                 "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
             )
@@ -301,6 +340,76 @@ class Database:
         rows = await cursor.fetchall()
         return [SyncLogEntry.from_row(tuple(r)) for r in rows]
 
+    # ── PartialTransfer CRUD ──────────────────────────────────────────
+
+    async def upsert_partial_transfer(self, pt: PartialTransfer) -> None:
+        await self.db.execute(
+            """INSERT INTO partial_transfers
+               (path, pair_id, direction, remote_id, upload_uri,
+                bytes_transferred, total_size, temp_path, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(path, pair_id) DO UPDATE SET
+                 direction=excluded.direction,
+                 remote_id=excluded.remote_id,
+                 upload_uri=excluded.upload_uri,
+                 bytes_transferred=excluded.bytes_transferred,
+                 total_size=excluded.total_size,
+                 temp_path=excluded.temp_path,
+                 created_at=excluded.created_at""",
+            pt.to_row(),
+        )
+        await self.db.commit()
+
+    async def get_partial_transfer(self, path: str, pair_id: str) -> PartialTransfer | None:
+        cursor = await self.db.execute(
+            "SELECT path, pair_id, direction, remote_id, upload_uri, "
+            "bytes_transferred, total_size, temp_path, created_at "
+            "FROM partial_transfers WHERE path = ? AND pair_id = ?",
+            (path, pair_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return PartialTransfer.from_row(tuple(row))
+
+    async def delete_partial_transfer(self, path: str, pair_id: str) -> None:
+        await self.db.execute(
+            "DELETE FROM partial_transfers WHERE path = ? AND pair_id = ?",
+            (path, pair_id),
+        )
+        await self.db.commit()
+
+    async def get_all_partial_transfers(self, pair_id: str | None = None) -> list[PartialTransfer]:
+        if pair_id:
+            cursor = await self.db.execute(
+                "SELECT path, pair_id, direction, remote_id, upload_uri, "
+                "bytes_transferred, total_size, temp_path, created_at "
+                "FROM partial_transfers WHERE pair_id = ?",
+                (pair_id,),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT path, pair_id, direction, remote_id, upload_uri, "
+                "bytes_transferred, total_size, temp_path, created_at "
+                "FROM partial_transfers"
+            )
+        rows = await cursor.fetchall()
+        return [PartialTransfer.from_row(tuple(r)) for r in rows]
+
+    async def cleanup_stale_partial_transfers(self, max_age_days: int = 7) -> int:
+        """Delete partial transfer records older than max_age_days."""
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        cursor = await self.db.execute(
+            "DELETE FROM partial_transfers WHERE created_at < ?", (cutoff,)
+        )
+        await self.db.commit()
+        count = cursor.rowcount
+        if count:
+            log.info("Cleaned up %d stale partial transfers", count)
+        return count
+
     # ── Utility ─────────────────────────────────────────────────────
 
     async def count_by_state(self, pair_id: str) -> dict[str, int]:
@@ -316,6 +425,7 @@ class Database:
         await self.db.execute("DELETE FROM change_tokens WHERE pair_id = ?", (pair_id,))
         await self.db.execute("DELETE FROM conflicts WHERE pair_id = ?", (pair_id,))
         await self.db.execute("DELETE FROM sync_log WHERE pair_id = ?", (pair_id,))
+        await self.db.execute("DELETE FROM partial_transfers WHERE pair_id = ?", (pair_id,))
         await self.db.commit()
 
     async def cleanup_stale_pairs(self, active_pair_ids: set[str]) -> int:
@@ -324,7 +434,8 @@ class Database:
             "SELECT DISTINCT pair_id FROM sync_state "
             "UNION SELECT DISTINCT pair_id FROM change_tokens "
             "UNION SELECT DISTINCT pair_id FROM conflicts "
-            "UNION SELECT DISTINCT pair_id FROM sync_log"
+            "UNION SELECT DISTINCT pair_id FROM sync_log "
+            "UNION SELECT DISTINCT pair_id FROM partial_transfers"
         )
         rows = await cursor.fetchall()
         all_pair_ids = {row[0] for row in rows}

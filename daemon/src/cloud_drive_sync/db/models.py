@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Literal
 
 
 class FileState(enum.Enum):
@@ -150,4 +151,46 @@ class SyncLogEntry:
             pair_id=row[4],
             status=row[5],
             detail=row[6],
+        )
+
+
+@dataclass
+class PartialTransfer:
+    """Tracks an interrupted file transfer for resumption."""
+
+    path: str = ""
+    pair_id: str = ""
+    direction: Literal["upload", "download"] = "upload"
+    remote_id: str | None = None
+    upload_uri: str | None = None
+    bytes_transferred: int = 0
+    total_size: int = 0
+    temp_path: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_row(self) -> tuple:
+        return (
+            self.path,
+            self.pair_id,
+            self.direction,
+            self.remote_id,
+            self.upload_uri,
+            self.bytes_transferred,
+            self.total_size,
+            self.temp_path,
+            self.created_at.isoformat(),
+        )
+
+    @classmethod
+    def from_row(cls, row: tuple) -> PartialTransfer:
+        return cls(
+            path=row[0],
+            pair_id=row[1],
+            direction=row[2],
+            remote_id=row[3],
+            upload_uri=row[4],
+            bytes_transferred=row[5],
+            total_size=row[6],
+            temp_path=row[7],
+            created_at=datetime.fromisoformat(row[8]),
         )

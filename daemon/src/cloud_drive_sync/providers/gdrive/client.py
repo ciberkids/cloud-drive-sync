@@ -37,8 +37,22 @@ _GOOGLE_NATIVE_DOC_MIMES = frozenset(
 class GoogleDriveClient(CloudClient):
     """Google Drive API v3 wrapper implementing CloudClient."""
 
-    def __init__(self, credentials: Credentials) -> None:
-        self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+    def __init__(self, credentials: Credentials, proxy=None) -> None:
+        if proxy and (proxy.http_proxy or proxy.https_proxy):
+            # Build a proxied HTTP transport
+            from cloud_drive_sync.util.proxy import parse_proxy_url
+            proxy_url = proxy.https_proxy or proxy.http_proxy
+            proxy_info = parse_proxy_url(proxy_url)
+            if proxy_info:
+                import httplib2
+                import google_auth_httplib2
+                http = httplib2.Http(proxy_info=proxy_info)
+                authed_http = google_auth_httplib2.AuthorizedHttp(credentials, http=http)
+                self._service = build("drive", "v3", http=authed_http, cache_discovery=False)
+            else:
+                self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        else:
+            self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
         # httplib2 is not thread-safe; serialize all API calls that go
         # through asyncio.to_thread to prevent heap corruption / segfaults.
         self._api_lock = threading.Lock()
@@ -159,6 +173,31 @@ class GoogleDriveClient(CloudClient):
 
         request = self._service.files().update(
             fileId=file_id, body=body if body else None, media_body=media, fields=FIELDS_FILE,
+            supportsAllDrives=True,
+        )
+        return await self._execute(request)
+
+    @async_retry(max_retries=3, base_delay=1.0)
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        # Fetch current parents so we can remove the old one
+        current = await self.get_file(file_id)
+        old_parents = ",".join(current.get("parents", []))
+
+        body: dict[str, Any] = {}
+        if new_name:
+            body["name"] = new_name
+
+        request = self._service.files().update(
+            fileId=file_id,
+            addParents=new_parent_id,
+            removeParents=old_parents,
+            body=body if body else None,
+            fields=FIELDS_FILE,
             supportsAllDrives=True,
         )
         return await self._execute(request)

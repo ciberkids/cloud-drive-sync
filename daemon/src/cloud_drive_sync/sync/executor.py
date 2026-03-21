@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from cloud_drive_sync.db.database import Database
-from cloud_drive_sync.db.models import FileState, SyncEntry, SyncLogEntry
+from cloud_drive_sync.db.models import FileState, PartialTransfer, SyncEntry, SyncLogEntry
 from cloud_drive_sync.drive.operations import FileOperations, _format_speed, _format_size
 from cloud_drive_sync.sync.planner import ActionType, SyncAction
 from cloud_drive_sync.util.logging import get_logger
@@ -109,6 +109,8 @@ class SyncExecutor:
                         await self._do_delete_local(action)
                     case ActionType.DELETE_REMOTE:
                         await self._do_delete_remote(action)
+                    case ActionType.MOVE:
+                        await self._do_move(action)
                     case ActionType.CONFLICT:
                         await self._mark_conflict(action)
                     case _:
@@ -235,16 +237,40 @@ class SyncExecutor:
                 action.path.replace(os.sep, "/")
             )
 
+        # Check for a partial transfer record to resume
+        partial = await self._db.get_partial_transfer(action.path, self._pair_id)
+        resume_uri = partial.upload_uri if partial and partial.direction == "upload" else None
+
         def on_progress(bytes_sent, total, speed):
             self._progress_callback(action.path, "upload", bytes_sent, total, speed)
 
-        result = await self._ops.upload_file(
-            local_path=local_path,
-            remote_parent=parent_id,
-            remote_name=action.path.replace(os.sep, "/").split("/")[-1],
-            existing_id=existing_id,
-            progress_callback=on_progress,
-        )
+        try:
+            result = await self._ops.upload_file(
+                local_path=local_path,
+                remote_parent=parent_id,
+                remote_name=action.path.replace(os.sep, "/").split("/")[-1],
+                existing_id=existing_id,
+                progress_callback=on_progress,
+                resume_uri=resume_uri,
+            )
+        except Exception:
+            # Save partial transfer state for future resume
+            file_size = local_path.stat().st_size
+            pt = PartialTransfer(
+                path=action.path,
+                pair_id=self._pair_id,
+                direction="upload",
+                remote_id=existing_id,
+                upload_uri=resume_uri,
+                bytes_transferred=0,
+                total_size=file_size,
+            )
+            await self._db.upsert_partial_transfer(pt)
+            raise
+
+        # Upload succeeded — remove any partial transfer record
+        if partial:
+            await self._db.delete_partial_transfer(action.path, self._pair_id)
 
         # Extract transfer stats from result
         transfer_speed = result.pop("_transfer_speed", 0)
@@ -348,9 +374,37 @@ class SyncExecutor:
         def on_progress(bytes_received, total, speed):
             self._progress_callback(action.path, "download", bytes_received, total, speed)
 
-        _, avg_speed, size, _ = await self._ops.download_file(
-            remote_id, local_path, progress_callback=on_progress,
-        )
+        # Check for a partial transfer record to resume
+        partial = await self._db.get_partial_transfer(action.path, self._pair_id)
+        resume_from = 0
+        resume_temp_path = None
+        if partial and partial.direction == "download":
+            resume_from = partial.bytes_transferred
+            resume_temp_path = partial.temp_path
+
+        try:
+            _, avg_speed, size, _ = await self._ops.download_file(
+                remote_id, local_path, progress_callback=on_progress,
+                resume_from=resume_from, temp_path=resume_temp_path,
+            )
+        except Exception:
+            # Save partial transfer state for future resume
+            pt = PartialTransfer(
+                path=action.path,
+                pair_id=self._pair_id,
+                direction="download",
+                remote_id=remote_id,
+                bytes_transferred=0,
+                total_size=0,
+                temp_path=resume_temp_path,
+            )
+            await self._db.upsert_partial_transfer(pt)
+            raise
+
+        # Download succeeded — remove any partial transfer record
+        if partial:
+            await self._db.delete_partial_transfer(action.path, self._pair_id)
+
         action._transfer_detail = f"{_format_size(size)} at {_format_speed(avg_speed)}"
 
         from cloud_drive_sync.local.hasher import md5_hash
@@ -377,6 +431,54 @@ class SyncExecutor:
         )
         await self._db.upsert_sync_entry(entry)
         log.debug("Downloaded %s <- %s", action.path, remote_id)
+
+    async def _do_move(self, action: SyncAction) -> None:
+        """Execute a MOVE action: rename/move a file on the remote side."""
+        if not action.stored_entry or not action.stored_entry.remote_id:
+            raise ValueError(f"No remote ID for move: {action.path}")
+        if not action.dest_path:
+            raise ValueError(f"No dest_path for move: {action.path}")
+        if not self._drive_client:
+            raise ValueError("No cloud client available for move operation")
+
+        remote_id = action.stored_entry.remote_id
+        dest_path = action.dest_path.replace(os.sep, "/")
+        new_name = dest_path.split("/")[-1]
+
+        # Ensure destination parent directories exist
+        new_parent_id = await self._ensure_remote_dirs(dest_path)
+
+        result = await self._drive_client.move_file(
+            file_id=remote_id,
+            new_parent_id=new_parent_id,
+            new_name=new_name,
+        )
+
+        # Delete old DB entry
+        await self._db.delete_sync_entry(action.path, self._pair_id)
+
+        # Get hash field
+        hash_field = "md5Checksum"
+        if hasattr(self._drive_client, 'hash_field'):
+            hash_field = self._drive_client.hash_field
+
+        # Insert new DB entry for the destination path
+        local_path = self._sanitize_path(action.dest_path)
+        now = datetime.now(timezone.utc)
+        stat = local_path.stat() if local_path.exists() else None
+        entry = SyncEntry(
+            path=action.dest_path,
+            pair_id=self._pair_id,
+            local_md5=action.local_info.md5 if action.local_info else None,
+            remote_md5=result.get(hash_field),
+            remote_id=result["id"],
+            state=FileState.SYNCED,
+            local_mtime=stat.st_mtime if stat else 0,
+            remote_mtime=stat.st_mtime if stat else 0,
+            last_synced=now,
+        )
+        await self._db.upsert_sync_entry(entry)
+        log.debug("Moved %s -> %s (remote %s)", action.path, action.dest_path, remote_id)
 
     async def _do_delete_local(self, action: SyncAction) -> None:
         local_path = self._sanitize_path(action.path)

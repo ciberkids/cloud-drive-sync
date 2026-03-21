@@ -113,6 +113,15 @@ class CloudClient(ABC):
         Returns the folder ID if found, None otherwise.
         """
 
+    @abstractmethod
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Move a file to a new parent folder and optionally rename it."""
+
     # ── Optional methods with default implementations ───────────────
 
     async def export_file(self, file_id: str, mime_type: str) -> bytes:
@@ -147,12 +156,16 @@ class CloudFileOps(ABC):
         remote_name: str | None = None,
         existing_id: str | None = None,
         progress_callback: Any = None,
+        resume_uri: str | None = None,
     ) -> dict[str, Any]:
         """Upload a local file to the cloud.
 
         Returns metadata dict including at minimum 'id' and the hash field.
         Transfer stats should be included as '_transfer_speed', '_transfer_size',
         '_transfer_elapsed' keys.
+
+        If *resume_uri* is provided, attempt to resume an interrupted resumable
+        upload from where it left off.
         """
 
     @abstractmethod
@@ -161,10 +174,15 @@ class CloudFileOps(ABC):
         remote_id: str,
         local_path: Path,
         progress_callback: Any = None,
+        resume_from: int = 0,
+        temp_path: str | None = None,
     ) -> tuple[Path, float, int, float]:
         """Download a file from the cloud.
 
         Returns (local_path, avg_speed, size, elapsed).
+
+        If *resume_from* > 0, continue downloading from that byte offset,
+        appending to the file at *temp_path*.
         """
 
     @abstractmethod

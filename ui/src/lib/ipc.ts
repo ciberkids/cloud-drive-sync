@@ -135,6 +135,73 @@ export async function getNotificationPrefs(): Promise<{
   return invoke("get_notification_prefs");
 }
 
+export async function setBandwidthLimits(params: {
+  max_upload_kbps?: number;
+  max_download_kbps?: number;
+}): Promise<{
+  max_upload_kbps: number;
+  max_download_kbps: number;
+}> {
+  return invoke("set_bandwidth_limits", {
+    maxUploadKbps: params.max_upload_kbps,
+    maxDownloadKbps: params.max_download_kbps,
+  });
+}
+
+export async function getBandwidthLimits(): Promise<{
+  max_upload_kbps: number;
+  max_download_kbps: number;
+}> {
+  return invoke("get_bandwidth_limits");
+}
+
+export async function setSyncRules(
+  pairId: string,
+  rules: {
+    max_file_size_mb?: number;
+    include_regex?: string[];
+    exclude_regex?: string[];
+    min_date?: string;
+  }
+): Promise<unknown> {
+  return invoke("set_sync_rules", { pairId, rules });
+}
+
+export async function getSyncRules(
+  pairId: string
+): Promise<{
+  max_file_size_mb: number;
+  include_regex: string[];
+  exclude_regex: string[];
+  min_date: string;
+}> {
+  return invoke("get_sync_rules", { pairId });
+}
+
+export async function setProxy(prefs: {
+  http_proxy?: string;
+  https_proxy?: string;
+  no_proxy?: string;
+}): Promise<{
+  http_proxy: string;
+  https_proxy: string;
+  no_proxy: string;
+}> {
+  return invoke("set_proxy", {
+    httpProxy: prefs.http_proxy,
+    httpsProxy: prefs.https_proxy,
+    noProxy: prefs.no_proxy,
+  });
+}
+
+export async function getProxy(): Promise<{
+  http_proxy: string;
+  https_proxy: string;
+  no_proxy: string;
+}> {
+  return invoke("get_proxy");
+}
+
 export async function listRemoteFolders(
   parentId: string
 ): Promise<{

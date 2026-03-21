@@ -47,6 +47,12 @@ fn main() {
             commands::list_accounts,
             commands::set_notification_prefs,
             commands::get_notification_prefs,
+            commands::set_bandwidth_limits,
+            commands::get_bandwidth_limits,
+            commands::set_sync_rules,
+            commands::get_sync_rules,
+            commands::set_proxy,
+            commands::get_proxy,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

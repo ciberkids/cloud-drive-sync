@@ -498,6 +498,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cloud-drive-sync-ui"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "libc",
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-shell",
+ "tokio",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1251,23 +1268,6 @@ dependencies = [
  "libc",
  "system-deps",
  "x11",
-]
-
-[[package]]
-name = "cloud-drive-sync-ui"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "libc",
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-shell",
- "tokio",
 ]
 
 [[package]]

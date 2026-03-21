@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import enum
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pathlib import Path
@@ -75,6 +77,7 @@ class ActionType(enum.Enum):
     CONFLICT = "conflict"
     NOOP = "noop"
     MKDIR = "mkdir"
+    MOVE = "move"
 
 
 @dataclass
@@ -87,6 +90,75 @@ class SyncAction:
     remote_info: dict[str, Any] | None = None
     stored_entry: SyncEntry | None = None
     reason: str = ""
+    dest_path: str | None = None
+
+
+def detect_moves(actions: list[SyncAction]) -> list[SyncAction]:
+    """Match DELETE_REMOTE + UPLOAD pairs by md5 hash and replace with MOVE actions.
+
+    When a file is moved or renamed locally, the planner sees a DELETE_REMOTE for
+    the old path and an UPLOAD for the new path.  If both refer to the same content
+    (same md5 hash) we can collapse them into a single MOVE action, which is far
+    cheaper than a delete + re-upload round-trip.
+
+    Returns a new list with matched pairs replaced by MOVE actions.
+    """
+    # Index DELETE_REMOTE actions by the md5 from their stored entry
+    delete_by_md5: dict[str, list[SyncAction]] = {}
+    for a in actions:
+        if a.action == ActionType.DELETE_REMOTE and a.stored_entry:
+            md5 = a.stored_entry.local_md5 or a.stored_entry.remote_md5
+            if md5:
+                delete_by_md5.setdefault(md5, []).append(a)
+
+    if not delete_by_md5:
+        return actions
+
+    matched_deletes: set[str] = set()   # paths of matched DELETE_REMOTE
+    matched_uploads: set[str] = set()   # paths of matched UPLOAD
+    move_actions: list[SyncAction] = []
+
+    for a in actions:
+        if a.action == ActionType.UPLOAD and a.local_info:
+            md5 = a.local_info.md5
+            if md5 and md5 in delete_by_md5:
+                candidates = delete_by_md5[md5]
+                # Pick the first unmatched delete
+                for d in candidates:
+                    if d.path not in matched_deletes:
+                        matched_deletes.add(d.path)
+                        matched_uploads.add(a.path)
+                        move_actions.append(
+                            SyncAction(
+                                action=ActionType.MOVE,
+                                path=d.path,
+                                dest_path=a.path,
+                                local_info=a.local_info,
+                                stored_entry=d.stored_entry,
+                                reason=f"move detected (md5={md5[:8]}...)",
+                            )
+                        )
+                        break
+
+    if not move_actions:
+        return actions
+
+    # Rebuild the action list: keep unmatched actions, insert moves
+    result: list[SyncAction] = []
+    for a in actions:
+        if a.action == ActionType.DELETE_REMOTE and a.path in matched_deletes:
+            continue
+        if a.action == ActionType.UPLOAD and a.path in matched_uploads:
+            continue
+        result.append(a)
+    result.extend(move_actions)
+
+    log.info(
+        "Move detection: %d move(s) detected from %d delete+upload pairs",
+        len(move_actions),
+        len(move_actions),
+    )
+    return result
 
 
 def _is_hidden(path: str) -> bool:
@@ -193,11 +265,14 @@ def plan_initial_sync(
                     )
                 )
 
+    actions = detect_moves(actions)
+
     log.info(
-        "Initial plan: %d uploads, %d downloads, %d mkdir, %d conflicts, %d noop",
+        "Initial plan: %d uploads, %d downloads, %d mkdir, %d moves, %d conflicts, %d noop",
         sum(1 for a in actions if a.action == ActionType.UPLOAD),
         sum(1 for a in actions if a.action == ActionType.DOWNLOAD),
         sum(1 for a in actions if a.action == ActionType.MKDIR),
+        sum(1 for a in actions if a.action == ActionType.MOVE),
         sum(1 for a in actions if a.action == ActionType.CONFLICT),
         sum(1 for a in actions if a.action == ActionType.NOOP),
     )
@@ -391,4 +466,81 @@ def plan_continuous_sync(
             else:
                 actions.append(SyncAction(ActionType.NOOP, path, reason="no effective change"))
 
+    actions = detect_moves(actions)
     return actions
+
+
+def apply_sync_rules(actions: list[SyncAction], rules) -> list[SyncAction]:
+    """Filter sync actions based on advanced sync rules.
+
+    Args:
+        actions: List of planned sync actions.
+        rules: A SyncRules instance with max_file_size_mb, include_regex,
+               exclude_regex, and min_date fields.
+
+    Returns:
+        Filtered list of actions.
+    """
+    if rules is None:
+        return actions
+
+    max_bytes = rules.max_file_size_mb * 1024 * 1024 if rules.max_file_size_mb > 0 else 0
+    include_patterns = [re.compile(p) for p in rules.include_regex if p]
+    exclude_patterns = [re.compile(p) for p in rules.exclude_regex if p]
+
+    min_dt = None
+    if rules.min_date:
+        try:
+            min_dt = datetime.fromisoformat(rules.min_date)
+        except ValueError:
+            log.warning("Invalid min_date in sync rules: %s", rules.min_date)
+
+    # If no rules are active, skip filtering
+    if not max_bytes and not include_patterns and not exclude_patterns and not min_dt:
+        return actions
+
+    filtered: list[SyncAction] = []
+    for action in actions:
+        # Always keep NOOP, MKDIR, and deletion actions
+        if action.action in (ActionType.NOOP, ActionType.MKDIR, ActionType.DELETE_LOCAL, ActionType.DELETE_REMOTE):
+            filtered.append(action)
+            continue
+
+        path = action.path
+
+        # Max file size check
+        if max_bytes > 0:
+            size = 0
+            if action.local_info and hasattr(action.local_info, "size"):
+                size = action.local_info.size or 0
+            if not size and action.remote_info:
+                size = int(action.remote_info.get("size", 0) or 0)
+            if size > max_bytes:
+                log.debug("Sync rule: skipping %s (size %d > max %d)", path, size, max_bytes)
+                continue
+
+        # Exclude regex check
+        if exclude_patterns and any(p.search(path) for p in exclude_patterns):
+            log.debug("Sync rule: excluding %s (matched exclude pattern)", path)
+            continue
+
+        # Include regex check — if include patterns given, path must match at least one
+        if include_patterns and not any(p.search(path) for p in include_patterns):
+            log.debug("Sync rule: skipping %s (no include pattern matched)", path)
+            continue
+
+        # Min date check
+        if min_dt:
+            mtime = 0.0
+            if action.local_info and hasattr(action.local_info, "mtime"):
+                mtime = action.local_info.mtime or 0.0
+            if mtime > 0 and datetime.fromtimestamp(mtime) < min_dt:
+                log.debug("Sync rule: skipping %s (mtime before min_date)", path)
+                continue
+
+        filtered.append(action)
+
+    dropped = len(actions) - len(filtered)
+    if dropped:
+        log.info("Sync rules: filtered out %d actions", dropped)
+    return filtered

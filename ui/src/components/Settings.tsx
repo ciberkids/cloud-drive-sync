@@ -127,6 +127,113 @@ export function Settings() {
     }
   };
 
+  // Proxy state
+  const [proxySettings, setProxySettings] = useState({
+    http_proxy: "",
+    https_proxy: "",
+    no_proxy: "",
+  });
+  const [proxySaving, setProxySaving] = useState(false);
+
+  useEffect(() => {
+    ipc.getProxy().then(setProxySettings).catch(() => {});
+  }, []);
+
+  const handleSaveProxy = async () => {
+    setProxySaving(true);
+    try {
+      const updated = await ipc.setProxy(proxySettings);
+      setProxySettings(updated);
+    } catch (e) {
+      console.error("Failed to set proxy:", e);
+    } finally {
+      setProxySaving(false);
+    }
+  };
+
+  // Bandwidth limits state
+  const [bandwidthLimits, setBandwidthLimits] = useState({
+    max_upload_kbps: 0,
+    max_download_kbps: 0,
+  });
+
+  useEffect(() => {
+    ipc.getBandwidthLimits().then(setBandwidthLimits).catch(() => {});
+  }, []);
+
+  const handleBandwidthChange = async (
+    key: "max_upload_kbps" | "max_download_kbps",
+    value: number
+  ) => {
+    try {
+      const updated = await ipc.setBandwidthLimits({ [key]: value });
+      setBandwidthLimits(updated);
+    } catch (e) {
+      console.error("Failed to set bandwidth limits:", e);
+    }
+  };
+
+  // Advanced sync rules state
+  const [expandedRules, setExpandedRules] = useState<Set<string>>(new Set());
+  const [rulesState, setRulesState] = useState<
+    Record<
+      string,
+      {
+        max_file_size_mb: number;
+        include_regex: string;
+        exclude_regex: string;
+      }
+    >
+  >({});
+
+  const toggleRulesPanel = async (pairId: string) => {
+    setExpandedRules((prev) => {
+      const next = new Set(prev);
+      if (next.has(pairId)) {
+        next.delete(pairId);
+      } else {
+        next.add(pairId);
+        // Load current rules
+        ipc
+          .getSyncRules(pairId)
+          .then((rules) => {
+            setRulesState((s) => ({
+              ...s,
+              [pairId]: {
+                max_file_size_mb: rules.max_file_size_mb || 0,
+                include_regex: (rules.include_regex || []).join("\n"),
+                exclude_regex: (rules.exclude_regex || []).join("\n"),
+              },
+            }));
+          })
+          .catch(() => {});
+      }
+      return next;
+    });
+  };
+
+  const handleSaveRules = async (pairId: string) => {
+    const state = rulesState[pairId];
+    if (!state) return;
+    const includeList = state.include_regex
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l);
+    const excludeList = state.exclude_regex
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l);
+    try {
+      await ipc.setSyncRules(pairId, {
+        max_file_size_mb: state.max_file_size_mb,
+        include_regex: includeList,
+        exclude_regex: excludeList,
+      });
+    } catch (e) {
+      console.error("Failed to set sync rules:", e);
+    }
+  };
+
   // Group pairs by account
   const accountMap = new Map<string, Account>();
   for (const acct of accounts) {
@@ -239,6 +346,80 @@ export function Settings() {
           </div>
         )}
       </div>
+      <div className="sync-pair-rules">
+        <button
+          className="btn btn-sm"
+          onClick={() => toggleRulesPanel(pair.id)}
+          type="button"
+        >
+          {expandedRules.has(pair.id) ? "Hide" : "Advanced Rules"}
+        </button>
+        {expandedRules.has(pair.id) && rulesState[pair.id] && (
+          <div className="sync-rules-editor">
+            <div className="field">
+              <label className="field-label">Max file size (MB, 0 = unlimited)</label>
+              <input
+                type="number"
+                className="input"
+                min={0}
+                value={rulesState[pair.id].max_file_size_mb}
+                onChange={(e) =>
+                  setRulesState((prev) => ({
+                    ...prev,
+                    [pair.id]: {
+                      ...prev[pair.id],
+                      max_file_size_mb: parseFloat(e.target.value) || 0,
+                    },
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label className="field-label">Exclude regex (one per line)</label>
+              <textarea
+                className="ignore-patterns-textarea"
+                placeholder={"e.g. \\.tmp$\nnode_modules/"}
+                value={rulesState[pair.id].exclude_regex}
+                onChange={(e) =>
+                  setRulesState((prev) => ({
+                    ...prev,
+                    [pair.id]: {
+                      ...prev[pair.id],
+                      exclude_regex: e.target.value,
+                    },
+                  }))
+                }
+                rows={3}
+              />
+            </div>
+            <div className="field">
+              <label className="field-label">Include regex (one per line, empty = all)</label>
+              <textarea
+                className="ignore-patterns-textarea"
+                placeholder={"e.g. \\.docx$\n\\.pdf$"}
+                value={rulesState[pair.id].include_regex}
+                onChange={(e) =>
+                  setRulesState((prev) => ({
+                    ...prev,
+                    [pair.id]: {
+                      ...prev[pair.id],
+                      include_regex: e.target.value,
+                    },
+                  }))
+                }
+                rows={3}
+              />
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => handleSaveRules(pair.id)}
+              type="button"
+            >
+              Save Rules
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -301,6 +482,42 @@ export function Settings() {
       </section>
 
       <section className="settings-section">
+        <h3>Bandwidth</h3>
+        <div className="bandwidth-settings">
+          <div className="field">
+            <label className="field-label">Upload KB/s (0 = unlimited)</label>
+            <input
+              type="number"
+              className="input"
+              min={0}
+              value={bandwidthLimits.max_upload_kbps}
+              onChange={(e) =>
+                handleBandwidthChange(
+                  "max_upload_kbps",
+                  parseInt(e.target.value) || 0
+                )
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">Download KB/s (0 = unlimited)</label>
+            <input
+              type="number"
+              className="input"
+              min={0}
+              value={bandwidthLimits.max_download_kbps}
+              onChange={(e) =>
+                handleBandwidthChange(
+                  "max_download_kbps",
+                  parseInt(e.target.value) || 0
+                )
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
         <h3>Conflict Resolution</h3>
         <div className="field">
           <label className="field-label">Strategy</label>
@@ -357,6 +574,65 @@ export function Settings() {
             <span className="toggle-slider" />
             <span className="toggle-label">Sync errors</span>
           </label>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Proxy</h3>
+        <div className="proxy-settings">
+          <div className="field">
+            <label className="field-label">HTTP Proxy</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="http://proxy:8080"
+              value={proxySettings.http_proxy}
+              onChange={(e) =>
+                setProxySettings((prev) => ({
+                  ...prev,
+                  http_proxy: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">HTTPS Proxy</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="http://proxy:8080"
+              value={proxySettings.https_proxy}
+              onChange={(e) =>
+                setProxySettings((prev) => ({
+                  ...prev,
+                  https_proxy: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">No-proxy list</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="localhost,127.0.0.1,.internal"
+              value={proxySettings.no_proxy}
+              onChange={(e) =>
+                setProxySettings((prev) => ({
+                  ...prev,
+                  no_proxy: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleSaveProxy}
+            disabled={proxySaving}
+            type="button"
+          >
+            {proxySaving ? "Saving..." : "Save Proxy Settings"}
+          </button>
         </div>
       </section>
 

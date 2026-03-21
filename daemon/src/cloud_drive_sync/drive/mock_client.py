@@ -192,6 +192,39 @@ class MockDriveClient:
         log.debug("Mock updated: %s (%s)", meta["name"], file_id)
         return dict(meta)
 
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        if file_id not in self._files:
+            raise FileNotFoundError(f"Mock file not found: {file_id}")
+
+        meta = self._files[file_id]
+
+        # Remove from old parent's children
+        old_parents = meta.get("parents", [])
+        for old_parent in old_parents:
+            if old_parent in self._children:
+                self._children[old_parent].discard(file_id)
+
+        # Add to new parent's children
+        self._children.setdefault(new_parent_id, set()).add(file_id)
+        meta["parents"] = [new_parent_id]
+
+        if new_name:
+            old_path = Path(meta.get("_local_path", ""))
+            new_path = old_path.parent / new_name
+            if old_path.exists():
+                await asyncio.to_thread(old_path.rename, new_path)
+            meta["name"] = new_name
+            meta["_local_path"] = str(new_path)
+
+        meta["modifiedTime"] = datetime.now(timezone.utc).isoformat()
+        log.debug("Mock moved: %s -> parent=%s name=%s", file_id, new_parent_id, new_name)
+        return dict(meta)
+
     async def delete_file(self, file_id: str) -> None:
         if file_id in self._files:
             meta = self._files.pop(file_id)
@@ -424,6 +457,7 @@ class MockFileOperations:
         remote_name: str | None = None,
         existing_id: str | None = None,
         progress_callback=None,
+        resume_uri: str | None = None,
     ) -> dict[str, Any]:
         name = remote_name or local_path.name
 
@@ -444,6 +478,8 @@ class MockFileOperations:
         remote_id: str,
         local_path: Path,
         progress_callback=None,
+        resume_from: int = 0,
+        temp_path: str | None = None,
     ) -> tuple[Path, float, int, float]:
         meta = await self._client.get_file(remote_id)
         remote_file = Path(meta.get("_local_path", ""))

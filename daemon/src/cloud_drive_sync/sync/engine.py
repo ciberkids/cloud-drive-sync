@@ -22,11 +22,13 @@ from cloud_drive_sync.sync.executor import SyncExecutor
 from cloud_drive_sync.sync.planner import (
     ActionType,
     SyncAction,
+    apply_sync_rules,
     filter_actions_by_mode,
     plan_continuous_sync,
     plan_initial_sync,
 )
 from cloud_drive_sync.util.logging import get_logger
+from cloud_drive_sync.util.throttle import BandwidthThrottle
 
 log = get_logger("sync.engine")
 
@@ -92,6 +94,9 @@ class SyncEngine:
         active_pair_ids = {f"pair_{i}" for i in range(len(self._config.sync.pairs))}
         await self._db.cleanup_stale_pairs(active_pair_ids)
 
+        # Clean up stale partial transfer records (older than 7 days)
+        await self._db.cleanup_stale_partial_transfers()
+
         for i, pair in enumerate(self._config.sync.pairs):
             if not pair.enabled:
                 continue
@@ -128,7 +133,12 @@ class SyncEngine:
             return
 
         # Per-pair operations and poller (use injected ones if available, e.g. in tests)
-        ops = self._ops or FileOperations(client)
+        if self._ops:
+            ops = self._ops
+        else:
+            upload_throttle = BandwidthThrottle(self._config.sync.max_upload_kbps)
+            download_throttle = BandwidthThrottle(self._config.sync.max_download_kbps)
+            ops = FileOperations(client, upload_throttle=upload_throttle, download_throttle=download_throttle)
         poller = self._poller or ChangePoller(client)
 
         executor = SyncExecutor(
@@ -206,6 +216,9 @@ class SyncEngine:
                 folder_mime=folder_mime,
                 convert_native_docs=convert_native and getattr(pair_client, 'supports_export', False),
             )
+
+            # Apply advanced sync rules
+            actions = apply_sync_rules(actions, ps.pair.sync_rules)
 
             # Handle conflicts according to strategy
             resolved_actions: list[SyncAction] = []
@@ -369,6 +382,7 @@ class SyncEngine:
                         change_data["mtime"] = file_path.stat().st_mtime
 
                 actions = plan_continuous_sync([change_data], stored_entries)
+                actions = apply_sync_rules(actions, ps.pair.sync_rules)
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
                     await ps.executor.execute_all(actions)
@@ -486,6 +500,7 @@ class SyncEngine:
             )
 
         actions = plan_continuous_sync(change_dicts, stored_entries)
+        actions = apply_sync_rules(actions, ps.pair.sync_rules)
         actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
             await ps.executor.execute_all(actions)

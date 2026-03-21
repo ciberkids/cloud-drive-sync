@@ -91,7 +91,7 @@ class Daemon:
                         try:
                             from cloud_drive_sync.auth.credentials import save_account_credentials
 
-                            temp_client = DriveClient(creds)
+                            temp_client = DriveClient(creds, proxy=self._config.proxy)
                             about = await temp_client.get_about()
                             email = about.get("user", {}).get("emailAddress", "unknown")
 
@@ -113,7 +113,7 @@ class Daemon:
                     if provider_name == "gdrive":
                         acct_creds = load_account_credentials(account.email)
                         if acct_creds and acct_creds.valid:
-                            clients[account.email] = DriveClient(acct_creds)
+                            clients[account.email] = DriveClient(acct_creds, proxy=self._config.proxy)
                             log.info("Loaded credentials for %s (gdrive)", account.email)
                         else:
                             log.warning("No valid credentials for %s", account.email)
@@ -144,7 +144,7 @@ class Daemon:
                     creds = load_credentials()
                     if creds and creds.valid:
                         log.info("Loaded existing legacy credentials")
-                        client = DriveClient(creds)
+                        client = DriveClient(creds, proxy=self._config.proxy)
                         clients[""] = client
 
                 if clients:
@@ -275,7 +275,7 @@ class Daemon:
             self._log_auth_event("auth", "Authentication successful", "success")
 
             from cloud_drive_sync.drive.client import DriveClient
-            client = DriveClient(creds)
+            client = DriveClient(creds, proxy=self._config.proxy)
 
             # Fetch account email for multi-account support
             import asyncio
