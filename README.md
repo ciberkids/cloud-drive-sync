@@ -52,13 +52,16 @@ graph TB
 - **Bidirectional sync** — uploads local changes and downloads remote changes automatically
 - **Conflict resolution** — three strategies: keep both copies, newest wins, or ask the user
 - **Real-time monitoring** — local filesystem watcher (watchdog) + remote change polling
-- **System tray** — always-on tray icon with status indicators (idle, syncing, error, conflict)
+- **System tray** — always-on tray icon with dynamic status indicators (idle, syncing, error, conflict)
+- **Selective sync** — per-pair ignore patterns and `.gdrive-sync-ignore` files (gitignore-style)
+- **Shared Drives** — full support for Google Workspace Shared Drives (Team Drives)
+- **Multiple accounts** — connect multiple Google accounts, bind each sync pair to a specific account
 - **Hidden file filtering** — exclude dotfiles and dot-directories from sync (configurable per pair)
 - **Multi-pair support** — sync multiple local folders to different Drive locations
 - **Native desktop UI** — Tauri + React app for configuration and monitoring
 - **Daemon architecture** — runs as a background service via systemd
 - **XDG compliance** — config, data, and runtime files follow the XDG Base Directory spec
-- **Encrypted credentials** — OAuth2 tokens stored encrypted on disk
+- **Encrypted credentials** — OAuth2 tokens stored encrypted on disk (per-account)
 - **Demo mode** — test the full UI and sync flow without a Google account
 
 ## Screenshots
@@ -114,6 +117,59 @@ cd gdrive-sync
   | Fedora | `webkit2gtk4.1-devel gtk3-devel libayatana-appindicator-gtk3-devel` |
   | Ubuntu/Debian | `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev` |
   | Arch | `webkit2gtk-4.1 gtk3 libayatana-appindicator` |
+
+## Google Cloud Setup (Required)
+
+GDrive Sync uses the Google Drive API via OAuth 2.0. You need to create your own OAuth client credentials before the app can access your Drive.
+
+### 1. Create a Google Cloud project
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Click **Select a project** (top bar) → **New Project**
+3. Name it (e.g. `gdrive-sync`) and click **Create**
+
+### 2. Enable the Google Drive API
+
+1. In your project, go to **APIs & Services → Library**
+2. Search for **Google Drive API**
+3. Click it and press **Enable**
+
+### 3. Configure the OAuth consent screen
+
+1. Go to **APIs & Services → OAuth consent screen**
+2. Select **External** user type (unless you have a Workspace org), click **Create**
+3. Fill in the required fields:
+   - **App name**: `GDrive Sync` (or anything you like)
+   - **User support email**: your email
+   - **Developer contact email**: your email
+4. Click **Save and Continue**
+5. On the **Scopes** page, click **Add or Remove Scopes**, find `https://www.googleapis.com/auth/drive`, check it, and click **Update** → **Save and Continue**
+6. On the **Test users** page, click **Add Users**, enter your Google email address, and click **Save and Continue**
+7. Review and click **Back to Dashboard**
+
+> **Note:** While the app is in "Testing" mode, only the test users you added can authorize. This is fine for personal use. If you want others to use it, you'd need to publish the app (which requires Google's review).
+
+### 4. Create OAuth client credentials
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth client ID**
+3. Application type: **Desktop app**
+4. Name: `GDrive Sync Desktop` (or anything)
+5. Click **Create**
+6. Click **Download JSON** on the confirmation dialog
+
+### 5. Install the credentials file
+
+Move the downloaded JSON file to the GDrive Sync config directory:
+
+```bash
+mkdir -p ~/.config/gdrive-sync
+mv ~/Downloads/client_secret_*.json ~/.config/gdrive-sync/client_secret.json
+```
+
+The daemon expects the file at `~/.config/gdrive-sync/client_secret.json`. On first launch, it will open your browser for Google sign-in using these credentials.
+
+---
 
 ## Manual Installation
 
@@ -256,9 +312,53 @@ remote_folder_id = "root"
 enabled = true
 sync_mode = "two_way"
 ignore_hidden = true
+ignore_patterns = ["*.tmp", "node_modules", "build/"]
+account_id = "user@gmail.com"
+
+[[accounts]]
+email = "user@gmail.com"
+display_name = "user@gmail.com"
 ```
 
 You can also configure sync pairs through the UI Settings page.
+
+### Selective sync (ignore patterns)
+
+Exclude files and folders from sync using glob patterns. There are two ways to set them:
+
+**Per-pair config** — add `ignore_patterns` to a sync pair in `config.toml` (or use the "Ignore Patterns" button in the UI Settings):
+
+```toml
+[[sync.pairs]]
+local_path = "/home/user/Projects"
+ignore_patterns = ["*.log", "node_modules", "dist/", "__pycache__"]
+```
+
+**Per-folder file** — create a `.gdrive-sync-ignore` file in any synced folder root (gitignore-style, one pattern per line):
+
+```
+# Build artifacts
+build/
+dist/
+*.o
+
+# Logs
+*.log
+
+# IDE files
+.idea/
+.vscode/
+```
+
+Patterns from the config, the ignore file, and built-in defaults (`.git`, `__pycache__`, `.DS_Store`, etc.) are all merged together.
+
+### Multiple accounts
+
+Add multiple Google accounts via the UI Account Manager ("Add Google Account" button). Each sync pair can be bound to a specific account. On first upgrade from single-account to multi-account, existing credentials are automatically migrated.
+
+### Shared Drives
+
+Shared Drives (Team Drives) are automatically available. When browsing remote folders in the UI, Shared Drives appear as a separate section at the root level. All sync operations (upload, download, polling) work with Shared Drive files.
 
 See [daemon/README.md](daemon/README.md) for the full configuration reference.
 
