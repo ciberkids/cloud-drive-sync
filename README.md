@@ -617,10 +617,11 @@ cloud-drive-sync/
 
 ## Documentation
 
+- [CLI Reference](docs/CLI.md) — complete command-line interface guide with examples
 - [Architecture](docs/ARCHITECTURE.md) — system design, sync algorithm, database schema
 - [API Reference](docs/API.md) — full IPC method documentation with examples
 - [Contributing](docs/CONTRIBUTING.md) — dev setup, code style, PR process
-- [Daemon](daemon/README.md) — CLI usage, config reference, demo mode
+- [Daemon](daemon/README.md) — daemon internals, config reference, demo mode
 - [UI](ui/README.md) — Tauri development and build instructions
 
 ## License
