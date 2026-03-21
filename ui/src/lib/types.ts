@@ -60,6 +60,7 @@ export interface LogEntry {
   path: string;
   details: string;
   status: string;
+  pair_id?: string;
 }
 
 export type ConflictResolution = "keep_local" | "keep_remote" | "keep_both";
