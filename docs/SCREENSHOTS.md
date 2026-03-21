@@ -89,7 +89,8 @@ The main view. Shows overall sync health, file counts, and control buttons.
 
 ## Settings
 
-Manages sync pairs, notifications, and conflict strategy. Shows provider badges for non-Google pairs.
+Manages sync pairs (grouped by account), notifications, and conflict strategy.
+Each account group has a colored left border matching its cloud provider.
 
 ```
 +-----------------------------------------------------------------+
@@ -98,19 +99,33 @@ Manages sync pairs, notifications, and conflict strategy. Shows provider badges 
 |                                                                  |
 |   --- Sync Folders ------------------------------------------    |
 |                                                                  |
+|   # Google Drive  user@gmail.com                           *     |
 |   +---------------------------------------------------------+   |
-|   |  ~/Documents/work                  [Google Drive]        |   |
-|   |  Remote: My Drive       [Two-way v]          [Remove]    |   |
+|   |  ~/Documents                                             |   |
+|   |  Remote: My Drive                                        |   |
+|   |  [Two-way v]   [x] Hide dotfiles  [Ignore Pat.]  [Rm]   |   |
 |   +---------------------------------------------------------+   |
-|   |  ~/Pictures                        [Dropbox]             |   |
-|   |  Remote: /Photos        [Upload only v]       [Remove]   |   |
-|   +---------------------------------------------------------+   |
-|   |  ~/Projects                        [Nextcloud]           |   |
-|   |  Remote: /dev           [Two-way v]          [Remove]    |   |
+|   |  ~/Photos                                                |   |
+|   |  Remote: /vacation-2025                                  |   |
+|   |  [Upload only v]  [x] Hide dotfiles  [Ignore P.]  [Rm]  |   |
 |   +---------------------------------------------------------+   |
 |                                                                  |
-|   --- Remote Folders -----------------------------------------   |
-|   [Browse & Add Sync Folder]                                     |
+|   # Dropbox  user@dropbox.com                              *     |
+|   +---------------------------------------------------------+   |
+|   |  ~/Shared                                                |   |
+|   |  Remote: /Team                                           |   |
+|   |  [Download only v]  [x] Hide dotfiles  [Ign. P.]  [Rm]  |   |
+|   +---------------------------------------------------------+   |
+|                                                                  |
+|   # Nextcloud  user@cloud.example.com                      *     |
+|   +---------------------------------------------------------+   |
+|   |  ~/Projects                                              |   |
+|   |  Remote: /dev                                            |   |
+|   |  [Two-way v]   [x] Hide dotfiles  [Ignore Pat.]  [Rm]   |   |
+|   +---------------------------------------------------------+   |
+|                                                                  |
+|   --- Add Sync Folder ----------------------------------------   |
+|   [Remote Folder Browser]                                        |
 |                                                                  |
 |   --- Notifications ------------------------------------------   |
 |                                                                  |
@@ -126,6 +141,10 @@ Manages sync pairs, notifications, and conflict strategy. Shows provider badges 
 |                                                                  |
 +-----------------------------------------------------------------+
 ```
+
+The `#` header rows represent colored group headers. Each shows the provider
+name (with a colored dot), the account email, and a green/grey dot for
+connection status. `*` = connected, `o` = disconnected.
 
 ## Conflicts
 
@@ -206,7 +225,9 @@ Event type icons:
 
 ## Account Manager
 
-Multi-provider cloud account management.
+Multi-provider cloud account management. Each account is displayed as a card
+with a colored left border matching the provider. The card shows the account
+email, connection status, and a summary of which folders are synced.
 
 ### Multiple Accounts Connected
 
@@ -215,34 +236,66 @@ Multi-provider cloud account management.
 |                                                                  |
 |   Cloud Accounts                                                 |
 |                                                                  |
-|   +---------------------------------------------------------+   |
-|   |  user@gmail.com            [Google Drive]  * Connected   |   |
-|   |                                             [Remove]     |   |
-|   +---------------------------------------------------------+   |
-|   |  user@dropbox.com          [Dropbox]       * Connected   |   |
-|   |                                             [Remove]     |   |
-|   +---------------------------------------------------------+   |
-|   |  user@outlook.com          [OneDrive]      * Connected   |   |
-|   |                                             [Remove]     |   |
-|   +---------------------------------------------------------+   |
-|   |  user@nextcloud.example    [Nextcloud]     * Connected   |   |
-|   |                                             [Remove]     |   |
-|   +---------------------------------------------------------+   |
+|   +=========================================================+   |
+|   | # Google Drive                             * Connected   |   |
+|   |   user@gmail.com                                         |   |
+|   |                                                          |   |
+|   |   Syncing 2 folders:                                     |   |
+|   |   +------------------------------------------------------+  |
+|   |   | ~/Documents       <->   My Drive         Two-way     |  |
+|   |   | ~/Photos          -->   /vacation-2025   Upload only  |  |
+|   |   +------------------------------------------------------+  |
+|   |                                                          |   |
+|   |                                      [Remove Account]    |   |
+|   +=========================================================+   |
 |                                                                  |
-|   Provider: [ Google Drive v ]                                   |
-|             +--------------------+                               |
-|             | Google Drive       |                               |
-|             | Dropbox            |                               |
-|             | OneDrive           |                               |
-|             | Nextcloud          |                               |
-|             | Box                |                               |
-|             | Proton (coming)    |                               |
-|             +--------------------+                               |
+|   +=========================================================+   |
+|   | # Dropbox                                  * Connected   |   |
+|   |   user@dropbox.com                                       |   |
+|   |                                                          |   |
+|   |   Syncing 1 folder:                                      |   |
+|   |   +------------------------------------------------------+  |
+|   |   | ~/Shared          <--   /Team        Download only    |  |
+|   |   +------------------------------------------------------+  |
+|   |                                                          |   |
+|   |                                      [Remove Account]    |   |
+|   +=========================================================+   |
 |                                                                  |
-|   [ Add Account ]                                                |
+|   +=========================================================+   |
+|   | # OneDrive                                 * Connected   |   |
+|   |   user@outlook.com                                       |   |
+|   |                                                          |   |
+|   |   Syncing 1 folder:                                      |   |
+|   |   +------------------------------------------------------+  |
+|   |   | ~/Work            <->   root             Two-way     |  |
+|   |   +------------------------------------------------------+  |
+|   |                                                          |   |
+|   |                                      [Remove Account]    |   |
+|   +=========================================================+   |
+|                                                                  |
+|   +=========================================================+   |
+|   | # Nextcloud                                o Disconnected|   |
+|   |   user@cloud.example.com                                 |   |
+|   |                                                          |   |
+|   |   No sync folders configured for this account.           |   |
+|   |                                                          |   |
+|   |                                      [Remove Account]    |   |
+|   +=========================================================+   |
+|                                                                  |
+|   [ Google Drive v ]  [ Add Account ]                            |
 |                                                                  |
 +-----------------------------------------------------------------+
 ```
+
+Each card shows:
+- **Provider name** with a colored dot (blue for Google, purple for Dropbox, etc.)
+- **Connection status badge** (`* Connected` in green, `o Disconnected` in grey)
+- **Account email**
+- **Folder summary** with directional arrows:
+  - `<->` = Two-way sync
+  - `-->` = Upload only (local to cloud)
+  - `<--` = Download only (cloud to local)
+- **Remove button** at bottom-right
 
 ### No Accounts
 
@@ -253,8 +306,7 @@ Multi-provider cloud account management.
 |                                                                  |
 |   No accounts configured. Add a cloud account to start syncing.  |
 |                                                                  |
-|   Provider: [ Google Drive v ]                                   |
-|   [ Add Account ]                                                |
+|   [ Google Drive v ]  [ Add Account ]                            |
 |                                                                  |
 +-----------------------------------------------------------------+
 ```
@@ -266,10 +318,10 @@ Multi-provider cloud account management.
 |                                                                  |
 |   Cloud Accounts                                                 |
 |                                                                  |
-|   ...existing accounts...                                        |
+|   ...existing account cards...                                   |
 |                                                                  |
-|   [ Waiting for browser... ]                                     |
-|    (disabled)                                                    |
+|   [ Google Drive v ]  [ Waiting for browser... ]                 |
+|                        (disabled)                                |
 |                                                                  |
 |   A browser window should open for sign-in. Complete the         |
 |   authorization there, then return here.                         |
