@@ -47,6 +47,8 @@ pub struct SyncPair {
     pub enabled: bool,
     pub sync_mode: String,
     pub ignore_hidden: Option<bool>,
+    pub ignore_patterns: Option<Vec<String>>,
+    pub account_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -287,6 +289,25 @@ pub async fn set_ignore_hidden(
 }
 
 #[tauri::command]
+pub async fn set_ignore_patterns(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+    patterns: Vec<String>,
+) -> Result<(), String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "set_ignore_patterns",
+            Some(json!({
+                "pair_id": pair_id,
+                "patterns": patterns
+            })),
+        )
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn list_remote_folders(
     bridge: State<'_, BridgeState>,
     parent_id: String,
@@ -298,4 +319,28 @@ pub async fn list_remote_folders(
             Some(serde_json::json!({ "parent_id": parent_id })),
         )
         .await
+}
+
+#[tauri::command]
+pub async fn add_account(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("add_account", None).await
+}
+
+#[tauri::command]
+pub async fn remove_account(
+    bridge: State<'_, BridgeState>,
+    email: String,
+) -> Result<(), String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call("remove_account", Some(json!({ "email": email })))
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_accounts(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("list_accounts", None).await
 }

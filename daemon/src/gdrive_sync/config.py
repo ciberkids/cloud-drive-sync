@@ -15,6 +15,13 @@ log = get_logger("config")
 
 
 @dataclass
+class Account:
+    """A registered Google account."""
+    email: str = ""
+    display_name: str = ""
+
+
+@dataclass
 class SyncPair:
     """A local <-> remote folder mapping."""
 
@@ -23,6 +30,8 @@ class SyncPair:
     enabled: bool = True
     sync_mode: str = "two_way"  # "two_way", "upload_only", "download_only"
     ignore_hidden: bool = True
+    ignore_patterns: list[str] = field(default_factory=list)
+    account_id: str = ""
 
 
 @dataclass
@@ -49,6 +58,7 @@ class Config:
 
     general: GeneralConfig = field(default_factory=GeneralConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
+    accounts: list[Account] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
@@ -84,6 +94,17 @@ class Config:
                     enabled=pair_data.get("enabled", True),
                     sync_mode=pair_data.get("sync_mode", "two_way"),
                     ignore_hidden=pair_data.get("ignore_hidden", True),
+                    ignore_patterns=pair_data.get("ignore_patterns", []),
+                    account_id=pair_data.get("account_id", ""),
+                )
+            )
+
+        # Accounts
+        for acct_data in data.get("accounts", []):
+            cfg.accounts.append(
+                Account(
+                    email=acct_data.get("email", ""),
+                    display_name=acct_data.get("display_name", ""),
                 )
             )
 
@@ -110,10 +131,19 @@ class Config:
                         "enabled": p.enabled,
                         "sync_mode": p.sync_mode,
                         "ignore_hidden": p.ignore_hidden,
+                        "ignore_patterns": p.ignore_patterns,
+                        "account_id": p.account_id,
                     }
                     for p in self.sync.pairs
                 ],
             },
+            "accounts": [
+                {
+                    "email": a.email,
+                    "display_name": a.display_name,
+                }
+                for a in self.accounts
+            ],
         }
 
         with open(path, "wb") as f:

@@ -14,7 +14,7 @@ from gdrive_sync.drive.changes import ChangePoller, RemoteChange
 from gdrive_sync.drive.client import DriveClient
 from gdrive_sync.drive.operations import FileOperations
 from gdrive_sync.local.hasher import md5_hash
-from gdrive_sync.local.scanner import scan_directory
+from gdrive_sync.local.scanner import scan_directory, load_ignore_file, DEFAULT_IGNORE_PATTERNS
 from gdrive_sync.local.watcher import DirectoryWatcher, LocalChange, ChangeType
 from gdrive_sync.sync.conflict import ConflictResolver
 from gdrive_sync.sync.executor import SyncExecutor
@@ -43,6 +43,7 @@ class PairStatus:
     errors: list[str] = field(default_factory=list)
     watcher: DirectoryWatcher | None = None
     executor: SyncExecutor | None = None
+    poller: ChangePoller | None = None
 
 
 class SyncEngine:
@@ -52,16 +53,18 @@ class SyncEngine:
         self,
         config: Config,
         db: Database,
-        drive_client: DriveClient,
+        drive_client: DriveClient | None = None,
         *,
+        clients: dict[str, DriveClient] | None = None,
         file_ops: FileOperations | None = None,
         change_poller: ChangePoller | None = None,
     ) -> None:
         self._config = config
         self._db = db
         self._client = drive_client
-        self._ops = file_ops or FileOperations(drive_client)
-        self._poller = change_poller or ChangePoller(drive_client)
+        self._clients = clients or {}
+        self._ops = file_ops or (FileOperations(drive_client) if drive_client else None)
+        self._poller = change_poller or (ChangePoller(drive_client) if drive_client else None)
         self._conflict_resolver = ConflictResolver(config.sync.conflict_strategy)
         self._pairs: dict[str, PairStatus] = {}
         self._stop_event = asyncio.Event()
@@ -117,20 +120,35 @@ class SyncEngine:
             log.error("Local path %s does not exist, skipping pair %s", local_root, pair_id)
             return
 
+        # Resolve the client for this pair
+        client = self._clients.get(pair.account_id) if pair.account_id else self._client
+        if client is None:
+            log.error("No client for account %s, skipping pair %s", pair.account_id, pair_id)
+            return
+
+        # Per-pair operations and poller (use injected ones if available, e.g. in tests)
+        ops = self._ops or FileOperations(client)
+        poller = self._poller or ChangePoller(client)
+
         executor = SyncExecutor(
-            self._ops,
+            ops,
             self._db,
             local_root,
             pair_id,
             remote_folder_id=pair.remote_folder_id,
             max_concurrent=self._config.sync.max_concurrent_transfers,
-            drive_client=self._client,
+            drive_client=client,
             notify_callback=self._notify_callback,
         )
+
+        # Merge ignore patterns
+        ignore_file_patterns = load_ignore_file(local_root)
+        merged_patterns = DEFAULT_IGNORE_PATTERNS + list(pair.ignore_patterns) + ignore_file_patterns
 
         watcher = DirectoryWatcher(
             local_root, debounce_delay=self._config.sync.debounce_delay,
             ignore_hidden=pair.ignore_hidden,
+            ignore_patterns=merged_patterns,
         )
 
         ps = PairStatus(
@@ -138,6 +156,7 @@ class SyncEngine:
             pair_id=pair_id,
             watcher=watcher,
             executor=executor,
+            poller=poller,
         )
         self._pairs[pair_id] = ps
 
@@ -163,10 +182,13 @@ class SyncEngine:
 
         try:
             # Scan local
-            local_files = await scan_directory(local_root, ignore_hidden=ps.pair.ignore_hidden)
+            ignore_file_patterns = load_ignore_file(local_root)
+            merged_patterns = DEFAULT_IGNORE_PATTERNS + list(ps.pair.ignore_patterns) + ignore_file_patterns
+            local_files = await scan_directory(local_root, ignore_patterns=merged_patterns, ignore_hidden=ps.pair.ignore_hidden)
 
-            # Scan remote
-            remote_files = await self._client.list_all_recursive(ps.pair.remote_folder_id)
+            # Scan remote — use the pair's client
+            pair_client = self._clients.get(ps.pair.account_id) if ps.pair.account_id else self._client
+            remote_files = await pair_client.list_all_recursive(ps.pair.remote_folder_id)
 
             # Plan
             actions = plan_initial_sync(local_files, remote_files)
@@ -261,7 +283,8 @@ class SyncEngine:
                 })
 
             # Get change token for future polling
-            token = await self._poller.get_start_page_token()
+            poller = ps.poller or self._poller
+            token = await poller.get_start_page_token()
             await self._db.upsert_change_token(
                 ChangeToken(pair_id=pair_id, token=token)
             )
@@ -348,6 +371,7 @@ class SyncEngine:
 
         token = ct.token
         interval = self._config.sync.poll_interval
+        poller = ps.poller or self._poller
 
         while not self._stop_event.is_set():
             if ps.paused:
@@ -355,7 +379,7 @@ class SyncEngine:
                 continue
 
             try:
-                changes, new_token = await self._poller.poll_changes(token)
+                changes, new_token = await poller.poll_changes(token)
                 token = new_token
                 await self._db.upsert_change_token(
                     ChangeToken(pair_id=ps.pair_id, token=new_token)

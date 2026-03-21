@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSyncPairs, useStatus } from "../lib/hooks";
 import { RemoteFolderBrowser } from "./RemoteFolderBrowser";
-import type { ConflictStrategy, SyncMode } from "../lib/types";
+import type { Account, ConflictStrategy, SyncMode } from "../lib/types";
 import * as ipc from "../lib/ipc";
 import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 
@@ -13,6 +13,12 @@ export function Settings() {
   useEffect(() => {
     getHomeDir().then((dir) => setHomeDir(dir)).catch(() => {});
   }, []);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
+  useEffect(() => {
+    ipc.listAccounts().then(setAccounts).catch(() => {});
+  }, []);
+
   const [conflictStrategy, setConflictStrategy] =
     useState<ConflictStrategy>("keep_both");
   const [saving, setSaving] = useState(false);
@@ -48,6 +54,39 @@ export function Settings() {
       refresh();
     } catch (e) {
       console.error("Failed to set sync mode:", e);
+    }
+  };
+
+  const [expandedIgnore, setExpandedIgnore] = useState<Set<string>>(new Set());
+  const [ignoreText, setIgnoreText] = useState<Record<string, string>>({});
+
+  const toggleIgnorePanel = (pairId: string, currentPatterns: string[]) => {
+    setExpandedIgnore((prev) => {
+      const next = new Set(prev);
+      if (next.has(pairId)) {
+        next.delete(pairId);
+      } else {
+        next.add(pairId);
+        setIgnoreText((t) => ({
+          ...t,
+          [pairId]: currentPatterns.join("\n"),
+        }));
+      }
+      return next;
+    });
+  };
+
+  const handleSaveIgnorePatterns = async (pairId: string) => {
+    const text = ignoreText[pairId] || "";
+    const patterns = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+    try {
+      await ipc.setIgnorePatterns(pairId, patterns);
+      refresh();
+    } catch (e) {
+      console.error("Failed to set ignore patterns:", e);
     }
   };
 
@@ -94,6 +133,21 @@ export function Settings() {
                   <option value="upload_only">Upload only</option>
                   <option value="download_only">Download only</option>
                 </select>
+                {accounts.length > 0 && (
+                  <select
+                    value={pair.account_id || ""}
+                    className="select account-select"
+                    disabled
+                    title="Account is set when adding a sync pair"
+                  >
+                    <option value="">Default account</option>
+                    {accounts.map((acct) => (
+                      <option key={acct.email} value={acct.email}>
+                        {acct.email}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
@@ -111,6 +165,35 @@ export function Settings() {
                 >
                   Remove
                 </button>
+              </div>
+              <div className="sync-pair-ignore">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => toggleIgnorePanel(pair.id, pair.ignore_patterns || [])}
+                  type="button"
+                >
+                  {expandedIgnore.has(pair.id) ? "Hide" : "Ignore Patterns"}
+                </button>
+                {expandedIgnore.has(pair.id) && (
+                  <div className="ignore-patterns-editor">
+                    <textarea
+                      className="ignore-patterns-textarea"
+                      placeholder="One pattern per line (e.g. *.log, node_modules, build/)"
+                      value={ignoreText[pair.id] || ""}
+                      onChange={(e) =>
+                        setIgnoreText((prev) => ({ ...prev, [pair.id]: e.target.value }))
+                      }
+                      rows={5}
+                    />
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleSaveIgnorePatterns(pair.id)}
+                      type="button"
+                    >
+                      Save Patterns
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

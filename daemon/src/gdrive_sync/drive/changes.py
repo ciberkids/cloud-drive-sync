@@ -36,7 +36,9 @@ class ChangePoller:
     @async_retry(max_retries=3, base_delay=2.0)
     async def get_start_page_token(self) -> str:
         """Get the initial change token to start polling from."""
-        request = self._client.service.changes().getStartPageToken()
+        request = self._client.service.changes().getStartPageToken(
+            supportsAllDrives=True,
+        )
         result = await self._client._execute(request)
         token = result["startPageToken"]
         log.debug("Got start page token: %s", token)
@@ -57,6 +59,8 @@ class ChangePoller:
                 pageToken=current_token,
                 spaces="drive",
                 includeRemoved=True,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
                 fields="nextPageToken, newStartPageToken, changes("
                 "fileId, removed, file(id, name, mimeType, md5Checksum, "
                 "modifiedTime, parents, trashed))",

@@ -53,6 +53,12 @@ def credentials_path() -> Path:
     return data_dir() / "credentials.enc"
 
 
+def account_credentials_path(account_id: str) -> Path:
+    """Return the path to stored OAuth credentials for a specific account."""
+    safe_id = account_id.replace("@", "_at_").replace(".", "_")
+    return data_dir() / f"credentials-{safe_id}.enc"
+
+
 def ensure_dirs() -> None:
     """Create all required directories if they don't exist."""
     config_dir().mkdir(parents=True, exist_ok=True)

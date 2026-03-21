@@ -59,3 +59,24 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+  cargo-check:
+    name: Tauri – Cargo Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/src-tauri
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Cargo check
+        run: cargo check --all-targets

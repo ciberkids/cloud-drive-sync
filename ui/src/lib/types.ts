@@ -38,6 +38,8 @@ export interface SyncPair {
   enabled: boolean;
   sync_mode: SyncMode;
   ignore_hidden: boolean;
+  ignore_patterns?: string[];
+  account_id?: string;
 }
 
 export interface ConflictRecord {
@@ -60,3 +62,9 @@ export interface LogEntry {
 }
 
 export type ConflictResolution = "keep_local" | "keep_remote" | "keep_both";
+
+export interface Account {
+  email: string;
+  display_name: string;
+  status: "connected" | "disconnected";
+}

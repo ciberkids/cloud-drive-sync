@@ -80,6 +80,7 @@ class FileOperations:
                 fileId=existing_id,
                 media_body=media,
                 fields="id, name, md5Checksum, modifiedTime",
+                supportsAllDrives=True,
             )
         else:
             metadata = {"name": name, "parents": [remote_parent]}
@@ -87,6 +88,7 @@ class FileOperations:
                 body=metadata,
                 media_body=media,
                 fields="id, name, md5Checksum, modifiedTime",
+                supportsAllDrives=True,
             )
 
         start_time = time.monotonic()
@@ -135,7 +137,7 @@ class FileOperations:
         log.info("Downloading %s -> %s", remote_id, local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        request = self._client.service.files().get_media(fileId=remote_id)
+        request = self._client.service.files().get_media(fileId=remote_id, supportsAllDrives=True)
 
         start_time = time.monotonic()
         loop = asyncio.get_running_loop()

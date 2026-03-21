@@ -49,6 +49,10 @@ class RequestHandler:
             "list_remote_folders": self._list_remote_folders,
             "set_sync_mode": self._set_sync_mode,
             "set_ignore_hidden": self._set_ignore_hidden,
+            "set_ignore_patterns": self._set_ignore_patterns,
+            "add_account": self._add_account,
+            "remove_account": self._remove_account,
+            "list_accounts": self._list_accounts,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -183,6 +187,8 @@ class RequestHandler:
                 "enabled": p.enabled,
                 "sync_mode": p.sync_mode,
                 "ignore_hidden": p.ignore_hidden,
+                "ignore_patterns": p.ignore_patterns,
+                "account_id": p.account_id,
             }
             for i, p in enumerate(self._config.sync.pairs)
         ]
@@ -211,6 +217,8 @@ class RequestHandler:
             remote_folder_id=remote_folder_id,
             enabled=True,
             ignore_hidden=ignore_hidden,
+            ignore_patterns=params.get("ignore_patterns", []),
+            account_id=params.get("account_id", ""),
         )
         self._config.sync.pairs.append(pair)
         self._config.save()
@@ -222,6 +230,8 @@ class RequestHandler:
             "enabled": True,
             "sync_mode": "two_way",
             "ignore_hidden": ignore_hidden,
+            "ignore_patterns": pair.ignore_patterns,
+            "account_id": pair.account_id,
         }
 
     async def _remove_sync_pair(self, params: dict) -> dict:
@@ -389,10 +399,18 @@ class RequestHandler:
     async def _list_remote_folders(self, params: dict) -> dict:
         """List folders in a given parent folder on Google Drive."""
         if self._engine is None and self._drive_client is None:
-            return {"folders": [], "error": "Not authenticated"}
+            return {"folders": [], "shared_drives": [], "error": "Not authenticated"}
 
-        client = self._drive_client or self._engine._client
         params = params or {}
+        account_id = params.get("account_id", "")
+        if account_id and self._engine and account_id in self._engine._clients:
+            client = self._engine._clients[account_id]
+        elif self._drive_client:
+            client = self._drive_client
+        elif self._engine:
+            client = self._engine._client
+        else:
+            return {"folders": [], "shared_drives": [], "error": "Not authenticated"}
         parent_id = params.get("parent_id", "root")
 
         try:
@@ -403,10 +421,24 @@ class RequestHandler:
                 for f in result.get("files", [])
             ]
             folders.sort(key=lambda f: f["name"].lower())
-            return {"folders": folders, "parent_id": parent_id}
+
+            # Include shared drives when browsing root
+            shared_drives = []
+            if parent_id == "root":
+                try:
+                    drives = await client.list_shared_drives()
+                    shared_drives = [
+                        {"id": d["id"], "name": d["name"]}
+                        for d in drives
+                    ]
+                    shared_drives.sort(key=lambda d: d["name"].lower())
+                except Exception as exc:
+                    log.warning("Failed to list shared drives: %s", exc)
+
+            return {"folders": folders, "shared_drives": shared_drives, "parent_id": parent_id}
         except Exception as exc:
             log.error("Failed to list remote folders: %s", exc)
-            return {"folders": [], "error": str(exc)}
+            return {"folders": [], "shared_drives": [], "error": str(exc)}
 
     async def _set_sync_mode(self, params: dict) -> dict:
         """Change the sync mode for a given pair."""
@@ -441,6 +473,81 @@ class RequestHandler:
         self._config.sync.pairs[index].ignore_hidden = ignore_hidden
         self._config.save()
         return {"status": "ok", "ignore_hidden": ignore_hidden}
+
+    async def _set_ignore_patterns(self, params: dict) -> dict:
+        """Set custom ignore patterns for a sync pair."""
+        params = params or {}
+        pair_id = params.get("pair_id")
+        patterns = params.get("patterns")
+        if pair_id is None or patterns is None:
+            raise TypeError("pair_id and patterns are required")
+        if not isinstance(patterns, list):
+            raise TypeError("patterns must be a list of strings")
+        try:
+            index = int(pair_id)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id")
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+        self._config.sync.pairs[index].ignore_patterns = patterns
+        self._config.save()
+        return {"status": "ok", "ignore_patterns": patterns}
+
+    async def _add_account(self, params: dict) -> dict:
+        """Trigger OAuth flow to add a new account."""
+        if self._auth_callback:
+            import asyncio
+            try:
+                result = await asyncio.to_thread(self._auth_callback)
+                if isinstance(result, dict):
+                    return result
+                return {"status": "ok"}
+            except Exception as exc:
+                return {"status": "error", "message": str(exc)}
+        return {"status": "no_auth_callback"}
+
+    async def _remove_account(self, params: dict) -> dict:
+        """Remove a registered account and its credentials."""
+        params = params or {}
+        email = params.get("email")
+        if not email:
+            raise TypeError("email is required")
+
+        # Remove from config
+        self._config.accounts = [a for a in self._config.accounts if a.email != email]
+
+        # Remove account_id from pairs using this account
+        for pair in self._config.sync.pairs:
+            if pair.account_id == email:
+                pair.account_id = ""
+
+        self._config.save()
+
+        # Delete credential file
+        from gdrive_sync.util.paths import account_credentials_path
+        cred_path = account_credentials_path(email)
+        if cred_path.exists():
+            cred_path.unlink()
+
+        # Remove client from engine
+        if self._engine and email in self._engine._clients:
+            del self._engine._clients[email]
+
+        return {"status": "ok", "email": email}
+
+    async def _list_accounts(self, params: dict) -> list[dict]:
+        """List all registered accounts."""
+        accounts = []
+        for acct in self._config.accounts:
+            has_client = (
+                self._engine is not None and acct.email in self._engine._clients
+            )
+            accounts.append({
+                "email": acct.email,
+                "display_name": acct.display_name,
+                "status": "connected" if has_client else "disconnected",
+            })
+        return accounts
 
     async def _logout(self, params: dict) -> dict:
         from gdrive_sync.util.paths import credentials_path, data_dir

@@ -34,7 +34,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon(tray_icon)
         .tooltip("GDrive Sync")
         .menu(&menu)
-        .menu_on_left_click(false)
+        .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => {
                 if let Some(window) = app.get_webview_window("main") {
@@ -78,5 +78,25 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
     if let Some(tray) = app.tray_by_id("main") {
         let tooltip = format!("GDrive Sync - {}", status);
         let _ = tray.set_tooltip(Some(&tooltip));
+
+        // Select icon based on status
+        let icon_bytes: &[u8] = match status.to_lowercase().as_str() {
+            s if s.contains("syncing") || s.contains("sync") && !s.contains("idle") => {
+                include_bytes!("../icons/icon-syncing.png")
+            }
+            s if s.contains("error") || s.contains("offline") || s.contains("failed") => {
+                include_bytes!("../icons/icon-error.png")
+            }
+            s if s.contains("conflict") => {
+                include_bytes!("../icons/icon-conflict.png")
+            }
+            _ => {
+                include_bytes!("../icons/icon-idle.png")
+            }
+        };
+
+        if let Ok(icon) = Image::from_bytes(icon_bytes) {
+            let _ = tray.set_icon(Some(icon));
+        }
     }
 }

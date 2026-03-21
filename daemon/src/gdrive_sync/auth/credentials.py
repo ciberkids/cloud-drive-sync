@@ -124,6 +124,20 @@ def load_credentials(
     return creds
 
 
+def save_account_credentials(creds: Credentials, account_id: str, path: Path | None = None) -> None:
+    """Encrypt and persist credentials for a specific account."""
+    from gdrive_sync.util.paths import account_credentials_path
+    path = path or account_credentials_path(account_id)
+    save_credentials(creds, path)
+
+
+def load_account_credentials(account_id: str, on_refresh: callable | None = None) -> Credentials | None:
+    """Load and decrypt credentials for a specific account."""
+    from gdrive_sync.util.paths import account_credentials_path
+    path = account_credentials_path(account_id)
+    return load_credentials(path, on_refresh=on_refresh)
+
+
 def get_credentials(path: Path | None = None) -> Credentials:
     """Load existing credentials or run the OAuth flow.
 

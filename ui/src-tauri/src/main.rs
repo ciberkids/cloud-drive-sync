@@ -39,7 +39,11 @@ fn main() {
             commands::connect_daemon,
             commands::set_sync_mode,
             commands::set_ignore_hidden,
+            commands::set_ignore_patterns,
             commands::list_remote_folders,
+            commands::add_account,
+            commands::remove_account,
+            commands::list_accounts,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -89,9 +93,19 @@ fn main() {
 
                     // Update tray based on notifications
                     match method.as_str() {
-                        "sync_progress" | "status_changed" => {
+                        "sync_progress" => {
+                            tray::update_tray_status(&event_handle, "Syncing");
+                        }
+                        "status_changed" => {
                             if let Some(status) = params.get("status").and_then(|s| s.as_str()) {
-                                tray::update_tray_status(&event_handle, status);
+                                let display = match status {
+                                    "idle" => "Connected",
+                                    "syncing" | "in_progress" => "Syncing",
+                                    "error" => "Error",
+                                    "paused" => "Paused",
+                                    _ => status,
+                                };
+                                tray::update_tray_status(&event_handle, display);
                             }
                         }
                         "conflict_detected" => {

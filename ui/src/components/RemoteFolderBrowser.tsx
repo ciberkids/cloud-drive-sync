@@ -11,16 +11,19 @@ interface RemoteFolderBrowserProps {
   authenticated: boolean;
   onAddPair: (remoteFolderId: string, localPath: string) => void;
   existingRemoteIds: Set<string>;
+  accountId?: string;
 }
 
 export function RemoteFolderBrowser({
   authenticated,
   onAddPair,
   existingRemoteIds,
+  accountId: _accountId,
 }: RemoteFolderBrowserProps) {
   const [folders, setFolders] = useState<Array<{ id: string; name: string }>>(
     []
   );
+  const [sharedDrives, setSharedDrives] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([
@@ -42,12 +45,15 @@ export function RemoteFolderBrowser({
       if (result.error) {
         setError(result.error);
         setFolders([]);
+        setSharedDrives([]);
       } else {
         setFolders(result.folders);
+        setSharedDrives(result.shared_drives || []);
       }
     } catch (e) {
       setError(String(e));
       setFolders([]);
+      setSharedDrives([]);
     } finally {
       setLoading(false);
     }
@@ -59,6 +65,12 @@ export function RemoteFolderBrowser({
       loadFolders("root");
     }
   }, [authenticated, loadFolders]);
+
+  const handleNavigateSharedDrive = async (drive: { id: string; name: string }) => {
+    setBreadcrumbs([{ id: "root", name: "My Drive" }, { id: drive.id, name: drive.name }]);
+    setSyncTarget(null);
+    await loadFolders(drive.id);
+  };
 
   const handleNavigate = async (folder: { id: string; name: string }) => {
     setBreadcrumbs((prev) => [...prev, folder]);
@@ -184,6 +196,36 @@ export function RemoteFolderBrowser({
               </div>
             );
           })}
+        {!loading && !error && sharedDrives.length > 0 && breadcrumbs.length === 1 && (
+          <>
+            <div className="remote-browser-section-header">Shared Drives</div>
+            {sharedDrives.map((drive) => {
+              const synced = existingRemoteIds.has(drive.id);
+              return (
+                <div key={drive.id} className="remote-browser-folder-row">
+                  <button
+                    className="remote-picker-folder"
+                    onClick={() => handleNavigateSharedDrive(drive)}
+                    type="button"
+                  >
+                    <span className="remote-picker-folder-icon">{"\uD83C\uDFE2"}</span>
+                    <span className="remote-picker-folder-name">
+                      {drive.name}
+                    </span>
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => handleSyncClick(drive)}
+                    disabled={synced}
+                    type="button"
+                  >
+                    {synced ? "Synced" : "+"}
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {syncTarget && (

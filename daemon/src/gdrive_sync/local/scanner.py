@@ -45,6 +45,19 @@ def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
     return False
 
 
+def load_ignore_file(root: Path) -> list[str]:
+    """Load ignore patterns from .gdrive-sync-ignore file."""
+    ignore_file = root / ".gdrive-sync-ignore"
+    if not ignore_file.is_file():
+        return []
+    patterns = []
+    for line in ignore_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+    return patterns
+
+
 def _is_hidden(rel_path: str) -> bool:
     """Check if any path component starts with a dot."""
     return any(part.startswith(".") for part in Path(rel_path).parts)

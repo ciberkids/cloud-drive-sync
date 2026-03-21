@@ -7,7 +7,7 @@ import os
 import signal
 from pathlib import Path
 
-from gdrive_sync.config import Config, SyncPair
+from gdrive_sync.config import Account, Config, SyncPair
 from gdrive_sync.db.database import Database
 from gdrive_sync.ipc.handlers import RequestHandler
 from gdrive_sync.ipc.server import IpcServer
@@ -67,37 +67,61 @@ class Daemon:
 
             if self._demo:
                 client, file_ops, change_poller = await self._setup_demo()
+                clients = {"": client} if client else {}
             else:
-                from gdrive_sync.auth.credentials import load_credentials
+                from gdrive_sync.auth.credentials import load_account_credentials, load_credentials
                 from gdrive_sync.drive.client import DriveClient
 
-                token_refreshed = False
+                client = None
+                file_ops = None
+                change_poller = None
+                clients: dict[str, DriveClient] = {}
 
-                def _on_token_refresh():
-                    nonlocal token_refreshed
-                    token_refreshed = True
+                # Migration: if old single credentials.enc exists but no accounts configured
+                from gdrive_sync.util.paths import credentials_path
+                old_creds_path = credentials_path()
+                if old_creds_path.exists() and not self._config.accounts:
+                    log.info("Migrating single-account credentials to multi-account format")
+                    creds = load_credentials()
+                    if creds and creds.valid:
+                        try:
+                            from gdrive_sync.auth.credentials import save_account_credentials
 
-                creds = load_credentials(on_refresh=_on_token_refresh)
-                if creds and creds.valid:
-                    log.info("Loaded existing credentials")
-                    if token_refreshed:
-                        from gdrive_sync.db.models import SyncLogEntry
+                            temp_client = DriveClient(creds)
+                            about = await temp_client.get_about()
+                            email = about.get("user", {}).get("emailAddress", "unknown")
 
-                        await self._db.add_log_entry(SyncLogEntry(
-                            action="auth",
-                            path="",
-                            pair_id="_system",
-                            status="success",
-                            detail="Token refreshed",
-                        ))
-                    client = DriveClient(creds)
-                    file_ops = None
-                    change_poller = None
-                else:
-                    log.info("No valid credentials, waiting for authentication via UI")
-                    client = None
-                    file_ops = None
-                    change_poller = None
+                            save_account_credentials(creds, email)
+                            self._config.accounts.append(Account(email=email, display_name=email))
+
+                            for pair in self._config.sync.pairs:
+                                if not pair.account_id:
+                                    pair.account_id = email
+
+                            self._config.save()
+                            log.info("Migration complete: account=%s", email)
+                        except Exception as exc:
+                            log.warning("Migration failed, keeping legacy mode: %s", exc)
+
+                # Load per-account credentials
+                for account in self._config.accounts:
+                    acct_creds = load_account_credentials(account.email)
+                    if acct_creds and acct_creds.valid:
+                        clients[account.email] = DriveClient(acct_creds)
+                        log.info("Loaded credentials for %s", account.email)
+                    else:
+                        log.warning("No valid credentials for %s", account.email)
+
+                # Legacy: if no accounts configured but old credentials exist
+                if not self._config.accounts:
+                    creds = load_credentials()
+                    if creds and creds.valid:
+                        log.info("Loaded existing legacy credentials")
+                        client = DriveClient(creds)
+                        clients[""] = client
+
+                if clients:
+                    client = next(iter(clients.values()))
 
             # Initialize sync engine only if we have a client
             if client is not None:
@@ -105,6 +129,7 @@ class Daemon:
                     self._config,
                     self._db,
                     client,
+                    clients=clients,
                     file_ops=file_ops,
                     change_poller=change_poller,
                 )
@@ -208,7 +233,7 @@ class Daemon:
             log.info("Auth skipped in demo mode")
             return {"status": "ok", "message": "Demo mode — no real auth needed"}
 
-        from gdrive_sync.auth.credentials import save_credentials
+        from gdrive_sync.auth.credentials import save_account_credentials, save_credentials
         from gdrive_sync.auth.oauth import run_oauth_flow
 
         # Log auth started
@@ -222,15 +247,36 @@ class Daemon:
             # Log auth success
             self._log_auth_event("auth", "Authentication successful", "success")
 
+            from gdrive_sync.drive.client import DriveClient
+            client = DriveClient(creds)
+
+            # Fetch account email for multi-account support
+            import asyncio
+            loop = asyncio.get_event_loop()
+
+            async def _get_email():
+                about = await client.get_about()
+                return about.get("user", {}).get("emailAddress", "unknown")
+
+            future = asyncio.run_coroutine_threadsafe(_get_email(), loop)
+            email = future.result(timeout=30)
+
+            # Save per-account credentials
+            save_account_credentials(creds, email)
+
+            # Add account to config if not exists
+            if not any(a.email == email for a in self._config.accounts):
+                self._config.accounts.append(Account(email=email, display_name=email))
+                self._config.save()
+
             # If engine wasn't started yet (first auth), initialize it now
             if self._engine is None and self._db is not None:
-                from gdrive_sync.drive.client import DriveClient
-
-                client = DriveClient(creds)
+                clients = {email: client}
                 self._engine = SyncEngine(
                     self._config,
                     self._db,
                     client,
+                    clients=clients,
                 )
                 # Update the handler with the new engine and client
                 self._handler.set_engine(self._engine)
@@ -240,23 +286,17 @@ class Daemon:
                     self._engine.set_notify_callback(self._ipc_server.notify_all)
 
                 # Schedule engine start on the event loop
-                import asyncio
-                loop = asyncio.get_event_loop()
                 loop.call_soon_threadsafe(
                     lambda: asyncio.ensure_future(self._engine.start())
                 )
                 log.info("Sync engine initialized after authentication")
 
             elif self._engine is not None:
-                # Re-auth: rebuild client with fresh credentials and restart engine
-                from gdrive_sync.drive.client import DriveClient
-                from gdrive_sync.drive.changes import ChangePoller
-                from gdrive_sync.drive.operations import FileOperations
-
-                import asyncio
-
-                client = DriveClient(creds)
+                # Add client to engine's clients dict
+                self._engine._clients[email] = client
                 self._engine._client = client
+                from gdrive_sync.drive.operations import FileOperations
+                from gdrive_sync.drive.changes import ChangePoller
                 self._engine._ops = FileOperations(client)
                 self._engine._poller = ChangePoller(client)
 
@@ -270,11 +310,10 @@ class Daemon:
                 self._handler.set_drive_client(client)
 
                 # Restart the engine to re-run initial sync with new creds
-                loop = asyncio.get_event_loop()
                 loop.call_soon_threadsafe(
                     lambda: asyncio.ensure_future(self._restart_engine())
                 )
-                log.info("Credentials refreshed, engine restarted")
+                log.info("Credentials refreshed for %s, engine restarted", email)
 
             return {"status": "ok"}
 

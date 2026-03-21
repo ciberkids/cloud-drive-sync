@@ -58,13 +58,15 @@ class DriveClient:
             pageSize=page_size,
             fields=f"nextPageToken, files({FIELDS_FILE})",
             pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
         )
         return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def get_file(self, file_id: str) -> dict[str, Any]:
         """Get metadata for a single file."""
-        request = self._service.files().get(fileId=file_id, fields=FIELDS_FILE)
+        request = self._service.files().get(fileId=file_id, fields=FIELDS_FILE, supportsAllDrives=True)
         return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
@@ -80,7 +82,7 @@ class DriveClient:
         metadata: dict[str, Any] = {"name": name, "parents": [parent_id]}
         if is_folder:
             metadata["mimeType"] = "application/vnd.google-apps.folder"
-            request = self._service.files().create(body=metadata, fields=FIELDS_FILE)
+            request = self._service.files().create(body=metadata, fields=FIELDS_FILE, supportsAllDrives=True)
         else:
             media = None
             if content_path:
@@ -90,7 +92,7 @@ class DriveClient:
                     resumable=True,
                 )
             request = self._service.files().create(
-                body=metadata, media_body=media, fields=FIELDS_FILE
+                body=metadata, media_body=media, fields=FIELDS_FILE, supportsAllDrives=True
             )
         return await self._execute(request)
 
@@ -116,21 +118,23 @@ class DriveClient:
             )
 
         request = self._service.files().update(
-            fileId=file_id, body=body if body else None, media_body=media, fields=FIELDS_FILE
+            fileId=file_id, body=body if body else None, media_body=media, fields=FIELDS_FILE,
+            supportsAllDrives=True,
         )
         return await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         """Permanently delete a file (bypass trash)."""
-        request = self._service.files().delete(fileId=file_id)
+        request = self._service.files().delete(fileId=file_id, supportsAllDrives=True)
         await self._execute(request)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def trash_file(self, file_id: str) -> dict[str, Any]:
         """Move a file to trash."""
         request = self._service.files().update(
-            fileId=file_id, body={"trashed": True}, fields=FIELDS_FILE
+            fileId=file_id, body={"trashed": True}, fields=FIELDS_FILE,
+            supportsAllDrives=True,
         )
         return await self._execute(request)
 
@@ -158,6 +162,24 @@ class DriveClient:
         """Get storage quota and user info."""
         request = self._service.about().get(fields="user, storageQuota")
         return await self._execute(request)
+
+    @async_retry(max_retries=3, base_delay=1.0)
+    async def list_shared_drives(self) -> list[dict[str, Any]]:
+        """List all Shared Drives the user has access to."""
+        all_drives: list[dict[str, Any]] = []
+        page_token = None
+        while True:
+            request = self._service.drives().list(
+                pageSize=100,
+                fields="nextPageToken, drives(id, name)",
+                pageToken=page_token,
+            )
+            result = await self._execute(request)
+            all_drives.extend(result.get("drives", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+        return all_drives
 
     async def list_all_files(self, folder_id: str = "root") -> list[dict[str, Any]]:
         """List all files in a folder, handling pagination."""

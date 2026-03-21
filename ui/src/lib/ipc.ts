@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  Account,
   DaemonStatus,
   SyncPair,
   ConflictRecord,
@@ -91,10 +92,30 @@ export async function setIgnoreHidden(
   return invoke("set_ignore_hidden", { pairId, ignoreHidden });
 }
 
+export async function setIgnorePatterns(
+  pairId: string,
+  patterns: string[]
+): Promise<void> {
+  return invoke("set_ignore_patterns", { pairId, patterns });
+}
+
+export async function addAccount(): Promise<unknown> {
+  return invoke("add_account");
+}
+
+export async function removeAccount(email: string): Promise<void> {
+  return invoke("remove_account", { email });
+}
+
+export async function listAccounts(): Promise<Account[]> {
+  return invoke<Account[]>("list_accounts");
+}
+
 export async function listRemoteFolders(
   parentId: string
 ): Promise<{
   folders: Array<{ id: string; name: string }>;
+  shared_drives?: Array<{ id: string; name: string }>;
   parent_id: string;
   error?: string;
 }> {
