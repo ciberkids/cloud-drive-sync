@@ -434,7 +434,9 @@ async def test_executor_mkdir_no_remote_info(executor: SyncExecutor, db: Databas
     entry = await db.get_sync_entry("local_only_dir", "pair_0")
     assert entry is not None
     assert entry.state == FileState.SYNCED
-    assert entry.remote_id is None
+    # When a drive client is available, the executor creates the remote
+    # directory via _ensure_remote_dirs, so remote_id will be set.
+    assert entry.remote_id is not None
 
 
 @pytest.mark.asyncio

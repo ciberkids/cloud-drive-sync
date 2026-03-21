@@ -430,7 +430,7 @@ class MockFileOperations:
         remote_id: str,
         local_path: Path,
         progress_callback=None,
-    ) -> Path:
+    ) -> tuple[Path, float, int, float]:
         meta = await self._client.get_file(remote_id)
         remote_file = Path(meta.get("_local_path", ""))
 
@@ -441,8 +441,9 @@ class MockFileOperations:
         else:
             local_path.touch()
 
+        size = local_path.stat().st_size if local_path.exists() else 0
         log.info("Mock download: %s -> %s", remote_id, local_path)
-        return local_path
+        return local_path, 0.0, size, 0.0
 
     async def delete_remote(self, remote_id: str, trash: bool = True) -> None:
         if trash:

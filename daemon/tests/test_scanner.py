@@ -133,8 +133,11 @@ async def test_scan_skips_directories(tmp_path: Path):
     (sub / "file.txt").write_text("data")
 
     result = await scan_directory(tmp_path)
-    # Only files should be in results, not directories
-    assert all(not (tmp_path / p).is_dir() for p in result)
+    # Directories are included (with is_dir=True) for planner matching;
+    # verify they are correctly flagged and files are not.
+    assert "subdir" in result
+    assert result["subdir"].is_dir is True
+    assert result["subdir/file.txt"].is_dir is False
 
 
 @pytest.mark.asyncio

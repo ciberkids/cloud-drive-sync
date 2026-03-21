@@ -211,6 +211,13 @@ async def test_active_transfers_reflects_executor(db: Database, config: Config):
             "errors": [],
         },
     }
+    # get_active_transfers returns the live transfer list;
+    # active_transfers count is derived from its length.
+    engine.get_active_transfers.return_value = [
+        {"pair_id": "pair_0", "path": "a.txt"},
+        {"pair_id": "pair_0", "path": "b.txt"},
+        {"pair_id": "pair_0", "path": "c.txt"},
+    ]
 
     handler = RequestHandler(engine=engine, config=config)
     handler.set_db(db)
@@ -219,5 +226,4 @@ async def test_active_transfers_reflects_executor(db: Database, config: Config):
     resp = await handler.handle(req)
 
     assert resp.error is None
-    # This one should pass since active_transfers IS read from engine status
     assert resp.result["active_transfers"] == 3
