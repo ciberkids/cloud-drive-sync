@@ -18,7 +18,8 @@ export interface LiveTransfer {
 }
 
 export interface DaemonStatus {
-  connected: boolean;
+  connected: boolean;       // cloud account authenticated
+  daemon_reachable: boolean; // socket connection to daemon works
   syncing: boolean;
   paused: boolean;
   error: string | null;

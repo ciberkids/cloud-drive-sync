@@ -10,6 +10,7 @@ import * as ipc from "./ipc";
 
 const DEFAULT_STATUS: DaemonStatus = {
   connected: false,
+  daemon_reachable: false,
   syncing: false,
   paused: false,
   error: null,
@@ -29,10 +30,10 @@ export function useStatus(pollIntervalMs = 5000): DaemonStatus {
     const poll = async () => {
       try {
         const s = await ipc.getStatus();
-        if (!cancelled) setStatus(s);
+        if (!cancelled) setStatus({ ...s, daemon_reachable: true });
       } catch {
         if (!cancelled)
-          setStatus((prev) => ({ ...prev, connected: false }));
+          setStatus((prev) => ({ ...prev, connected: false, daemon_reachable: false }));
       }
     };
 

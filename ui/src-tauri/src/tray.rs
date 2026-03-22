@@ -5,7 +5,35 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
+/// Ensure tray icon files exist on disk (appindicator on Linux needs file paths).
+fn ensure_tray_icons() -> std::path::PathBuf {
+    let icon_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("cloud-drive-sync")
+        .join("tray-icons");
+    let _ = std::fs::create_dir_all(&icon_dir);
+
+    let icons: &[(&str, &[u8])] = &[
+        ("tray-idle.png", include_bytes!("../icons/tray-idle.png")),
+        ("tray-syncing.png", include_bytes!("../icons/tray-syncing.png")),
+        ("tray-error.png", include_bytes!("../icons/tray-error.png")),
+        ("tray-conflict.png", include_bytes!("../icons/tray-conflict.png")),
+    ];
+
+    for (name, data) in icons {
+        let path = icon_dir.join(name);
+        if !path.exists() {
+            let _ = std::fs::write(&path, data);
+        }
+    }
+
+    icon_dir
+}
+
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // Write icons to disk for appindicator compatibility
+    let _icon_dir = ensure_tray_icons();
+
     let status_i = MenuItem::with_id(app, "status", "Status: Connecting...", false, None::<&str>)?;
     let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
     let open_i = MenuItem::with_id(app, "open", "Open Settings", true, None::<&str>)?;
@@ -27,7 +55,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
-    let tray_icon = Image::from_bytes(include_bytes!("../icons/icon-idle.png"))
+    let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
         .expect("Failed to load tray icon");
 
     let _tray = TrayIconBuilder::with_id("main")
@@ -80,22 +108,39 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
         let _ = tray.set_tooltip(Some(&tooltip));
 
         // Select icon based on status
-        let icon_bytes: &[u8] = match status.to_lowercase().as_str() {
-            s if s.contains("syncing") || s.contains("sync") && !s.contains("idle") => {
-                include_bytes!("../icons/icon-syncing.png")
+        let icon_name = match status.to_lowercase().as_str() {
+            s if s.contains("syncing") || (s.contains("sync") && !s.contains("idle")) => {
+                "tray-syncing.png"
             }
             s if s.contains("error") || s.contains("offline") || s.contains("failed") => {
-                include_bytes!("../icons/icon-error.png")
+                "tray-error.png"
             }
             s if s.contains("conflict") => {
-                include_bytes!("../icons/icon-conflict.png")
+                "tray-conflict.png"
             }
             _ => {
-                include_bytes!("../icons/icon-idle.png")
+                "tray-idle.png"
             }
         };
 
-        if let Ok(icon) = Image::from_bytes(icon_bytes) {
+        // Try loading from disk first (better appindicator compat)
+        let icon_dir = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join("cloud-drive-sync")
+            .join("tray-icons");
+        let icon_path = icon_dir.join(icon_name);
+
+        if icon_path.exists() {
+            if let Ok(data) = std::fs::read(&icon_path) {
+                if let Ok(icon) = Image::from_bytes(&data) {
+                    let _ = tray.set_icon(Some(icon));
+                    return;
+                }
+            }
+        }
+
+        // Fallback to embedded tray-idle
+        if let Ok(icon) = Image::from_bytes(include_bytes!("../icons/tray-idle.png")) {
             let _ = tray.set_icon(Some(icon));
         }
     }

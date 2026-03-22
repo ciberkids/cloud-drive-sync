@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Cloud Drive Sync",
         "width": 800,
         "height": 600,
@@ -24,8 +25,8 @@
       "csp": null
     },
     "trayIcon": {
-      "iconPath": "icons/icon-idle.png",
-      "iconAsTemplate": true,
+      "iconPath": "icons/tray-idle.png",
+      "iconAsTemplate": false,
       "tooltip": "Cloud Drive Sync"
     }
   },
