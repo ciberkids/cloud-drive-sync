@@ -219,7 +219,8 @@ export function AccountManager() {
       {authInProgress && (
         <p className="auth-message">
           A browser window should open for sign-in. Complete the authorization
-          there, then return here.
+          there, then return here. If you close the browser, the request will
+          time out after 2 minutes and you can try again.
         </p>
       )}
     </div>
