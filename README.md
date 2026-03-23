@@ -134,6 +134,22 @@ cloud-drive-sync-daemon pair add --local ~/Documents --remote root
 cloud-drive-sync-daemon status
 ```
 
+### macOS
+
+```bash
+# Download DMG from latest release
+# Or via Homebrew (coming soon):
+# brew install --cask cloud-drive-sync
+```
+
+### Windows
+
+```bash
+# Download installer from latest release
+# Or via Scoop (coming soon):
+# scoop install cloud-drive-sync
+```
+
 ### Install script
 
 An interactive installer that detects your distro and downloads the right package:
