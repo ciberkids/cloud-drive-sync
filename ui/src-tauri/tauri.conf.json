@@ -49,8 +49,8 @@
           "libayatana-appindicator3-1"
         ],
         "files": {
-          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../../installer/cloud-drive-sync-daemon-packaged.service",
-          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../../installer/cloud-drive-sync-ui.desktop"
+          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../installer/cloud-drive-sync-daemon-packaged.service",
+          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../installer/cloud-drive-sync-ui.desktop"
         }
       },
       "rpm": {
@@ -60,8 +60,8 @@
           "libayatana-appindicator-gtk3"
         ],
         "files": {
-          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../../installer/cloud-drive-sync-daemon-packaged.service",
-          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../../installer/cloud-drive-sync-ui.desktop"
+          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../installer/cloud-drive-sync-daemon-packaged.service",
+          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../installer/cloud-drive-sync-ui.desktop"
         }
       }
     }
