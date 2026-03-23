@@ -141,13 +141,17 @@ class SyncEngine:
             ops = FileOperations(client, upload_throttle=upload_throttle, download_throttle=download_throttle)
         poller = self._poller or ChangePoller(client)
 
+        account = next((a for a in self._config.accounts if a.email == pair.account_id), None)
+        per_account = account.max_concurrent_transfers if account else 0
+        max_concurrent = per_account if per_account > 0 else self._config.sync.max_concurrent_transfers
+
         executor = SyncExecutor(
             ops,
             self._db,
             local_root,
             pair_id,
             remote_folder_id=pair.remote_folder_id,
-            max_concurrent=self._config.sync.max_concurrent_transfers,
+            max_concurrent=max_concurrent,
             drive_client=client,
             notify_callback=self._notify_callback,
         )
@@ -342,15 +346,16 @@ class SyncEngine:
         self._tasks.append(task_remote)
 
     async def _local_change_loop(self, ps: PairStatus) -> None:
-        """Process local filesystem changes."""
+        """Process local filesystem changes with batching for concurrency."""
         if not ps.watcher:
             return
 
         local_root = Path(ps.pair.local_path)
 
         while not self._stop_event.is_set():
+            # Wait for the first change
             try:
-                change: LocalChange = await asyncio.wait_for(
+                first_change: LocalChange = await asyncio.wait_for(
                     ps.watcher.changes.get(), timeout=1.0
                 )
             except asyncio.TimeoutError:
@@ -359,29 +364,48 @@ class SyncEngine:
             if ps.paused:
                 continue
 
+            # Collect additional pending changes (batch window)
+            changes = [first_change]
+            await asyncio.sleep(0.2)  # let more changes accumulate
+            while True:
+                try:
+                    changes.append(ps.watcher.changes.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+
             try:
                 stored_entries = {
                     e.path: e for e in await self._db.get_all_entries(ps.pair_id)
                 }
 
-                change_data: dict = {
-                    "path": change.path,
-                    "source": "local",
-                    "deleted": change.change_type == ChangeType.DELETED,
-                    "md5": None,
-                    "mtime": 0,
-                    "is_directory": change.is_directory,
-                }
+                all_change_dicts = []
+                for change in changes:
+                    change_data: dict = {
+                        "path": change.path,
+                        "source": "local",
+                        "deleted": change.change_type == ChangeType.DELETED,
+                        "md5": None,
+                        "mtime": 0,
+                        "is_directory": change.is_directory,
+                    }
 
-                if not change_data["deleted"]:
-                    file_path = local_root / change.path
-                    if file_path.exists() and file_path.is_file():
-                        change_data["md5"] = await md5_hash(file_path)
-                        change_data["mtime"] = file_path.stat().st_mtime
-                    elif file_path.exists() and file_path.is_dir():
-                        change_data["mtime"] = file_path.stat().st_mtime
+                    if not change_data["deleted"]:
+                        file_path = local_root / change.path
+                        if file_path.exists() and file_path.is_file():
+                            change_data["md5"] = await md5_hash(file_path)
+                            change_data["mtime"] = file_path.stat().st_mtime
+                        elif file_path.exists() and file_path.is_dir():
+                            change_data["mtime"] = file_path.stat().st_mtime
 
-                actions = plan_continuous_sync([change_data], stored_entries)
+                    all_change_dicts.append(change_data)
+
+                # Deduplicate by path (keep last change for each path)
+                seen: dict[str, dict] = {}
+                for cd in all_change_dicts:
+                    seen[cd["path"]] = cd
+                all_change_dicts = list(seen.values())
+
+                actions = plan_continuous_sync(all_change_dicts, stored_entries)
                 actions = apply_sync_rules(actions, ps.pair.sync_rules)
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
@@ -389,7 +413,7 @@ class SyncEngine:
                     ps.last_sync = datetime.now(timezone.utc)
 
             except Exception:
-                log.exception("Error processing local change: %s", change.path)
+                log.exception("Error processing local changes batch (%d changes)", len(changes))
 
     async def _remote_poll_loop(self, ps: PairStatus) -> None:
         """Poll for remote changes at the configured interval."""

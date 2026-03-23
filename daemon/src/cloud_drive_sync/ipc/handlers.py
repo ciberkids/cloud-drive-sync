@@ -62,6 +62,7 @@ class RequestHandler:
             "set_proxy": self._set_proxy,
             "get_proxy": self._get_proxy,
             "get_file_status": self._get_file_status,
+            "set_account_max_transfers": self._set_account_max_transfers,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -562,6 +563,7 @@ class RequestHandler:
                 "display_name": acct.display_name,
                 "status": "connected" if has_client else "disconnected",
                 "provider": acct.provider,
+                "max_concurrent_transfers": acct.max_concurrent_transfers,
             })
         return accounts
 
@@ -742,3 +744,22 @@ class RequestHandler:
                 return {"state": "unknown"}
 
         return {"state": "unknown"}
+
+    async def _set_account_max_transfers(self, params: dict) -> dict:
+        """Set max concurrent transfers for an account."""
+        params = params or {}
+        email = params.get("email")
+        value = params.get("max_concurrent_transfers")
+        if not email or value is None:
+            raise TypeError("email and max_concurrent_transfers are required")
+        value = int(value)
+        if value < 0:
+            raise TypeError("max_concurrent_transfers must be >= 0")
+
+        for acct in self._config.accounts:
+            if acct.email == email:
+                acct.max_concurrent_transfers = value
+                self._config.save()
+                return {"status": "ok", "max_concurrent_transfers": value}
+
+        raise TypeError(f"Account {email} not found")

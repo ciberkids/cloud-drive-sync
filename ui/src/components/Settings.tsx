@@ -26,9 +26,12 @@ export function Settings() {
     useState<ConflictStrategy>("keep_both");
   const [saving, setSaving] = useState(false);
 
-  const handleAddPair = async (remoteFolderId: string, localPath: string) => {
+  const [addingForAccount, setAddingForAccount] = useState<string | null>(null);
+
+  const handleAddPair = async (remoteFolderId: string, localPath: string, accountId?: string) => {
     try {
-      await add(localPath, remoteFolderId);
+      await add(localPath, remoteFolderId, accountId);
+      setAddingForAccount(null);
     } catch (e) {
       console.error("Failed to add sync pair:", e);
     }
@@ -234,7 +237,7 @@ export function Settings() {
     }
   };
 
-  // Group pairs by account
+  // Group pairs by account — include all accounts even if they have no pairs
   const accountMap = new Map<string, Account>();
   for (const acct of accounts) {
     accountMap.set(acct.email, acct);
@@ -249,6 +252,18 @@ export function Settings() {
 
   const groups: PairGroup[] = [];
   const groupMap = new Map<string, PairGroup>();
+
+  // Create groups for all known accounts first
+  for (const acct of accounts) {
+    const group: PairGroup = {
+      accountId: acct.email,
+      account: acct,
+      provider: acct.provider || "gdrive",
+      pairs: [],
+    };
+    groupMap.set(acct.email, group);
+    groups.push(group);
+  }
 
   for (const pair of pairs) {
     const key = pair.account_id || "";
@@ -436,19 +451,23 @@ export function Settings() {
               const color = providerColor(group.provider);
               const label = providerLabel(group.provider);
               const email = group.accountId || "Default account";
+              const isAdding = addingForAccount === group.accountId;
 
               return (
-                <div key={group.accountId} className="sync-group">
-                  <div
-                    className="sync-group-header"
-                    style={{ borderLeftColor: color }}
-                  >
+                <div
+                  key={group.accountId}
+                  className="sync-group"
+                  style={{ "--group-color": color } as React.CSSProperties}
+                >
+                  <div className="sync-group-header">
                     <span
                       className="provider-dot"
                       style={{ background: color }}
                     />
-                    <span className="sync-group-provider">{label}</span>
-                    <span className="sync-group-email">{email}</span>
+                    <div className="sync-group-identity">
+                      <span className="sync-group-provider">{label}</span>
+                      <span className="sync-group-email">{email}</span>
+                    </div>
                     {group.account && (
                       <span
                         className={`account-status-dot ${group.account.status}`}
@@ -459,26 +478,87 @@ export function Settings() {
                         }
                       />
                     )}
+                    <button
+                      className={`btn btn-sm ${isAdding ? "" : "btn-primary"}`}
+                      onClick={() =>
+                        setAddingForAccount(isAdding ? null : group.accountId)
+                      }
+                      type="button"
+                    >
+                      {isAdding ? "Cancel" : "+ Add folder"}
+                    </button>
                   </div>
-                  <div className="sync-group-pairs">
-                    {group.pairs.map(renderPairCard)}
+
+                  <div className="sync-group-body">
+                    {group.pairs.length > 0 ? (
+                      <div className="sync-group-pairs">
+                        {group.pairs.map(renderPairCard)}
+                      </div>
+                    ) : (
+                      !isAdding && (
+                        <p className="sync-group-empty">
+                          No folders synced yet for this account.
+                        </p>
+                      )
+                    )}
+
+                    <div className="sync-group-settings">
+                      <label className="field-label-inline">
+                        Max concurrent transfers
+                        <input
+                          type="number"
+                          className="input input-sm input-inline"
+                          min={0}
+                          max={32}
+                          value={group.account?.max_concurrent_transfers ?? 0}
+                          onChange={async (e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            try {
+                              await ipc.setAccountMaxTransfers(
+                                group.accountId,
+                                val
+                              );
+                              // Refresh accounts to get updated value
+                              ipc
+                                .listAccounts()
+                                .then(setAccounts)
+                                .catch(() => {});
+                            } catch (err) {
+                              console.error(
+                                "Failed to set max transfers:",
+                                err
+                              );
+                            }
+                          }}
+                        />
+                        <span className="field-hint">
+                          0 = global default (4)
+                        </span>
+                      </label>
+                    </div>
+
+                    {isAdding && (
+                      <div className="sync-group-add-browser">
+                        <RemoteFolderBrowser
+                          authenticated={status.connected}
+                          onAddPair={(remoteId, localPath) =>
+                            handleAddPair(remoteId, localPath, group.accountId)
+                          }
+                          existingRemoteIds={existingRemoteIds}
+                          accountId={group.accountId}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <p className="empty-message">No sync folders configured.</p>
+          <p className="empty-message">
+            No accounts configured. Add an account to start syncing.
+          </p>
         )}
-      </section>
-
-      <section className="settings-section">
-        <h3>Add Sync Folder</h3>
-        <RemoteFolderBrowser
-          authenticated={status.connected}
-          onAddPair={handleAddPair}
-          existingRemoteIds={existingRemoteIds}
-        />
       </section>
 
       <section className="settings-section">

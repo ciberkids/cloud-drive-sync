@@ -109,6 +109,7 @@ pub async fn add_sync_pair(
     local_path: String,
     remote_folder_id: String,
     ignore_hidden: Option<bool>,
+    account_id: Option<String>,
 ) -> Result<SyncPair, String> {
     let bridge = bridge.0.lock().await;
     let mut params = json!({
@@ -117,6 +118,9 @@ pub async fn add_sync_pair(
     });
     if let Some(ih) = ignore_hidden {
         params["ignore_hidden"] = json!(ih);
+    }
+    if let Some(ref aid) = account_id {
+        params["account_id"] = json!(aid);
     }
     let result = bridge.call("add_sync_pair", Some(params)).await?;
     serde_json::from_value(result).map_err(|e| e.to_string())
@@ -312,13 +316,15 @@ pub async fn set_ignore_patterns(
 pub async fn list_remote_folders(
     bridge: State<'_, BridgeState>,
     parent_id: String,
+    account_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let bridge = bridge.0.lock().await;
+    let mut params = json!({ "parent_id": parent_id });
+    if let Some(ref aid) = account_id {
+        params["account_id"] = json!(aid);
+    }
     bridge
-        .call(
-            "list_remote_folders",
-            Some(serde_json::json!({ "parent_id": parent_id })),
-        )
+        .call("list_remote_folders", Some(params))
         .await
 }
 
@@ -450,4 +456,22 @@ pub async fn set_proxy(
 pub async fn get_proxy(bridge: State<'_, BridgeState>) -> Result<Value, String> {
     let bridge = bridge.0.lock().await;
     bridge.call("get_proxy", None).await
+}
+
+#[tauri::command]
+pub async fn set_account_max_transfers(
+    bridge: State<'_, BridgeState>,
+    email: String,
+    max_concurrent_transfers: u32,
+) -> Result<serde_json::Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "set_account_max_transfers",
+            Some(json!({
+                "email": email,
+                "max_concurrent_transfers": max_concurrent_transfers
+            })),
+        )
+        .await
 }

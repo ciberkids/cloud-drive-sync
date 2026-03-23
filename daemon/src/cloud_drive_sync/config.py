@@ -29,6 +29,7 @@ class Account:
     display_name: str = ""
     provider: str = "gdrive"
     server_url: str = ""  # For self-hosted providers (e.g. Nextcloud)
+    max_concurrent_transfers: int = 0  # 0 = use global default
 
 
 @dataclass
@@ -150,6 +151,7 @@ class Config:
                     display_name=acct_data.get("display_name", ""),
                     provider=acct_data.get("provider", "gdrive"),
                     server_url=acct_data.get("server_url", ""),
+                    max_concurrent_transfers=acct_data.get("max_concurrent_transfers", 0),
                 )
             )
 
@@ -207,6 +209,7 @@ class Config:
                     "display_name": a.display_name,
                     "provider": a.provider,
                     **({"server_url": a.server_url} if a.server_url else {}),
+                    **({"max_concurrent_transfers": a.max_concurrent_transfers} if a.max_concurrent_transfers else {}),
                 }
                 for a in self.accounts
             ],

@@ -19,12 +19,14 @@ export async function getSyncPairs(): Promise<SyncPair[]> {
 export async function addSyncPair(
   localPath: string,
   remoteFolderId: string,
-  ignoreHidden?: boolean
+  ignoreHidden?: boolean,
+  accountId?: string
 ): Promise<SyncPair> {
   return invoke<SyncPair>("add_sync_pair", {
     localPath,
     remoteFolderId,
     ignoreHidden,
+    accountId,
   });
 }
 
@@ -203,12 +205,20 @@ export async function getProxy(): Promise<{
 }
 
 export async function listRemoteFolders(
-  parentId: string
+  parentId: string,
+  accountId?: string
 ): Promise<{
   folders: Array<{ id: string; name: string }>;
   shared_drives?: Array<{ id: string; name: string }>;
   parent_id: string;
   error?: string;
 }> {
-  return invoke("list_remote_folders", { parentId });
+  return invoke("list_remote_folders", { parentId, accountId });
+}
+
+export async function setAccountMaxTransfers(
+  email: string,
+  maxConcurrentTransfers: number
+): Promise<unknown> {
+  return invoke("set_account_max_transfers", { email, maxConcurrentTransfers });
 }

@@ -18,7 +18,7 @@ export function RemoteFolderBrowser({
   authenticated,
   onAddPair,
   existingRemoteIds,
-  accountId: _accountId,
+  accountId,
 }: RemoteFolderBrowserProps) {
   const [folders, setFolders] = useState<Array<{ id: string; name: string }>>(
     []
@@ -41,7 +41,7 @@ export function RemoteFolderBrowser({
     setLoading(true);
     setError(null);
     try {
-      const result = await ipc.listRemoteFolders(parentId);
+      const result = await ipc.listRemoteFolders(parentId, accountId);
       if (result.error) {
         setError(result.error);
         setFolders([]);

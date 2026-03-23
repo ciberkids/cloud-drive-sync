@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useStatus } from "../lib/hooks";
 import { useSyncPairs } from "../lib/hooks";
 import * as ipc from "../lib/ipc";
@@ -35,6 +36,7 @@ export { PROVIDER_META, providerLabel, providerColor };
 export function AccountManager() {
   const status = useStatus();
   const { pairs } = useSyncPairs();
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [authInProgress, setAuthInProgress] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
@@ -145,7 +147,12 @@ export function AccountManager() {
                     </span>
                     <div className="account-pair-list">
                       {acctPairs.map((pair) => (
-                        <div key={pair.id} className="account-pair-row">
+                        <div
+                          key={pair.id}
+                          className="account-pair-row account-pair-row-link"
+                          onClick={() => navigate("/settings")}
+                          title="Go to sync folder settings"
+                        >
                           <span className="account-pair-local">
                             {pair.local_path.replace(/^\/home\/[^/]+/, "~")}
                           </span>

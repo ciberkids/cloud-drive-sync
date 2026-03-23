@@ -61,6 +61,7 @@ fn main() {
             commands::get_sync_rules,
             commands::set_proxy,
             commands::get_proxy,
+            commands::set_account_max_transfers,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

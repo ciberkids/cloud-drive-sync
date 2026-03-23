@@ -116,8 +116,8 @@ export function useSyncPairs() {
   }, [refresh]);
 
   const add = useCallback(
-    async (localPath: string, remoteFolderId: string) => {
-      const pair = await ipc.addSyncPair(localPath, remoteFolderId);
+    async (localPath: string, remoteFolderId: string, accountId?: string) => {
+      const pair = await ipc.addSyncPair(localPath, remoteFolderId, undefined, accountId);
       setPairs((prev) => [...prev, pair]);
       return pair;
     },

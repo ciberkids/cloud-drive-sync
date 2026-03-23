@@ -71,4 +71,5 @@ export interface Account {
   display_name: string;
   status: "connected" | "disconnected";
   provider?: string;
+  max_concurrent_transfers?: number;
 }
