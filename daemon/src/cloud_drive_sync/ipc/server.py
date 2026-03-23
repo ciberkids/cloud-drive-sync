@@ -16,7 +16,7 @@ from cloud_drive_sync.ipc.protocol import (
     serialize_message,
 )
 from cloud_drive_sync.util.logging import get_logger
-from cloud_drive_sync.util.paths import ipc_address, runtime_dir
+from cloud_drive_sync.util.paths import ipc_address
 
 log = get_logger("ipc.server")
 

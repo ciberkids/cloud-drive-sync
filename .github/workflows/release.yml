@@ -40,16 +40,8 @@ jobs:
           pip install ./daemon
 
       - name: Build daemon binary
-        run: |
-          cd daemon
-          pyinstaller \
-            --onefile \
-            --name cloud-drive-sync-daemon \
-            --hidden-import=cloud_drive_sync \
-            --hidden-import=google.auth.transport.requests \
-            --hidden-import=google.auth.transport._http_client \
-            --collect-all=googleapiclient \
-            src/cloud_drive_sync/__main__.py
+        working-directory: daemon
+        run: pyinstaller --onefile --name cloud-drive-sync-daemon --hidden-import=cloud_drive_sync --hidden-import=google.auth.transport.requests --hidden-import=google.auth.transport._http_client --collect-all=googleapiclient src/cloud_drive_sync/__main__.py
 
       - name: Upload daemon artifact
         uses: actions/upload-artifact@v4

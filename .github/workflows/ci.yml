@@ -125,8 +125,8 @@ jobs:
       - name: Create sidecar placeholder (Windows)
         if: runner.os == 'Windows'
         run: |
-          mkdir -p bin
-          New-Item -Path "bin/cloud-drive-sync-daemon-${{ matrix.triple }}.exe" -ItemType File -Force
+          New-Item -ItemType Directory -Path "bin" -Force | Out-Null
+          New-Item -ItemType File -Path "bin/cloud-drive-sync-daemon-${{ matrix.triple }}.exe" -Force | Out-Null
         shell: pwsh
 
       - name: Cargo check
