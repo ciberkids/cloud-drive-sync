@@ -8,22 +8,26 @@ use tauri::{
 /// Ensure tray icon files exist on disk (appindicator on Linux needs file paths).
 fn ensure_tray_icons() -> std::path::PathBuf {
     let icon_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .unwrap_or_else(std::env::temp_dir)
         .join("cloud-drive-sync")
         .join("tray-icons");
-    let _ = std::fs::create_dir_all(&icon_dir);
 
-    let icons: &[(&str, &[u8])] = &[
-        ("tray-idle.png", include_bytes!("../icons/tray-idle.png")),
-        ("tray-syncing.png", include_bytes!("../icons/tray-syncing.png")),
-        ("tray-error.png", include_bytes!("../icons/tray-error.png")),
-        ("tray-conflict.png", include_bytes!("../icons/tray-conflict.png")),
-    ];
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::fs::create_dir_all(&icon_dir);
 
-    for (name, data) in icons {
-        let path = icon_dir.join(name);
-        // Always overwrite to ensure icons are up-to-date after upgrades
-        let _ = std::fs::write(&path, data);
+        let icons: &[(&str, &[u8])] = &[
+            ("tray-idle.png", include_bytes!("../icons/tray-idle.png")),
+            ("tray-syncing.png", include_bytes!("../icons/tray-syncing.png")),
+            ("tray-error.png", include_bytes!("../icons/tray-error.png")),
+            ("tray-conflict.png", include_bytes!("../icons/tray-conflict.png")),
+        ];
+
+        for (name, data) in icons {
+            let path = icon_dir.join(name);
+            // Always overwrite to ensure icons are up-to-date after upgrades
+            let _ = std::fs::write(&path, data);
+        }
     }
 
     icon_dir
@@ -57,12 +61,18 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
         .expect("Failed to load tray icon");
 
-    let _tray = TrayIconBuilder::with_id("main")
+    let mut builder = TrayIconBuilder::with_id("main")
         .icon(tray_icon)
-        .temp_dir_path(&_icon_dir)
         .tooltip("Cloud Drive Sync")
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(false);
+
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.temp_dir_path(&_icon_dir);
+    }
+
+    let _tray = builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => {
                 if let Some(window) = app.get_webview_window("main") {
@@ -123,28 +133,37 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
             }
         };
 
-        // Try loading from disk first (better appindicator compat)
-        let icon_dir = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join("cloud-drive-sync")
-            .join("tray-icons");
-        let icon_path = icon_dir.join(icon_name);
+        // On Linux, try loading from disk (better appindicator compat)
+        #[cfg(target_os = "linux")]
+        {
+            let icon_dir = dirs::data_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join("cloud-drive-sync")
+                .join("tray-icons");
+            let icon_path = icon_dir.join(icon_name);
 
-        // Set temp dir to our stable icon directory so KDE/appindicator
-        // can reliably find the icon files (avoids transparent icon issue)
-        let _ = tray.set_temp_dir_path(Some(&icon_dir));
+            // Set temp dir to our stable icon directory so KDE/appindicator
+            // can reliably find the icon files (avoids transparent icon issue)
+            let _ = tray.set_temp_dir_path(Some(&icon_dir));
 
-        if icon_path.exists() {
-            if let Ok(data) = std::fs::read(&icon_path) {
-                if let Ok(icon) = Image::from_bytes(&data) {
-                    let _ = tray.set_icon(Some(icon));
-                    return;
+            if icon_path.exists() {
+                if let Ok(data) = std::fs::read(&icon_path) {
+                    if let Ok(icon) = Image::from_bytes(&data) {
+                        let _ = tray.set_icon(Some(icon));
+                        return;
+                    }
                 }
             }
         }
 
-        // Fallback to embedded tray-idle
-        if let Ok(icon) = Image::from_bytes(include_bytes!("../icons/tray-idle.png")) {
+        // On non-Linux (or Linux fallback), use embedded icons directly
+        let icon_bytes: &[u8] = match icon_name {
+            "tray-syncing.png" => include_bytes!("../icons/tray-syncing.png"),
+            "tray-error.png" => include_bytes!("../icons/tray-error.png"),
+            "tray-conflict.png" => include_bytes!("../icons/tray-conflict.png"),
+            _ => include_bytes!("../icons/tray-idle.png"),
+        };
+        if let Ok(icon) = Image::from_bytes(icon_bytes) {
             let _ = tray.set_icon(Some(icon));
         }
     }
