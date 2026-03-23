@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicknisi/tauri-v2-vite-react/main/src-tauri/gen/schemas/desktop-schema.json",
   "productName": "Cloud Drive Sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.cloud-drive-sync.app",
   "build": {
     "beforeDevCommand": "npm run dev",
