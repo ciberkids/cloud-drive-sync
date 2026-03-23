@@ -22,9 +22,8 @@ fn ensure_tray_icons() -> std::path::PathBuf {
 
     for (name, data) in icons {
         let path = icon_dir.join(name);
-        if !path.exists() {
-            let _ = std::fs::write(&path, data);
-        }
+        // Always overwrite to ensure icons are up-to-date after upgrades
+        let _ = std::fs::write(&path, data);
     }
 
     icon_dir
@@ -60,6 +59,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let _tray = TrayIconBuilder::with_id("main")
         .icon(tray_icon)
+        .temp_dir_path(&_icon_dir)
         .tooltip("Cloud Drive Sync")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -129,6 +129,10 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
             .join("cloud-drive-sync")
             .join("tray-icons");
         let icon_path = icon_dir.join(icon_name);
+
+        // Set temp dir to our stable icon directory so KDE/appindicator
+        // can reliably find the icon files (avoids transparent icon issue)
+        let _ = tray.set_temp_dir_path(Some(&icon_dir));
 
         if icon_path.exists() {
             if let Ok(data) = std::fs::read(&icon_path) {
