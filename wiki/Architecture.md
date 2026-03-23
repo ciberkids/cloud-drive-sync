@@ -84,53 +84,50 @@ The UI is a Tauri v2 application with a React frontend and Rust backend.
 
 When a sync pair starts for the first time (no stored state):
 
-```
-1. Scan local directory recursively
-     │
-2. Fetch remote file list recursively from Drive
-     │
-3. Plan (three-way diff with empty base):
-     ├── File only local           → UPLOAD
-     ├── File only remote          → DOWNLOAD
-     ├── Both sides, same MD5      → NOOP (mark synced)
-     └── Both sides, different MD5 → CONFLICT
-     │
-4. Resolve conflicts per strategy:
-     ├── keep_both    → rename local, download remote
-     ├── newest_wins  → compare mtime, keep newer
-     └── ask_user     → notify UI, defer execution
-     │
-5. Execute actions (upload/download) with concurrency limit
-     │
-6. Notify UI via `sync_complete` and `status_changed` notifications
-     │
-7. Store change token from Drive Changes API
-     │
-8. Start continuous sync loops
+```mermaid
+flowchart TD
+    A["1. Scan local directory recursively"] --> B["2. Fetch remote file list from Drive"]
+    B --> C{"3. Plan (three-way diff)"}
+    C -->|File only local| U[UPLOAD]
+    C -->|File only remote| D[DOWNLOAD]
+    C -->|Same MD5| N[NOOP — mark synced]
+    C -->|Different MD5| K[CONFLICT]
+    U --> R{"4. Resolve conflicts"}
+    D --> R
+    N --> R
+    K --> R
+    R -->|keep_both| R1[Rename local + download remote]
+    R -->|newest_wins| R2[Compare mtime, keep newer]
+    R -->|ask_user| R3[Notify UI, defer]
+    R1 --> E["5. Execute actions (concurrency-limited)"]
+    R2 --> E
+    R3 --> E
+    E --> F["6. Notify UI (sync_complete)"]
+    F --> G["7. Store Drive change token"]
+    G --> H["8. Start continuous sync loops"]
 ```
 
 ### Continuous Sync
 
 After initial sync, two loops run concurrently:
 
-```
-┌─────────────────────────────┐    ┌─────────────────────────────┐
-│   Local Watcher Loop        │    │   Remote Poller Loop        │
-│                             │    │                             │
-│   watchdog detects change   │    │   poll Drive Changes API    │
-│          │                  │    │   every N seconds           │
-│   debounce (1s default)     │    │          │                  │
-│          │                  │    │          │                  │
-│   compute MD5 of changed    │    │   map changed file IDs      │
-│   file                      │    │   to stored paths           │
-│          │                  │    │          │                  │
-│   plan_continuous_sync()    │    │   plan_continuous_sync()    │
-│          │                  │    │          │                  │
-│   execute actions           │    │   execute actions           │
-│          │                  │    │          │                  │
-│   update stored state       │    │   update stored state +     │
-│                             │    │   change token              │
-└─────────────────────────────┘    └─────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Local["Local Watcher Loop"]
+        direction TB
+        L1[watchdog detects change] --> L2[Debounce 1s + batch]
+        L2 --> L3[Compute MD5 of changed files]
+        L3 --> L4["plan_continuous_sync()"]
+        L4 --> L5[Execute actions concurrently]
+        L5 --> L6[Update stored state]
+    end
+    subgraph Remote["Remote Poller Loop"]
+        direction TB
+        R1[Poll Drive Changes API every N sec] --> R2[Map changed file IDs to stored paths]
+        R2 --> R3["plan_continuous_sync()"]
+        R3 --> R4[Execute actions concurrently]
+        R4 --> R5[Update stored state + change token]
+    end
 ```
 
 The `plan_continuous_sync()` function uses three-way comparison:
@@ -169,30 +166,21 @@ When the sync engine starts, it compares the set of active pair IDs (derived fro
 
 ### FileState Transitions
 
-```
-                    ┌─────────┐
-           ┌───────│ UNKNOWN │───────┐
-           │       └─────────┘       │
-           ▼                         ▼
-   ┌───────────────┐         ┌────────────────┐
-   │PENDING_UPLOAD │         │PENDING_DOWNLOAD│
-   └───────┬───────┘         └───────┬────────┘
-           │                         │
-           ▼                         ▼
-   ┌───────────────┐         ┌────────────────┐
-   │  UPLOADING    │         │  DOWNLOADING   │
-   └───────┬───────┘         └───────┬────────┘
-           │                         │
-           ▼                         ▼
-           │    ┌──────────┐         │
-           └───►│  SYNCED  │◄────────┘
-                └────┬─────┘
-                     │
-            ┌────────┴────────┐
-            ▼                 ▼
-     ┌───────────┐     ┌───────────┐
-     │ CONFLICT  │     │  ERROR    │
-     └───────────┘     └───────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> UNKNOWN
+    UNKNOWN --> PENDING_UPLOAD
+    UNKNOWN --> PENDING_DOWNLOAD
+    PENDING_UPLOAD --> UPLOADING
+    PENDING_DOWNLOAD --> DOWNLOADING
+    UPLOADING --> SYNCED
+    DOWNLOADING --> SYNCED
+    SYNCED --> CONFLICT
+    SYNCED --> ERROR
+    CONFLICT --> PENDING_UPLOAD : resolved
+    CONFLICT --> PENDING_DOWNLOAD : resolved
+    ERROR --> PENDING_UPLOAD : retry
+    ERROR --> PENDING_DOWNLOAD : retry
 ```
 
 States are defined in `db/models.py:FileState`:
@@ -215,27 +203,18 @@ The daemon and UI communicate via **JSON-RPC 2.0 over a Unix domain socket** wit
 
 ### Message Flow
 
-```
-  UI (Tauri Rust)                    Daemon (Python)
-       │                                  │
-       │──── JSON-RPC Request ──────────►│
-       │     {"jsonrpc":"2.0",            │
-       │      "method":"get_status",      │
-       │      "id":1}                     │
-       │                                  │
-       │◄─── JSON-RPC Response ──────────│
-       │     {"jsonrpc":"2.0",            │
-       │      "id":1,                     │
-       │      "result":{...}}             │
-       │                                  │
-       │◄─── Notification ───────────────│
-       │     {"jsonrpc":"2.0",            │
-       │      "method":"sync_progress",   │
-       │      "params":{...}}             │
-       │     (no id = no response needed) │
+```mermaid
+sequenceDiagram
+    participant UI as UI (Tauri Rust)
+    participant D as Daemon (Python)
+    UI->>D: JSON-RPC Request<br/>{"method":"get_status","id":1}
+    D-->>UI: JSON-RPC Response<br/>{"id":1,"result":{...}}
+    D-)UI: Notification (no id)<br/>{"method":"sync_progress","params":{...}}
 ```
 
-See the [[API Reference|API-Reference]] for the full list of methods and notifications.
+The daemon supports 16 RPC methods including sync control (`force_sync`, `pause_sync`, `resume_sync`), configuration (`add_sync_pair`, `remove_sync_pair`, `set_conflict_strategy`, `set_sync_mode`, `set_ignore_hidden`), data queries (`get_status`, `get_sync_pairs`, `get_activity_log`, `get_conflicts`), authentication (`start_auth`, `logout`), and Drive browsing (`list_remote_folders`).
+
+See [API Reference](API.md) for the full list of methods and notifications.
 
 ## Database Schema
 
