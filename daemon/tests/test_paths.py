@@ -49,13 +49,13 @@ class TestRuntimeDir:
     def test_respects_xdg_runtime_dir(self):
         with patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/1234"}):
             result = runtime_dir()
-            assert result == Path("/run/user/1234")
+            assert result == Path("/run/user/1234/cloud-drive-sync")
 
     def test_fallback_without_xdg(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_RUNTIME_DIR", None)
             result = runtime_dir()
-            assert result == Path(f"/run/user/{os.getuid()}")
+            assert result == Path(f"/run/user/{os.getuid()}/cloud-drive-sync")
 
 
 class TestSpecificPaths:

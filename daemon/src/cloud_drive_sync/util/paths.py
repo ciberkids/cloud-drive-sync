@@ -1,31 +1,29 @@
-"""XDG-compliant path resolution for cloud-drive-sync."""
+"""Cross-platform path resolution for cloud-drive-sync."""
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
+
+import platformdirs
 
 APP_NAME = "cloud-drive-sync"
 
 
 def config_dir() -> Path:
-    """Return the config directory (~/.config/cloud-drive-sync/)."""
-    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / APP_NAME
+    """Return the config directory (platform-appropriate)."""
+    return Path(platformdirs.user_config_dir(APP_NAME, appauthor=False))
 
 
 def data_dir() -> Path:
-    """Return the data directory (~/.local/share/cloud-drive-sync/)."""
-    base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / APP_NAME
+    """Return the data directory (platform-appropriate)."""
+    return Path(platformdirs.user_data_dir(APP_NAME, appauthor=False))
 
 
 def runtime_dir() -> Path:
-    """Return the runtime directory ($XDG_RUNTIME_DIR or /run/user/$UID)."""
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return Path(xdg)
-    return Path(f"/run/user/{os.getuid()}")
+    """Return the runtime directory (platform-appropriate)."""
+    return Path(platformdirs.user_runtime_dir(APP_NAME, appauthor=False))
 
 
 def config_path() -> Path:
@@ -36,6 +34,14 @@ def config_path() -> Path:
 def db_path() -> Path:
     """Return the path to state.db."""
     return data_dir() / "state.db"
+
+
+def ipc_address():
+    """Return the IPC address: socket path on Unix, (host, port) on Windows."""
+    if sys.platform == "win32":
+        port_file = runtime_dir() / "cloud-drive-sync.port"
+        return ("127.0.0.1", port_file)
+    return runtime_dir() / "cloud-drive-sync.sock"
 
 
 def socket_path() -> Path:
@@ -74,6 +80,8 @@ _OLD_APP_NAME = "gdrive-sync"
 
 def _migrate_old_paths() -> None:
     """Copy files from old gdrive-sync directories to cloud-drive-sync if needed."""
+    if sys.platform != "linux":
+        return
     import shutil
     import logging
 
