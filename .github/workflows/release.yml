@@ -46,7 +46,8 @@ jobs:
           path: daemon/dist/cloud-drive-sync-daemon
 
   build-ui:
-    name: Build Tauri UI
+    name: Build Tauri UI (with bundled daemon)
+    needs: build-daemon
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +69,18 @@ jobs:
             libssl-dev \
             pkg-config \
             rpm
+
+      - name: Download daemon binary
+        uses: actions/download-artifact@v4
+        with:
+          name: daemon-binary
+          path: ui/src-tauri/bin
+
+      - name: Place daemon as sidecar with target triple
+        run: |
+          mv ui/src-tauri/bin/cloud-drive-sync-daemon \
+             ui/src-tauri/bin/cloud-drive-sync-daemon-x86_64-unknown-linux-gnu
+          chmod +x ui/src-tauri/bin/cloud-drive-sync-daemon-x86_64-unknown-linux-gnu
 
       - name: Install UI dependencies
         working-directory: ui

@@ -10,6 +10,7 @@ use ipc_bridge::DaemonBridge;
 use std::sync::Arc;
 use tauri::{image::Image, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::{mpsc, Mutex};
 
 fn main() {
@@ -76,6 +77,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 // Try to connect with retries
                 let mut attempts = 0;
+                let mut sidecar_launched = false;
                 loop {
                     {
                         let mut bridge = bridge_mutex.lock().await;
@@ -92,6 +94,22 @@ fn main() {
                         }
                     }
                     attempts += 1;
+                    // After 2 failed attempts, try launching the daemon sidecar
+                    if attempts == 2 && !sidecar_launched {
+                        log::info!("Daemon not reachable, attempting sidecar launch");
+                        match connect_handle.shell().sidecar("bin/cloud-drive-sync-daemon") {
+                            Ok(cmd) => {
+                                match cmd.args(["start", "--foreground"]).spawn() {
+                                    Ok((_rx, _child)) => {
+                                        log::info!("Sidecar daemon launched");
+                                        sidecar_launched = true;
+                                    }
+                                    Err(e) => log::error!("Failed to spawn sidecar: {}", e),
+                                }
+                            }
+                            Err(e) => log::error!("Failed to create sidecar command: {}", e),
+                        }
+                    }
                     if attempts >= 10 {
                         log::error!("Could not connect to daemon after {} attempts", attempts);
                         tray::update_tray_status(&connect_handle, "Daemon offline");

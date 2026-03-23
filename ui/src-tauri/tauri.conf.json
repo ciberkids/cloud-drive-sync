@@ -33,6 +33,7 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm", "appimage"],
+    "externalBin": ["bin/cloud-drive-sync-daemon"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,14 +47,22 @@
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
           "libayatana-appindicator3-1"
-        ]
+        ],
+        "files": {
+          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../../installer/cloud-drive-sync-daemon-packaged.service",
+          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../../installer/cloud-drive-sync-ui.desktop"
+        }
       },
       "rpm": {
         "depends": [
           "webkit2gtk4.1",
           "gtk3",
           "libayatana-appindicator-gtk3"
-        ]
+        ],
+        "files": {
+          "/usr/lib/systemd/user/cloud-drive-sync-daemon.service": "../../../installer/cloud-drive-sync-daemon-packaged.service",
+          "/etc/xdg/autostart/cloud-drive-sync-ui.desktop": "../../../installer/cloud-drive-sync-ui.desktop"
+        }
       }
     }
   }

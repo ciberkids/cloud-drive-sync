@@ -1,17 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Tray icon: syncing state - blue sync arrows cloud -->
-  <g transform="translate(32,26)">
-    <!-- Cloud -->
-    <ellipse cx="0" cy="0" rx="22" ry="15" fill="#4285F4"/>
-    <ellipse cx="-13" cy="4" rx="13" ry="11" fill="#4285F4"/>
-    <ellipse cx="13" cy="4" rx="13" ry="11" fill="#4285F4"/>
-    <rect x="-22" y="0" width="44" height="11" fill="#4285F4"/>
-  </g>
-  <!-- Blue sync circle -->
-  <circle cx="44" cy="44" r="12" fill="#1A73E8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#e0e0e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Cloud outline -->
+  <path d="M6.5 19h11a4.5 4.5 0 0 0 .5-8.97A7 7 0 0 0 5.06 13.5 4 4 0 0 0 6.5 19z"/>
   <!-- Sync arrows -->
-  <g transform="translate(44,44)" fill="white">
-    <path d="M-4,-6 L2,-6 L2,-3 L6,-7 L2,-11 L2,-8 L-4,-8 Z"/>
-    <path d="M4,6 L-2,6 L-2,3 L-6,7 L-2,11 L-2,8 L4,8 Z"/>
-  </g>
+  <path d="M9 12l-2 2 2 2" stroke="#6cb4ff" stroke-width="2"/>
+  <path d="M15 11l2-2-2-2" stroke="#6cb4ff" stroke-width="2"/>
+  <line x1="7" y1="14" x2="14" y2="14" stroke="#6cb4ff" stroke-width="1.5"/>
+  <line x1="10" y1="9" x2="17" y2="9" stroke="#6cb4ff" stroke-width="1.5"/>
 </svg>

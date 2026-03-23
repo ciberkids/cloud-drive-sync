@@ -1,17 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Tray icon: conflict state - orange warning cloud -->
-  <g transform="translate(32,26)">
-    <!-- Cloud -->
-    <ellipse cx="0" cy="0" rx="22" ry="15" fill="#4285F4"/>
-    <ellipse cx="-13" cy="4" rx="13" ry="11" fill="#4285F4"/>
-    <ellipse cx="13" cy="4" rx="13" ry="11" fill="#4285F4"/>
-    <rect x="-22" y="0" width="44" height="11" fill="#4285F4"/>
-  </g>
-  <!-- Orange warning circle -->
-  <circle cx="44" cy="44" r="12" fill="#FBBC04"/>
-  <!-- Exclamation mark -->
-  <g transform="translate(44,44)" fill="#333">
-    <rect x="-1.5" y="-7" width="3" height="9" rx="1.5"/>
-    <circle cx="0" cy="6" r="2"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#e0e0e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Cloud outline -->
+  <path d="M6.5 19h11a4.5 4.5 0 0 0 .5-8.97A7 7 0 0 0 5.06 13.5 4 4 0 0 0 6.5 19z"/>
+  <!-- Warning exclamation -->
+  <line x1="12" y1="10" x2="12" y2="14" stroke="#ffc44d" stroke-width="2"/>
+  <circle cx="12" cy="16.5" r="0.5" fill="#ffc44d" stroke="#ffc44d" stroke-width="1"/>
 </svg>

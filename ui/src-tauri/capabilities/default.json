@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "bin/cloud-drive-sync-daemon", "sidecar": true, "args": true }]
+    },
     "notification:default",
     "notification:allow-notify",
     "notification:allow-request-permission",

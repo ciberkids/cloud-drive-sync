@@ -44,3 +44,5 @@ Thumbs.db
 *.sock
 *.db
 *.db-journal
+
+ui/src-tauri/bin/cloud-drive-sync-daemon-*
