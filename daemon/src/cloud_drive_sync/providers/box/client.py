@@ -214,6 +214,28 @@ class BoxClient(CloudClient):
         return await self.get_file(file_id)
 
     @async_retry(max_retries=3, base_delay=1.0)
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        from box_sdk_gen.managers.files import UpdateFileByIdParent
+
+        kwargs: dict[str, Any] = {
+            "parent": UpdateFileByIdParent(id=new_parent_id),
+        }
+        if new_name:
+            kwargs["name"] = new_name
+
+        updated = await self._run(
+            self._client.files.update_file_by_id,
+            file_id,
+            **kwargs,
+        )
+        return _normalize_item(updated)
+
+    @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         await self._run(self._client.files.delete_file_by_id, file_id)
 

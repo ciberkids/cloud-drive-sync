@@ -254,6 +254,32 @@ class NextcloudClient(CloudClient):
         return self._file_to_dict(result_node)
 
     @async_retry(max_retries=3, base_delay=1.0)
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        def _move():
+            node = self._nc.files.by_id(int(file_id))
+            if node is None:
+                raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
+
+            src_path = node.user_path
+            dest_parent = "/" if new_parent_id == "root" else self._normalise_path(new_parent_id)
+            name = new_name or node.name
+            dest_path = f"{dest_parent}/{name}" if dest_parent != "/" else f"/{name}"
+
+            self._nc.files.move(src_path, dest_path)
+
+            # Re-fetch updated metadata
+            updated = self._nc.files.by_id(int(file_id))
+            return updated
+
+        result_node = await asyncio.to_thread(_move)
+        return self._file_to_dict(result_node)
+
+    @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         def _delete():
             node = self._nc.files.by_id(int(file_id))

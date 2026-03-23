@@ -257,6 +257,28 @@ class DropboxClient(CloudClient):
             },
         }
 
+    @async_retry(max_retries=3, base_delay=1.0)
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        # file_id is the current path; new_parent_id is the destination folder path
+        from_path = file_id
+        dest_parent = "" if new_parent_id in ("root", "") else new_parent_id
+
+        # Use the current filename unless a new name is provided
+        if new_name:
+            dest_name = new_name
+        else:
+            dest_name = from_path.rsplit("/", 1)[-1]
+
+        to_path = f"{dest_parent}/{dest_name}"
+
+        result = await self._run(self._dbx.files_move_v2, from_path, to_path)
+        return _metadata_to_dict(result.metadata)
+
     async def find_child_folder(self, parent_id: str, name: str) -> str | None:
         import dropbox
 

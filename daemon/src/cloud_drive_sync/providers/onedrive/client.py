@@ -384,6 +384,22 @@ class OneDriveClient(CloudClient):
         return await self.get_file(file_id)
 
     @async_retry(max_retries=3, base_delay=1.0)
+    async def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        new_name: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "parentReference": {"id": new_parent_id},
+        }
+        if new_name:
+            body["name"] = new_name
+
+        item = await self._graph_patch(f"/me/drive/items/{file_id}", json=body)
+        return _normalize_item(item)
+
+    @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         await self._graph_delete(f"/me/drive/items/{file_id}")
 
