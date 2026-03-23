@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "description": "Multi-cloud bidirectional file sync",
+  "homepage": "https://github.com/ciberkids/cloud-drive-sync",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/ciberkids/cloud-drive-sync/releases/download/v0.2.0/Cloud.Drive.Sync_0.2.0_x64-setup.exe",
+      "hash": ""
+    }
+  },
+  "bin": "Cloud Drive Sync\\cloud-drive-sync-ui.exe",
+  "shortcuts": [
+    ["Cloud Drive Sync\\cloud-drive-sync-ui.exe", "Cloud Drive Sync"]
+  ],
+  "checkver": {
+    "github": "https://github.com/ciberkids/cloud-drive-sync"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/ciberkids/cloud-drive-sync/releases/download/v$version/Cloud.Drive.Sync_$version_x64-setup.exe"
+      }
+    }
+  }
+}
