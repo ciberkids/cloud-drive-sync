@@ -329,7 +329,92 @@ For **bidirectional** cross-cloud sync (changes on either side are reflected on 
 
 ---
 
-## Manual Installation
+## Installation
+
+Pre-built packages are available from the [latest release](https://github.com/ciberkids/cloud-drive-sync/releases/latest). Each package bundles both the desktop UI and the sync daemon — no separate install needed.
+
+### Debian / Ubuntu / Mint (.deb)
+
+```bash
+# Download and install
+wget https://github.com/ciberkids/cloud-drive-sync/releases/latest/download/Cloud.Drive.Sync_0.1.0_amd64.deb
+sudo dpkg -i Cloud.Drive.Sync_0.1.0_amd64.deb
+sudo apt-get install -f  # install any missing dependencies
+
+# Enable the daemon to start on login
+systemctl --user enable --now cloud-drive-sync-daemon
+
+# Launch the UI
+cloud-drive-sync-ui
+```
+
+### Fedora / RHEL / openSUSE (.rpm)
+
+```bash
+# Download and install
+wget https://github.com/ciberkids/cloud-drive-sync/releases/latest/download/Cloud.Drive.Sync-0.1.0-1.x86_64.rpm
+sudo rpm -U Cloud.Drive.Sync-0.1.0-1.x86_64.rpm
+
+# Enable the daemon to start on login
+systemctl --user enable --now cloud-drive-sync-daemon
+
+# Launch the UI
+cloud-drive-sync-ui
+```
+
+### AppImage (any distro)
+
+No installation required — download and run:
+
+```bash
+wget https://github.com/ciberkids/cloud-drive-sync/releases/latest/download/Cloud.Drive.Sync_0.1.0_amd64.AppImage
+chmod +x Cloud.Drive.Sync_0.1.0_amd64.AppImage
+./Cloud.Drive.Sync_0.1.0_amd64.AppImage
+```
+
+The AppImage bundles the daemon and will auto-start it when no running daemon is detected.
+
+### Flatpak
+
+```bash
+# Install from the release bundle
+wget https://github.com/ciberkids/cloud-drive-sync/releases/latest/download/cloud-drive-sync.flatpak
+flatpak install --user cloud-drive-sync.flatpak
+
+# Run
+flatpak run com.cloud_drive_sync.app
+```
+
+### Headless / Server (standalone daemon)
+
+For servers or headless setups without a desktop UI:
+
+```bash
+# Download the standalone daemon binary
+wget https://github.com/ciberkids/cloud-drive-sync/releases/latest/download/cloud-drive-sync-daemon
+chmod +x cloud-drive-sync-daemon
+sudo mv cloud-drive-sync-daemon /usr/local/bin/
+
+# Start the daemon
+cloud-drive-sync-daemon start --foreground
+
+# Manage via CLI
+cloud-drive-sync-daemon account add --provider gdrive
+cloud-drive-sync-daemon pair add --local ~/Documents --remote root
+cloud-drive-sync-daemon status
+```
+
+### Install script
+
+An interactive installer that detects your distro and downloads the right package:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ciberkids/cloud-drive-sync/main/install.sh | bash
+```
+
+---
+
+## Manual Installation (from source)
 
 ### 1. Clone the repository
 
