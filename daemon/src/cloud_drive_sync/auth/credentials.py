@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -24,12 +25,43 @@ log = get_logger("auth.credentials")
 _SALT_FILE = "token_salt"
 
 
+def _get_machine_id() -> bytes:
+    """Get a stable machine-specific identifier for key derivation."""
+    if sys.platform == "linux":
+        mid_path = Path("/etc/machine-id")
+        if mid_path.exists():
+            return mid_path.read_bytes().strip()
+    elif sys.platform == "darwin":
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.splitlines():
+                if "IOPlatformUUID" in line:
+                    uuid = line.split('"')[-2]
+                    return uuid.encode()
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Cryptography",
+            )
+            value, _ = winreg.QueryValueEx(key, "MachineGuid")
+            winreg.CloseKey(key)
+            return value.encode()
+        except Exception:
+            pass
+    return b"cloud-drive-sync-default-key"
+
+
 def _get_fernet(salt: bytes) -> Fernet:
     """Derive a Fernet key from the machine ID + salt."""
-    machine_id = b"cloud-drive-sync-default-key"
-    machine_id_path = Path("/etc/machine-id")
-    if machine_id_path.exists():
-        machine_id = machine_id_path.read_bytes().strip()
+    machine_id = _get_machine_id()
 
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
