@@ -45,9 +45,13 @@ def start(ctx: click.Context, foreground: bool, demo: bool) -> None:
     if foreground:
         click.echo("Starting in foreground...")
         asyncio.run(daemon.run())
+    elif sys.platform == "win32":
+        # Windows: no fork support, always run in foreground
+        click.echo("Starting daemon...")
+        asyncio.run(daemon.run())
     else:
         click.echo("Starting daemon...")
-        # Simple fork-based daemonization
+        # Unix fork-based daemonization
         import os
 
         pid = os.fork()

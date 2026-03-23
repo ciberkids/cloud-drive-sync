@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from pathlib import Path
 
 from cloud_drive_sync.config import Account, Config, SyncPair
@@ -175,8 +176,9 @@ class Daemon:
 
             # Install signal handlers
             loop = asyncio.get_running_loop()
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, self._signal_handler)
+            if sys.platform != "win32":
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    loop.add_signal_handler(sig, self._signal_handler)
 
             # Start the sync engine if we have credentials
             if self._engine:
@@ -385,8 +387,17 @@ class Daemon:
             return False
         try:
             pid = int(pf.read_text().strip())
-            os.kill(pid, 0)
-            return True
+            if sys.platform == "win32":
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(0x1000, False, pid)
+                if handle:
+                    kernel32.CloseHandle(handle)
+                    return True
+                return False
+            else:
+                os.kill(pid, 0)
+                return True
         except (ValueError, OSError):
             # Stale PID file
             pf.unlink(missing_ok=True)
@@ -394,13 +405,21 @@ class Daemon:
 
     @staticmethod
     def stop_running() -> bool:
-        """Send SIGTERM to a running daemon."""
+        """Send stop signal to a running daemon."""
         pf = pid_path()
         if not pf.exists():
             return False
         try:
             pid = int(pf.read_text().strip())
-            os.kill(pid, signal.SIGTERM)
+            if sys.platform == "win32":
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(1, False, pid)
+                if handle:
+                    kernel32.TerminateProcess(handle, 0)
+                    kernel32.CloseHandle(handle)
+            else:
+                os.kill(pid, signal.SIGTERM)
             return True
         except (ValueError, OSError):
             return False
