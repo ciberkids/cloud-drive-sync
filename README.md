@@ -250,23 +250,17 @@ cd cloud-drive-sync
 
 Each cloud provider requires its own credentials or app registration. Below are the setup instructions for each.
 
-### Google Drive (OAuth 2.0 Client)
+### Google Drive
 
-You need to create your own OAuth client credentials in the Google Cloud Console.
-
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (e.g. `cloud-drive-sync`)
-3. **Enable the Google Drive API**: APIs & Services -> Library -> search "Google Drive API" -> Enable
-4. **Configure OAuth consent screen**: APIs & Services -> OAuth consent screen -> External -> fill required fields -> add scope `https://www.googleapis.com/auth/drive` -> add your email as test user
-5. **Create credentials**: APIs & Services -> Credentials -> Create Credentials -> OAuth client ID -> Desktop app -> Download JSON
-6. Install the credentials file:
+Works out of the box — OAuth client credentials are embedded in the app. Just click **Add Account** in the UI or run:
 
 ```bash
-mkdir -p ~/.config/cloud-drive-sync
-mv ~/Downloads/client_secret_*.json ~/.config/cloud-drive-sync/client_secret.json
+cloud-drive-sync-daemon account add --provider gdrive
 ```
 
-> **Note:** While the app is in "Testing" mode, only test users you added can authorize. This is fine for personal use.
+A browser window will open for Google sign-in. No setup required.
+
+> **Power users:** To use your own OAuth credentials, place a `client_secret.json` in `~/.config/cloud-drive-sync/` or set `CDS_GOOGLE_CLIENT_ID` and `CDS_GOOGLE_CLIENT_SECRET` environment variables.
 
 ### Dropbox (OAuth 2.0 PKCE)
 

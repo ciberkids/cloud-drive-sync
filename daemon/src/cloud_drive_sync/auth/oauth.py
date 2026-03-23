@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -18,9 +19,42 @@ SCOPES = [
 
 DEFAULT_CLIENT_SECRETS = config_dir() / "client_secret.json"
 
+# Embedded OAuth client credentials (Desktop app type).
+# Users can override by placing a client_secret.json in the config dir
+# or setting CDS_GOOGLE_CLIENT_ID / CDS_GOOGLE_CLIENT_SECRET env vars.
+_EMBEDDED_CLIENT_ID = os.environ.get(
+    "CDS_GOOGLE_CLIENT_ID",
+    "613983213830-g58svo7c1m2vhtta0r0snkb8rdjekq87.apps.googleusercontent.com",
+)
+_EMBEDDED_CLIENT_SECRET = os.environ.get(
+    "CDS_GOOGLE_CLIENT_SECRET",
+    "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",
+)
+
 # Timeout for the OAuth browser flow (seconds).
 # If the user doesn't complete auth within this time, the flow is cancelled.
 AUTH_TIMEOUT = 120
+
+
+def _create_oauth_flow() -> InstalledAppFlow:
+    """Create an OAuth flow using either a local secrets file or embedded credentials."""
+    # Prefer local client_secret.json if it exists (power user override)
+    if DEFAULT_CLIENT_SECRETS.exists():
+        log.info("Using OAuth client secrets from %s", DEFAULT_CLIENT_SECRETS)
+        return InstalledAppFlow.from_client_secrets_file(str(DEFAULT_CLIENT_SECRETS), scopes=SCOPES)
+
+    # Use embedded credentials
+    log.info("Using embedded OAuth client credentials")
+    client_config = {
+        "installed": {
+            "client_id": _EMBEDDED_CLIENT_ID,
+            "client_secret": _EMBEDDED_CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+    return InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
 
 
 def run_oauth_flow(
@@ -30,29 +64,27 @@ def run_oauth_flow(
     """Run the OAuth2 browser-based consent flow.
 
     Opens the user's default browser for Google account authorization.
-    Returns credentials on success.
+    Returns credentials on success. Uses embedded client credentials
+    by default — no client_secret.json required.
 
     Args:
         client_secrets: Path to the OAuth client secrets JSON file.
-            Defaults to ~/.config/cloud-drive-sync/client_secret.json.
+            If provided and exists, overrides embedded credentials.
         timeout: Maximum seconds to wait for the user to complete auth.
 
     Returns:
         Google OAuth2 credentials with the requested scopes.
 
     Raises:
-        FileNotFoundError: If client secrets file doesn't exist.
         TimeoutError: If the user doesn't complete auth within the timeout.
     """
-    secrets_path = client_secrets or DEFAULT_CLIENT_SECRETS
-    if not secrets_path.exists():
-        raise FileNotFoundError(
-            f"OAuth client secrets not found at {secrets_path}. "
-            "Download it from the Google Cloud Console and place it there."
-        )
+    if client_secrets and client_secrets.exists():
+        log.info("Using OAuth client secrets from %s", client_secrets)
+        flow = InstalledAppFlow.from_client_secrets_file(str(client_secrets), scopes=SCOPES)
+    else:
+        flow = _create_oauth_flow()
 
     log.info("Starting OAuth2 browser flow (timeout=%ds)...", timeout)
-    flow = InstalledAppFlow.from_client_secrets_file(str(secrets_path), scopes=SCOPES)
 
     # run_local_server blocks until the browser redirects back.
     # Run it in a thread with a timeout so a closed browser doesn't hang forever.

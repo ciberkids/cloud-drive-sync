@@ -23,19 +23,10 @@ class GoogleDriveAuth(AuthProvider):
     def _run_console_flow(self) -> Any:
         """Run OAuth flow in headless/console mode."""
 
-        from google_auth_oauthlib.flow import InstalledAppFlow
-
-        from cloud_drive_sync.auth.oauth import DEFAULT_CLIENT_SECRETS, SCOPES
-
-        secrets_path = DEFAULT_CLIENT_SECRETS
-        if not secrets_path.exists():
-            raise FileNotFoundError(
-                f"OAuth client secrets not found at {secrets_path}. "
-                "Download it from the Google Cloud Console and place it there."
-            )
+        from cloud_drive_sync.auth.oauth import _create_oauth_flow
 
         log.info("Starting OAuth2 console flow (headless)...")
-        flow = InstalledAppFlow.from_client_secrets_file(str(secrets_path), scopes=SCOPES)
+        flow = _create_oauth_flow()
         credentials = flow.run_console()
         log.info("OAuth2 console authorization successful")
         return credentials

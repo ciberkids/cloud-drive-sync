@@ -113,6 +113,22 @@ Before submitting a PR:
 3. New features include tests
 4. Documentation is updated if the public API changes
 
+## Embedded OAuth Credentials & Push Protection
+
+The app ships with embedded OAuth client credentials for Google Drive (and other providers as they're added). These are **intentionally public** — OAuth Desktop/public client IDs are not secrets per [Google's own documentation](https://developers.google.com/identity/protocols/oauth2/native-app). The security comes from the OAuth flow itself (user consent, redirect URI validation), not from the client ID/secret.
+
+This is standard practice for open-source desktop apps (Rclone, Cyberduck, GNOME Online Accounts all do this).
+
+**GitHub Push Protection** will flag these as secrets. To push changes that modify embedded credentials:
+
+1. GitHub will provide unblock URLs in the push rejection message
+2. Click each URL and select "It's used in tests" or "I'll fix it later" to allow the push
+3. Re-run `git push`
+
+The credentials are in `daemon/src/cloud_drive_sync/auth/oauth.py` and can be overridden by users via:
+- Placing a `client_secret.json` in `~/.config/cloud-drive-sync/`
+- Setting `CDS_GOOGLE_CLIENT_ID` / `CDS_GOOGLE_CLIENT_SECRET` env vars
+
 ## Architecture Overview
 
 ```
