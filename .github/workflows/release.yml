@@ -13,8 +13,20 @@ env:
 
 jobs:
   build-daemon:
-    name: Build Daemon Binary
-    runs-on: ubuntu-22.04
+    name: Build Daemon Binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: daemon-linux
+            ext: ""
+          - os: windows-latest
+            artifact: daemon-windows
+            ext: ".exe"
+          - os: macos-latest
+            artifact: daemon-macos
+            ext: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -42,13 +54,28 @@ jobs:
       - name: Upload daemon artifact
         uses: actions/upload-artifact@v4
         with:
-          name: daemon-binary
-          path: daemon/dist/cloud-drive-sync-daemon
+          name: ${{ matrix.artifact }}
+          path: daemon/dist/cloud-drive-sync-daemon${{ matrix.ext }}
 
   build-ui:
-    name: Build Tauri UI (with bundled daemon)
+    name: Build Tauri UI (${{ matrix.os }})
     needs: build-daemon
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            daemon_artifact: daemon-linux
+            triple: x86_64-unknown-linux-gnu
+            ext: ""
+          - os: windows-latest
+            daemon_artifact: daemon-windows
+            triple: x86_64-pc-windows-msvc
+            ext: ".exe"
+          - os: macos-latest
+            daemon_artifact: daemon-macos
+            triple: x86_64-apple-darwin
+            ext: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +86,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -73,14 +101,22 @@ jobs:
       - name: Download daemon binary
         uses: actions/download-artifact@v4
         with:
-          name: daemon-binary
+          name: ${{ matrix.daemon_artifact }}
           path: ui/src-tauri/bin
 
-      - name: Place daemon as sidecar with target triple
+      - name: Place daemon as sidecar with target triple (Unix)
+        if: runner.os != 'Windows'
         run: |
           mv ui/src-tauri/bin/cloud-drive-sync-daemon \
-             ui/src-tauri/bin/cloud-drive-sync-daemon-x86_64-unknown-linux-gnu
-          chmod +x ui/src-tauri/bin/cloud-drive-sync-daemon-x86_64-unknown-linux-gnu
+             ui/src-tauri/bin/cloud-drive-sync-daemon-${{ matrix.triple }}
+          chmod +x ui/src-tauri/bin/cloud-drive-sync-daemon-${{ matrix.triple }}
+
+      - name: Place daemon as sidecar with target triple (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Move-Item "ui/src-tauri/bin/cloud-drive-sync-daemon.exe" `
+            "ui/src-tauri/bin/cloud-drive-sync-daemon-${{ matrix.triple }}.exe"
+        shell: pwsh
 
       - name: Install UI dependencies
         working-directory: ui
@@ -90,23 +126,47 @@ jobs:
         working-directory: ui
         run: npx tauri build
 
-      - name: Upload deb artifact
+      - name: Upload Linux deb artifact
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ui-deb
+          name: ui-linux-deb
           path: ui/src-tauri/target/release/bundle/deb/*.deb
 
-      - name: Upload AppImage artifact
+      - name: Upload Linux AppImage artifact
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ui-appimage
+          name: ui-linux-appimage
           path: ui/src-tauri/target/release/bundle/appimage/*.AppImage
 
-      - name: Upload RPM artifact
+      - name: Upload Linux RPM artifact
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ui-rpm
+          name: ui-linux-rpm
           path: ui/src-tauri/target/release/bundle/rpm/*.rpm
+
+      - name: Upload Windows MSI artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-windows-msi
+          path: ui/src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload Windows NSIS artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-windows-nsis
+          path: ui/src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Upload macOS DMG artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-macos-dmg
+          path: ui/src-tauri/target/release/bundle/dmg/*.dmg
 
   build-flatpak:
     name: Build Flatpak
@@ -118,13 +178,13 @@ jobs:
       - name: Download daemon binary
         uses: actions/download-artifact@v4
         with:
-          name: daemon-binary
+          name: daemon-linux
           path: flatpak
 
       - name: Extract UI binary from deb
         uses: actions/download-artifact@v4
         with:
-          name: ui-deb
+          name: ui-linux-deb
           path: /tmp/deb-pkg
 
       - name: Prepare Flatpak build sources
@@ -189,13 +249,32 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          cp release-artifacts/daemon-binary/cloud-drive-sync-daemon release/
-          cp release-artifacts/ui-deb/*.deb release/
-          cp release-artifacts/ui-appimage/*.AppImage release/
-          cp release-artifacts/ui-rpm/*.rpm release/
+
+          # Linux daemon
+          cp release-artifacts/daemon-linux/cloud-drive-sync-daemon release/cloud-drive-sync-daemon-linux
+          chmod +x release/cloud-drive-sync-daemon-linux
+
+          # Windows daemon
+          cp release-artifacts/daemon-windows/cloud-drive-sync-daemon.exe release/cloud-drive-sync-daemon-windows.exe
+
+          # macOS daemon
+          cp release-artifacts/daemon-macos/cloud-drive-sync-daemon release/cloud-drive-sync-daemon-macos
+          chmod +x release/cloud-drive-sync-daemon-macos
+
+          # Linux UI packages
+          cp release-artifacts/ui-linux-deb/*.deb release/
+          cp release-artifacts/ui-linux-appimage/*.AppImage release/
+          cp release-artifacts/ui-linux-rpm/*.rpm release/
           cp release-artifacts/ui-flatpak/*.flatpak release/
-          chmod +x release/cloud-drive-sync-daemon
           chmod +x release/*.AppImage
+
+          # Windows UI packages
+          cp release-artifacts/ui-windows-msi/*.msi release/ 2>/dev/null || true
+          cp release-artifacts/ui-windows-nsis/*.exe release/ 2>/dev/null || true
+
+          # macOS UI packages
+          cp release-artifacts/ui-macos-dmg/*.dmg release/ 2>/dev/null || true
+
           ls -lh release/
 
       - name: Create GitHub Release
