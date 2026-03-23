@@ -108,9 +108,75 @@ jobs:
           name: ui-rpm
           path: ui/src-tauri/target/release/bundle/rpm/*.rpm
 
+  build-flatpak:
+    name: Build Flatpak
+    needs: build-ui
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download daemon binary
+        uses: actions/download-artifact@v4
+        with:
+          name: daemon-binary
+          path: flatpak
+
+      - name: Extract UI binary from deb
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-deb
+          path: /tmp/deb-pkg
+
+      - name: Prepare Flatpak build sources
+        run: |
+          # Extract the UI binary and sidecar from the deb package
+          mkdir -p /tmp/deb-extracted
+          cd /tmp/deb-pkg
+          ar x *.deb
+          tar xf data.tar.* -C /tmp/deb-extracted
+          cp /tmp/deb-extracted/usr/bin/cloud-drive-sync-ui $GITHUB_WORKSPACE/flatpak/
+          chmod +x $GITHUB_WORKSPACE/flatpak/cloud-drive-sync-ui
+          chmod +x $GITHUB_WORKSPACE/flatpak/cloud-drive-sync-daemon
+
+          # Prepare desktop entry with Flatpak app ID
+          sed 's/^Icon=cloud-drive-sync$/Icon=com.cloud_drive_sync.app/' \
+            $GITHUB_WORKSPACE/installer/cloud-drive-sync.desktop > $GITHUB_WORKSPACE/flatpak/cloud-drive-sync.desktop
+
+          # Copy icon
+          cp $GITHUB_WORKSPACE/installer/icons/gdrive-sync.svg $GITHUB_WORKSPACE/flatpak/cloud-drive-sync.svg
+
+          # Bundle appindicator shared libs for system tray support
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-1
+          mkdir -p $GITHUB_WORKSPACE/flatpak/appindicator-libs
+          cp -a /usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so* $GITHUB_WORKSPACE/flatpak/appindicator-libs/
+          cp -a /usr/lib/x86_64-linux-gnu/libayatana-indicator3.so* $GITHUB_WORKSPACE/flatpak/appindicator-libs/ 2>/dev/null || true
+          cp -a /usr/lib/x86_64-linux-gnu/libdbusmenu-gtk3.so* $GITHUB_WORKSPACE/flatpak/appindicator-libs/ 2>/dev/null || true
+          cp -a /usr/lib/x86_64-linux-gnu/libdbusmenu-glib.so* $GITHUB_WORKSPACE/flatpak/appindicator-libs/ 2>/dev/null || true
+
+          ls -lh $GITHUB_WORKSPACE/flatpak/
+
+      - name: Install Flatpak and flatpak-builder
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
+
+      - name: Build Flatpak bundle
+        run: |
+          cd flatpak
+          flatpak-builder --user --force-clean --repo=repo build com.cloud_drive_sync.app.yml
+          flatpak build-bundle repo cloud-drive-sync.flatpak com.cloud_drive_sync.app
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-flatpak
+          path: flatpak/cloud-drive-sync.flatpak
+
   release:
     name: Create GitHub Release
-    needs: [build-daemon, build-ui]
+    needs: [build-daemon, build-ui, build-flatpak]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +193,7 @@ jobs:
           cp release-artifacts/ui-deb/*.deb release/
           cp release-artifacts/ui-appimage/*.AppImage release/
           cp release-artifacts/ui-rpm/*.rpm release/
+          cp release-artifacts/ui-flatpak/*.flatpak release/
           chmod +x release/cloud-drive-sync-daemon
           chmod +x release/*.AppImage
           ls -lh release/

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.cloud_drive_sync.app</id>
+  <name>Cloud Drive Sync</name>
+  <summary>Bidirectional cloud file sync for Linux</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Cloud Drive Sync provides bidirectional file synchronization between your
+      Linux desktop and cloud storage providers including Google Drive, Dropbox,
+      OneDrive, Nextcloud, and Box.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>Multi-account support with multiple cloud providers</li>
+      <li>Bidirectional, upload-only, or download-only sync modes</li>
+      <li>Conflict detection and resolution</li>
+      <li>Bandwidth throttling and concurrent transfer control</li>
+      <li>System tray integration with status indicators</li>
+      <li>Selective sync with ignore patterns and advanced rules</li>
+    </ul>
+  </description>
+  <url type="homepage">https://github.com/ciberkids/cloud-drive-sync</url>
+  <url type="bugtracker">https://github.com/ciberkids/cloud-drive-sync/issues</url>
+  <launchable type="desktop-id">com.cloud_drive_sync.app.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>Utility</category>
+    <category>Network</category>
+    <category>FileTransfer</category>
+  </categories>
+</component>

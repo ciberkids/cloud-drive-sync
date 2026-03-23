@@ -1,0 +1,62 @@
+app-id: com.cloud_drive_sync.app
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: cloud-drive-sync-ui
+
+finish-args:
+  # Display
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  # GPU for WebKit rendering
+  - --device=dri
+  # Network for cloud API calls
+  - --share=network
+  # Home directory for sync folders, config, and data
+  - --filesystem=home
+  # XDG runtime dir for daemon Unix socket
+  - --filesystem=xdg-run/cloud-drive-sync.sock
+  # D-Bus for notifications and system tray
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.ayatana.indicator.application
+  # Portal access for file dialogs
+  - --talk-name=org.freedesktop.portal.Desktop
+
+modules:
+  # Main application (pre-built binaries + bundled appindicator libs)
+  - name: cloud-drive-sync
+    buildsystem: simple
+    build-commands:
+      # Install UI binary
+      - install -Dm755 cloud-drive-sync-ui /app/bin/cloud-drive-sync-ui
+      # Install daemon sidecar
+      - install -Dm755 cloud-drive-sync-daemon /app/bin/cloud-drive-sync-daemon
+      # Install bundled shared libraries for appindicator
+      - |
+        if [ -d appindicator-libs ]; then
+          mkdir -p /app/lib
+          cp -a appindicator-libs/*.so* /app/lib/
+        fi
+      # Install desktop entry
+      - install -Dm644 cloud-drive-sync.desktop /app/share/applications/com.cloud_drive_sync.app.desktop
+      # Install icon
+      - install -Dm644 cloud-drive-sync.svg /app/share/icons/hicolor/scalable/apps/com.cloud_drive_sync.app.svg
+      # Install metainfo
+      - install -Dm644 com.cloud_drive_sync.app.metainfo.xml /app/share/metainfo/com.cloud_drive_sync.app.metainfo.xml
+    sources:
+      - type: file
+        path: cloud-drive-sync-ui
+      - type: file
+        path: cloud-drive-sync-daemon
+      - type: file
+        path: cloud-drive-sync.desktop
+      - type: file
+        path: cloud-drive-sync.svg
+      - type: file
+        path: com.cloud_drive_sync.app.metainfo.xml
+      - type: dir
+        path: appindicator-libs
+        dest: appindicator-libs
