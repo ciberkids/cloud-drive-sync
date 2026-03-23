@@ -4,7 +4,7 @@ The Python daemon that performs bidirectional Google Drive synchronization.
 
 ## Overview
 
-The daemon runs as a background process (or systemd user service) and handles:
+The daemon runs on Linux, macOS, and Windows as a background process (or systemd user service on Linux) and handles:
 
 - Watching local directories for changes (via watchdog)
 - Polling Google Drive for remote changes
@@ -32,7 +32,7 @@ cloud-drive-sync-daemon [OPTIONS] COMMAND
 Start the sync daemon.
 
 ```bash
-cloud-drive-sync-daemon start              # Daemonize (fork to background)
+cloud-drive-sync-daemon start              # Daemonize (fork to background, Linux/macOS only)
 cloud-drive-sync-daemon start --foreground  # Run in foreground (for development/systemd)
 cloud-drive-sync-daemon start --demo        # Run with mock Drive API (no Google account needed)
 ```
@@ -42,6 +42,8 @@ cloud-drive-sync-daemon start --demo        # Run with mock Drive API (no Google
 | `--foreground` | Run in the foreground instead of forking |
 | `--demo` | Use mock Drive client with synthetic test data |
 | `--config PATH` | Path to config file |
+
+> **Windows note:** The daemon always runs in foreground mode on Windows (fork is not supported). The Tauri UI manages the daemon lifecycle as a sidecar process.
 
 #### `stop`
 
@@ -71,7 +73,13 @@ cloud-drive-sync-daemon auth
 
 ## Configuration Reference
 
-The daemon reads configuration from `~/.config/cloud-drive-sync/config.toml` (or the path specified by `--config`). All values have sensible defaults.
+The daemon reads configuration from a platform-specific path (or the path specified by `--config`). All values have sensible defaults.
+
+| Platform | Default config path |
+|---|---|
+| Linux | `~/.config/cloud-drive-sync/config.toml` |
+| macOS | `~/Library/Application Support/cloud-drive-sync/config.toml` |
+| Windows | `%APPDATA%\cloud-drive-sync\config.toml` |
 
 ### `[general]`
 

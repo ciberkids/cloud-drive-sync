@@ -1,6 +1,6 @@
 # Architecture
 
-Cloud Drive Sync is a two-process system: a Python daemon that performs all sync operations, and a Tauri/React desktop UI that communicates with the daemon over a Unix domain socket.
+Cloud Drive Sync is a two-process system that runs on Linux, macOS, and Windows. A Python daemon performs all sync operations, and a Tauri/React desktop UI communicates with the daemon over a local IPC channel.
 
 ## System Overview
 
@@ -193,12 +193,12 @@ States are defined in `db/models.py:FileState`:
 
 ## IPC Protocol
 
-The daemon and UI communicate via **JSON-RPC 2.0 over a Unix domain socket** with newline-delimited messages.
+The daemon and UI communicate via **JSON-RPC 2.0** with newline-delimited messages over a local transport.
 
 ### Transport
 
-- **Socket**: `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (typically `/run/user/1000/cloud-drive-sync.sock`)
-- **Permissions**: `0600` (user-only read/write)
+- **Linux / macOS**: Unix domain socket at `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (Linux, typically `/run/user/1000/cloud-drive-sync.sock`) or `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` (macOS). Permissions set to `0600` (user-only read/write).
+- **Windows**: TCP connection to `127.0.0.1` on a dynamic port. The port number is written to a lock file at `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock`.
 - **Framing**: each message is a single JSON object terminated by `\n`
 
 ### Message Flow
@@ -300,14 +300,14 @@ Activity log of all sync operations.
 
 - **OAuth2** with Google Drive API v3 scopes
 - Credentials obtained via browser-based OAuth flow (`google-auth-oauthlib`)
-- Tokens stored encrypted at `~/.local/share/cloud-drive-sync/credentials.enc` using `cryptography` (Fernet)
-- A random salt is stored alongside at `~/.local/share/cloud-drive-sync/token_salt`
+- Tokens stored encrypted at the platform data directory (see File Path Conventions) in `credentials.enc` using `cryptography` (Fernet)
+- A random salt is stored alongside in `token_salt`
+- Encryption key is derived from a machine ID: `/etc/machine-id` on Linux, `IOPlatformUUID` via `ioreg` on macOS, `MachineGuid` from the Windows registry
 
 ### IPC Socket
 
-- Unix domain socket at `$XDG_RUNTIME_DIR/cloud-drive-sync.sock`
-- Permissions set to `0600` (owner read/write only)
-- No authentication on the socket — relies on filesystem permissions
+- **Linux / macOS**: Unix domain socket with permissions `0600` (owner read/write only). No authentication — relies on filesystem permissions.
+- **Windows**: TCP `127.0.0.1` bound to a dynamic port (port stored in lock file). Localhost-only binding prevents remote access.
 
 ### Daemon Process
 
@@ -317,13 +317,11 @@ Activity log of all sync operations.
 
 ## File Path Conventions
 
-All paths follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/):
+Paths follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) on Linux, and native conventions on macOS and Windows.
 
-| Purpose | Path |
-|---|---|
-| Configuration | `$XDG_CONFIG_HOME/cloud-drive-sync/config.toml` (default: `~/.config/cloud-drive-sync/config.toml`) |
-| Database | `$XDG_DATA_HOME/cloud-drive-sync/state.db` (default: `~/.local/share/cloud-drive-sync/state.db`) |
-| Credentials | `$XDG_DATA_HOME/cloud-drive-sync/credentials.enc` |
-| Token salt | `$XDG_DATA_HOME/cloud-drive-sync/token_salt` |
-| Unix socket | `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (default: `/run/user/$UID/cloud-drive-sync.sock`) |
-| PID file | `$XDG_RUNTIME_DIR/cloud-drive-sync.pid` |
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Configuration | `~/.config/cloud-drive-sync/` | `~/Library/Application Support/cloud-drive-sync/` | `%APPDATA%\cloud-drive-sync\` |
+| Data (DB, credentials) | `~/.local/share/cloud-drive-sync/` | `~/Library/Application Support/cloud-drive-sync/` | `%LOCALAPPDATA%\cloud-drive-sync\` |
+| Socket / IPC | `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` | TCP `127.0.0.1` (port in `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock`) |
+| PID file | `$XDG_RUNTIME_DIR/cloud-drive-sync.pid` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.pid` | `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock` |

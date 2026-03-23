@@ -1,6 +1,6 @@
 # Cloud Drive Sync
 
-Multi-cloud bidirectional file sync for Linux, with a native desktop UI.
+Multi-cloud bidirectional file sync for Linux, macOS, and Windows, with a native desktop UI.
 
 Supports **Google Drive**, **Dropbox**, **OneDrive**, **Nextcloud**, and **Box** — with Proton Drive planned for Q2 2026+.
 
@@ -176,8 +176,9 @@ curl -fsSL https://raw.githubusercontent.com/ciberkids/cloud-drive-sync/main/ins
 - **Multiple accounts** — connect accounts from different providers, bind each sync pair to a specific account
 - **Hidden file filtering** — exclude dotfiles and dot-directories from sync (configurable per pair)
 - **Multi-pair support** — sync multiple local folders to different cloud locations
+- **Cross-platform** — runs natively on Linux, macOS, and Windows
 - **Native desktop UI** — Tauri + React app for configuration and monitoring
-- **Daemon architecture** — runs as a background service via systemd
+- **Daemon architecture** — runs as a background service (systemd on Linux, sidecar on macOS/Windows)
 - **XDG compliance** — config, data, and runtime files follow the XDG Base Directory spec
 - **Encrypted credentials** — OAuth2 tokens stored encrypted on disk (per-account)
 - **Demo mode** — test the full UI and sync flow without any cloud account

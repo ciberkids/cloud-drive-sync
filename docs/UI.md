@@ -4,7 +4,7 @@ Desktop application for monitoring and managing Cloud Drive Sync, built with Tau
 
 ## Overview
 
-The UI is a native Linux desktop application that provides:
+The UI is a native cross-platform desktop application (Linux, macOS, Windows) that provides:
 
 - Real-time sync status dashboard
 - Sync folder pair management
@@ -17,7 +17,7 @@ The UI is a native Linux desktop application that provides:
 
 - **Node.js 18+**
 - **Rust toolchain** (install via [rustup](https://rustup.rs/))
-- **System libraries** for Tauri:
+- **System libraries** (Linux only — macOS and Windows require no extra dependencies):
 
   Debian/Ubuntu:
   ```bash
@@ -49,9 +49,9 @@ npm run tauri build
 ```
 
 Build artifacts are placed in `src-tauri/target/release/bundle/`:
-- `.deb` package
-- `.rpm` package
-- `.appimage`
+- **Linux**: `.deb`, `.rpm`, `.appimage`
+- **macOS**: `.dmg`
+- **Windows**: `.msi`, `.nsis` (NSIS installer)
 
 ## Component Overview
 
@@ -82,7 +82,7 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 | **main** | `src-tauri/src/main.rs` | Tauri app setup, daemon bridge initialization, tray setup, event forwarding |
 | **commands** | `src-tauri/src/commands.rs` | Tauri command handlers that proxy calls through the daemon bridge |
 | **ipc_bridge** | `src-tauri/src/ipc_bridge.rs` | Unix socket client that connects to the daemon's JSON-RPC server |
-| **tray** | `src-tauri/src/tray.rs` | System tray icon and context menu management |
+| **tray** | `src-tauri/src/tray.rs` | System tray icon and context menu management (uses native APIs on macOS/Windows, appindicator on Linux) |
 
 ## Connecting to the Daemon
 
