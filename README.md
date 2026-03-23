@@ -1,8 +1,8 @@
 # Cloud Drive Sync
 
-Multi-cloud bidirectional file sync for Linux, macOS, and Windows, with a native desktop UI.
+**There is no good, free Google Drive sync client for Linux.** The KDE Accounts integration barely works, GNOME Online Accounts only mounts files on demand (no offline access), and every other option is either paid (Insync), abandoned, or command-line only. We built Cloud Drive Sync to fix that — a native, open-source desktop app that just works, like what Dropbox and Google Drive offer on Windows and macOS but never bothered to ship for Linux.
 
-Supports **Google Drive**, **Dropbox**, **OneDrive**, **Nextcloud**, and **Box** — with Proton Drive planned for Q2 2026+.
+It grew into a full multi-cloud sync platform supporting **Google Drive**, **Dropbox**, **OneDrive**, **Nextcloud**, and **Box**, running on **Linux, macOS, and Windows** — with Proton Drive planned for Q2 2026+.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/architecture.png">
