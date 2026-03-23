@@ -3,7 +3,10 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixStream;
+#[cfg(windows)]
+use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex, oneshot};
 use std::collections::HashMap;
 
@@ -69,13 +72,23 @@ impl DaemonBridge {
     }
 
     pub async fn connect(&mut self) -> Result<(), String> {
-        let socket_path = get_socket_path();
+        #[cfg(unix)]
+        let (reader, writer) = {
+            let socket_path = get_socket_path();
+            let stream = UnixStream::connect(&socket_path)
+                .await
+                .map_err(|e| format!("Failed to connect to daemon at {}: {}", socket_path, e))?;
+            stream.into_split()
+        };
 
-        let stream = UnixStream::connect(&socket_path)
-            .await
-            .map_err(|e| format!("Failed to connect to daemon at {}: {}", socket_path, e))?;
-
-        let (reader, writer) = stream.into_split();
+        #[cfg(windows)]
+        let (reader, writer) = {
+            let addr = get_tcp_addr()?;
+            let stream = TcpStream::connect(&addr)
+                .await
+                .map_err(|e| format!("Failed to connect to daemon at {}: {}", addr, e))?;
+            stream.into_split()
+        };
         let (tx, mut rx) = mpsc::channel::<String>(256);
         self.sender = tx;
         self.connected.store(true, Ordering::SeqCst);
@@ -200,6 +213,7 @@ impl DaemonBridge {
     }
 }
 
+#[cfg(unix)]
 fn get_socket_path() -> String {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         format!("{}/cloud-drive-sync.sock", runtime_dir)
@@ -207,4 +221,18 @@ fn get_socket_path() -> String {
         let uid = unsafe { libc::getuid() };
         format!("/run/user/{}/cloud-drive-sync.sock", uid)
     }
+}
+
+#[cfg(windows)]
+fn get_tcp_addr() -> Result<String, String> {
+    let port_file = dirs::runtime_dir()
+        .or_else(|| dirs::data_local_dir())
+        .ok_or_else(|| "Cannot determine runtime directory".to_string())?
+        .join("cloud-drive-sync")
+        .join("cloud-drive-sync.port");
+    let port_str = std::fs::read_to_string(&port_file)
+        .map_err(|e| format!("Cannot read port file at {:?}: {}. Is the daemon running?", port_file, e))?;
+    let port: u16 = port_str.trim().parse()
+        .map_err(|e| format!("Invalid port in {:?}: {}", port_file, e))?;
+    Ok(format!("127.0.0.1:{}", port))
 }

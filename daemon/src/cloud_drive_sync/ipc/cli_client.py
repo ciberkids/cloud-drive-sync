@@ -1,15 +1,16 @@
-"""CLI client for communicating with the cloud-drive-sync daemon via Unix socket."""
+"""CLI client for communicating with the cloud-drive-sync daemon via IPC."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
 class CliClient:
-    """JSON-RPC client that connects to the daemon's Unix socket."""
+    """JSON-RPC client that connects to the daemon via Unix socket or TCP."""
 
     def __init__(self) -> None:
         self._reader: asyncio.StreamReader | None = None
@@ -17,17 +18,32 @@ class CliClient:
         self._request_id = 0
 
     async def connect(self, socket_path: str | Path | None = None) -> None:
-        """Connect to the daemon socket."""
-        if socket_path is None:
-            from cloud_drive_sync.util.paths import socket_path as get_socket_path
-            socket_path = get_socket_path()
-        socket_path = Path(socket_path)
-        if not socket_path.exists():
-            raise ConnectionError(
-                f"Daemon socket not found at {socket_path}. "
-                "Is the daemon running? Start it with: cloud-drive-sync start"
+        """Connect to the daemon via Unix socket (Linux/macOS) or TCP (Windows)."""
+        if sys.platform == "win32":
+            from cloud_drive_sync.util.paths import ipc_address
+
+            host, port_file = ipc_address()
+            if not port_file.exists():
+                raise ConnectionError(
+                    f"Daemon port file not found at {port_file}. "
+                    "Is the daemon running? Start it with: cloud-drive-sync start"
+                )
+            port = int(port_file.read_text().strip())
+            self._reader, self._writer = await asyncio.open_connection(host, port)
+        else:
+            if socket_path is None:
+                from cloud_drive_sync.util.paths import ipc_address
+
+                socket_path = ipc_address()
+            socket_path = Path(socket_path)
+            if not socket_path.exists():
+                raise ConnectionError(
+                    f"Daemon socket not found at {socket_path}. "
+                    "Is the daemon running? Start it with: cloud-drive-sync start"
+                )
+            self._reader, self._writer = await asyncio.open_unix_connection(
+                str(socket_path)
             )
-        self._reader, self._writer = await asyncio.open_unix_connection(str(socket_path))
 
     async def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
         """Send a JSON-RPC request and return the result."""

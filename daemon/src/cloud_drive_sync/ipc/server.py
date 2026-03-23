@@ -1,8 +1,9 @@
-"""Unix domain socket IPC server using asyncio."""
+"""Cross-platform IPC server using asyncio (Unix sockets or TCP localhost)."""
 
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 
 from cloud_drive_sync.ipc.handlers import RequestHandler
@@ -15,34 +16,53 @@ from cloud_drive_sync.ipc.protocol import (
     serialize_message,
 )
 from cloud_drive_sync.util.logging import get_logger
-from cloud_drive_sync.util.paths import socket_path
+from cloud_drive_sync.util.paths import ipc_address, runtime_dir
 
 log = get_logger("ipc.server")
 
 
 class IpcServer:
-    """Asyncio-based Unix domain socket server for JSON-RPC IPC."""
+    """Asyncio-based IPC server for JSON-RPC (Unix socket on Linux/macOS, TCP on Windows)."""
 
     def __init__(self, handler: RequestHandler, path: Path | None = None) -> None:
         self._handler = handler
-        self._path = path or socket_path()
         self._server: asyncio.Server | None = None
         self._clients: set[asyncio.StreamWriter] = set()
 
+        if sys.platform == "win32":
+            host, port_file = ipc_address()
+            self._host = host
+            self._port_file = port_file
+            self._path: Path | None = None
+        else:
+            self._path = path or ipc_address()
+            self._host = None
+            self._port_file = None
+
     async def start(self) -> None:
-        """Start listening on the Unix domain socket."""
-        # Clean up stale socket
-        if self._path.exists():
-            self._path.unlink()
+        """Start listening on Unix socket (Linux/macOS) or TCP localhost (Windows)."""
+        if sys.platform == "win32":
+            self._port_file.parent.mkdir(parents=True, exist_ok=True)
+            self._server = await asyncio.start_server(
+                self._handle_client, self._host, 0
+            )
+            # Write the assigned port to the port file
+            port = self._server.sockets[0].getsockname()[1]
+            self._port_file.write_text(str(port))
+            log.info("IPC server listening on %s:%d", self._host, port)
+        else:
+            # Clean up stale socket
+            if self._path.exists():
+                self._path.unlink()
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._server = await asyncio.start_unix_server(
-            self._handle_client, path=str(self._path)
-        )
-        # Set socket permissions to user-only
-        self._path.chmod(0o600)
-        log.info("IPC server listening on %s", self._path)
+            self._server = await asyncio.start_unix_server(
+                self._handle_client, path=str(self._path)
+            )
+            # Set socket permissions to user-only
+            self._path.chmod(0o600)
+            log.info("IPC server listening on %s", self._path)
 
     async def stop(self) -> None:
         """Stop the server and disconnect all clients."""
@@ -53,8 +73,12 @@ class IpcServer:
         for writer in list(self._clients):
             writer.close()
 
-        if self._path.exists():
-            self._path.unlink()
+        if sys.platform == "win32":
+            if self._port_file and self._port_file.exists():
+                self._port_file.unlink()
+        else:
+            if self._path and self._path.exists():
+                self._path.unlink()
 
         log.info("IPC server stopped")
 
