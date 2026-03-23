@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'wiki/**'
       - 'docs/**'
       - 'README.md'
 
@@ -37,8 +36,35 @@ jobs:
             exit 0
           fi
 
-          # Copy wiki contents
-          cp wiki/*.md wiki-repo/
+          # Generate wiki pages from docs/ (single source of truth)
+          # Map docs filenames to wiki page names
+          cp docs/ARCHITECTURE.md  wiki-repo/Architecture.md
+          cp docs/API.md           wiki-repo/API-Reference.md
+          cp docs/CONTRIBUTING.md  wiki-repo/Contributing.md
+          cp docs/CLI.md           wiki-repo/CLI.md
+          cp docs/DAEMON.md        wiki-repo/Daemon.md
+          cp docs/UI.md            wiki-repo/UI.md
+
+          # Generate Home page from README (strip first line header, adjust links)
+          sed 's|\(docs/screenshots/\)|https://raw.githubusercontent.com/${{ github.repository }}/main/\1|g' README.md > wiki-repo/Home.md
+
+          # Generate sidebar navigation
+          cat > wiki-repo/_Sidebar.md << 'SIDEBAR'
+          **Cloud Drive Sync**
+
+          - [[Home]]
+          - [[Architecture]]
+          - [[API Reference|API-Reference]]
+          - [[CLI]]
+          - [[Daemon]]
+          - [[UI]]
+          - [[Contributing]]
+          SIDEBAR
+
+          # Generate footer
+          cat > wiki-repo/_Footer.md << 'FOOTER'
+          [Cloud Drive Sync](https://github.com/${{ github.repository }}) | [Report an Issue](https://github.com/${{ github.repository }}/issues) | [Releases](https://github.com/${{ github.repository }}/releases)
+          FOOTER
 
           # Commit and push if there are changes
           cd wiki-repo
@@ -46,6 +72,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No wiki changes to push"
           else
-            git commit -m "Sync wiki from main branch"
+            git commit -m "Sync wiki from docs/ (auto-generated)"
             git push origin HEAD:master || git push origin HEAD:main
           fi
