@@ -97,7 +97,7 @@ jobs:
             triple: x86_64-pc-windows-msvc
             install_deps: false
           - os: macos-latest
-            triple: x86_64-apple-darwin
+            triple: aarch64-apple-darwin
             install_deps: false
     defaults:
       run:

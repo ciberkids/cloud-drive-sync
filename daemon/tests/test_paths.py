@@ -1,10 +1,13 @@
-"""Tests for XDG path resolution utilities."""
+"""Tests for cross-platform path resolution utilities."""
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
+
+import platformdirs
 
 from cloud_drive_sync.util.paths import (
     config_dir,
@@ -18,13 +21,16 @@ from cloud_drive_sync.util.paths import (
     socket_path,
 )
 
+APP_NAME = "cloud-drive-sync"
+
 
 class TestConfigDir:
-    def test_default_uses_home(self):
+    def test_default_uses_platformdirs(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_CONFIG_HOME", None)
             result = config_dir()
-            assert result == Path.home() / ".config" / "cloud-drive-sync"
+            expected = Path(platformdirs.user_config_dir(APP_NAME, appauthor=False))
+            assert result == expected
 
     def test_respects_xdg_config_home(self):
         with patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/config"}):
@@ -33,11 +39,12 @@ class TestConfigDir:
 
 
 class TestDataDir:
-    def test_default_uses_home(self):
+    def test_default_uses_platformdirs(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_DATA_HOME", None)
             result = data_dir()
-            assert result == Path.home() / ".local" / "share" / "cloud-drive-sync"
+            expected = Path(platformdirs.user_data_dir(APP_NAME, appauthor=False))
+            assert result == expected
 
     def test_respects_xdg_data_home(self):
         with patch.dict(os.environ, {"XDG_DATA_HOME": "/custom/data"}):
@@ -55,7 +62,8 @@ class TestRuntimeDir:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XDG_RUNTIME_DIR", None)
             result = runtime_dir()
-            assert result == Path(f"/run/user/{os.getuid()}/cloud-drive-sync")
+            expected = Path(platformdirs.user_runtime_dir(APP_NAME, appauthor=False))
+            assert result == expected
 
 
 class TestSpecificPaths:

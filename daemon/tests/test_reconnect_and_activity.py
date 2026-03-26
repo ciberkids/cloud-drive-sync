@@ -582,7 +582,8 @@ class TestStaleSocketCleanup:
     @pytest.mark.asyncio
     async def test_start_creates_parent_directory(self, tmp_path: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.start() creates the parent directory if needed."""
-        socket_file = tmp_path / "subdir" / "nested" / "cloud_drive_sync.sock"
+        # Use short names to stay within macOS 108-char Unix socket limit
+        socket_file = tmp_path / "s" / "n" / "cds.sock"
         assert not socket_file.parent.exists()
 
         server = IpcServer(handler, path=socket_file)
