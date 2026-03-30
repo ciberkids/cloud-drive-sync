@@ -1,6 +1,6 @@
 """Integration tests for IPC server end-to-end flow.
 
-These tests start the actual IPC server on a Unix socket, connect a client,
+These tests start the actual IPC server on a Unix/TCP socket, connect a client,
 send JSON-RPC messages over the wire, and verify responses — exercising the
 full server → protocol → handler pipeline.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -84,22 +85,38 @@ async def db(tmp_path: Path):
 
 @pytest.fixture
 async def ipc_server(short_tmp: Path, config: Config, db: Database):
-    """Start an IPC server on a temporary socket and yield (server, socket_path)."""
+    """Start an IPC server and yield (server, connection_info).
+
+    On Unix: uses a Unix socket.  On Windows: uses TCP localhost.
+    """
     handler = RequestHandler(engine=None, config=config)
     handler.set_db(db)
 
-    sock = short_tmp / "t.sock"
-    server = IpcServer(handler, path=sock)
-    await server.start()
-    yield server, sock
+    if sys.platform == "win32":
+        from unittest.mock import patch as _patch
+        port_file = short_tmp / "test.port"
+        with _patch("cloud_drive_sync.ipc.server.ipc_address", return_value=("127.0.0.1", port_file)):
+            server = IpcServer(handler)
+            await server.start()
+            port = server._server.sockets[0].getsockname()[1]
+            yield server, ("127.0.0.1", port)
+    else:
+        sock = short_tmp / "t.sock"
+        server = IpcServer(handler, path=sock)
+        await server.start()
+        yield server, sock
     await server.stop()
 
 
 @pytest.fixture
 async def client(ipc_server):
     """Connect a client to the IPC server and yield (reader, writer)."""
-    _server, sock = ipc_server
-    reader, writer = await asyncio.open_unix_connection(str(sock))
+    _server, conn_info = ipc_server
+    if sys.platform == "win32":
+        host, port = conn_info
+        reader, writer = await asyncio.open_connection(host, port)
+    else:
+        reader, writer = await asyncio.open_unix_connection(str(conn_info))
     yield reader, writer
     writer.close()
     await writer.wait_closed()

@@ -20,6 +20,7 @@ Bug 5: Stale socket not cleaned up on daemon crash — IpcServer.start() should
 from __future__ import annotations
 
 import stat
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -529,6 +530,7 @@ class TestActivityLogPagination:
 # ══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets not available on Windows")
 class TestStaleSocketCleanup:
     """Tests for Bug 5: IpcServer should remove stale socket before binding."""
 
