@@ -51,7 +51,14 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        run: .venv\Scripts\pytest -v --tb=long --cov=cloud_drive_sync --cov-report=xml
+        run: .venv\Scripts\pytest -v --tb=long --cov=cloud_drive_sync --cov-report=xml 2>&1 | tee test-output.txt
+
+      - name: Upload test output on failure (Windows)
+        if: runner.os == 'Windows' && failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-output
+          path: daemon/test-output.txt
 
   ui-typecheck:
     name: UI – Type Check (${{ matrix.os }})
