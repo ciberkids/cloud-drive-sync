@@ -51,7 +51,7 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        run: .venv\Scripts\pytest -v --cov=cloud_drive_sync --cov-report=xml
+        run: .venv\Scripts\pytest -v --tb=long --cov=cloud_drive_sync --cov-report=xml
 
   ui-typecheck:
     name: UI – Type Check (${{ matrix.os }})
