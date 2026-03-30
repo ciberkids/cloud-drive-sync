@@ -82,14 +82,15 @@ async def test_add_sync_pair(handler: RequestHandler, tmp_path: Path, config: Co
     original_save = config.save
     config.save = lambda path=None: original_save(config_file)
 
+    new_folder = str(tmp_path / "new_folder")
     req = JsonRpcRequest(
         method="add_sync_pair",
-        params={"local_path": "/tmp/new_folder", "remote_folder_id": "new_id"},
+        params={"local_path": new_folder, "remote_folder_id": "new_id"},
         id=3,
     )
     resp = await handler.handle(req)
     assert resp.error is None
-    assert resp.result["local_path"] == "/tmp/new_folder"
+    assert resp.result["local_path"] == new_folder
     assert resp.result["remote_folder_id"] == "new_id"
     assert len(config.sync.pairs) == 3
 

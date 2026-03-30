@@ -55,9 +55,9 @@ def config(tmp_path: Path):
         poll_interval=10,
         conflict_strategy="keep_both",
         pairs=[
-            SyncPair(local_path="/tmp/test_local", remote_folder_id="root", enabled=True),
+            SyncPair(local_path=str(tmp_path / "test_local"), remote_folder_id="root", enabled=True),
             SyncPair(
-                local_path="/tmp/test_backup",
+                local_path=str(tmp_path / "test_backup"),
                 remote_folder_id="folder_abc",
                 enabled=False,
                 sync_mode="upload_only",
@@ -147,27 +147,28 @@ async def test_list_accounts(client):
     assert result[0]["provider"] == "gdrive"
 
 
-async def test_get_sync_pairs(client):
+async def test_get_sync_pairs(client, config):
     reader, writer = client
     resp = await rpc_call(reader, writer, "get_sync_pairs", req_id=3)
     assert resp.get("error") is None
     result = resp["result"]
     assert len(result) == 2
-    assert result[0]["local_path"] == "/tmp/test_local"
+    assert result[0]["local_path"] == config.sync.pairs[0].local_path
     assert result[0]["enabled"] is True
     assert result[1]["sync_mode"] == "upload_only"
 
 
-async def test_add_sync_pair_success(client, config):
+async def test_add_sync_pair_success(client, config, short_tmp):
     reader, writer = client
+    new_folder = str(short_tmp / "new_folder")
     resp = await rpc_call(
         reader, writer, "add_sync_pair",
-        params={"local_path": "/tmp/new_folder", "remote_folder_id": "new_id"},
+        params={"local_path": new_folder, "remote_folder_id": "new_id"},
         req_id=4,
     )
     assert resp.get("error") is None
     result = resp["result"]
-    assert result["local_path"] == "/tmp/new_folder"
+    assert result["local_path"] == new_folder
     assert result["remote_folder_id"] == "new_id"
     assert result["enabled"] is True
     assert len(config.sync.pairs) == 3

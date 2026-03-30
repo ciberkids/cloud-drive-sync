@@ -88,7 +88,7 @@ async def scan_directory(
     count = 0
 
     for path in root.rglob("*"):
-        rel = str(path.relative_to(root))
+        rel = path.relative_to(root).as_posix()
         if _is_ignored(rel, patterns):
             continue
         if ignore_hidden and _is_hidden(rel):

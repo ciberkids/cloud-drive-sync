@@ -259,10 +259,11 @@ async def test_add_sync_pair_accepts_ignore_hidden(config: Config, db: Database,
     handler = RequestHandler(engine=None, config=config)
     handler.set_db(db)
 
+    new_folder = str(tmp_path / "new_folder")
     req = JsonRpcRequest(
         method="add_sync_pair",
         params={
-            "local_path": "/tmp/new_folder",
+            "local_path": new_folder,
             "remote_folder_id": "root",
             "ignore_hidden": False,
         },

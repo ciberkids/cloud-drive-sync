@@ -193,28 +193,31 @@ class TestAddSyncPairValidation:
         assert "absolute" in resp.error.message.lower()
 
     @pytest.mark.asyncio
-    async def test_rejects_path_with_dotdot(self, handler):
+    async def test_rejects_path_with_dotdot(self, handler, tmp_path):
+        dotdot_path = str(tmp_path / ".." / "etc" / "shadow")
         req = JsonRpcRequest(id=2, method="add_sync_pair", params={
-            "local_path": "/home/user/../etc/shadow",
+            "local_path": dotdot_path,
         })
         resp = await handler.handle(req)
         assert resp.error is not None
         assert ".." in resp.error.message
 
     @pytest.mark.asyncio
-    async def test_accepts_valid_absolute_path(self, handler):
+    async def test_accepts_valid_absolute_path(self, handler, tmp_path):
+        valid_path = str(tmp_path / "Documents" / "sync")
         req = JsonRpcRequest(id=3, method="add_sync_pair", params={
-            "local_path": "/home/user/Documents/sync",
+            "local_path": valid_path,
             "remote_folder_id": "root",
         })
         resp = await handler.handle(req)
         assert resp.error is None
-        assert resp.result["local_path"] == "/home/user/Documents/sync"
+        assert resp.result["local_path"] == valid_path
 
     @pytest.mark.asyncio
-    async def test_rejects_dotdot_in_middle(self, handler):
+    async def test_rejects_dotdot_in_middle(self, handler, tmp_path):
+        dotdot_path = str(tmp_path / "docs" / ".." / ".." / ".." / "etc")
         req = JsonRpcRequest(id=4, method="add_sync_pair", params={
-            "local_path": "/home/user/docs/../../../etc",
+            "local_path": dotdot_path,
         })
         resp = await handler.handle(req)
         assert resp.error is not None

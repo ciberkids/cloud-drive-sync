@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import platformdirs
+import pytest
 
 from cloud_drive_sync.util.paths import (
     config_dir,
@@ -22,6 +24,9 @@ from cloud_drive_sync.util.paths import (
 
 APP_NAME = "cloud-drive-sync"
 
+# XDG env vars are only respected by platformdirs on Unix
+xdg_only = pytest.mark.skipif(sys.platform == "win32", reason="XDG not used on Windows")
+
 
 class TestConfigDir:
     def test_default_uses_platformdirs(self):
@@ -31,6 +36,7 @@ class TestConfigDir:
             expected = Path(platformdirs.user_config_dir(APP_NAME, appauthor=False))
             assert result == expected
 
+    @xdg_only
     def test_respects_xdg_config_home(self):
         with patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/config"}):
             result = config_dir()
@@ -45,6 +51,7 @@ class TestDataDir:
             expected = Path(platformdirs.user_data_dir(APP_NAME, appauthor=False))
             assert result == expected
 
+    @xdg_only
     def test_respects_xdg_data_home(self):
         with patch.dict(os.environ, {"XDG_DATA_HOME": "/custom/data"}):
             result = data_dir()
@@ -52,6 +59,7 @@ class TestDataDir:
 
 
 class TestRuntimeDir:
+    @xdg_only
     def test_respects_xdg_runtime_dir(self):
         with patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/1234"}):
             result = runtime_dir()
@@ -91,6 +99,7 @@ class TestSpecificPaths:
 
 
 class TestEnsureDirs:
+    @xdg_only
     def test_creates_directories(self, tmp_path: Path):
         with patch.dict(os.environ, {
             "XDG_CONFIG_HOME": str(tmp_path / "config"),
@@ -100,6 +109,7 @@ class TestEnsureDirs:
             assert (tmp_path / "config" / "cloud-drive-sync").is_dir()
             assert (tmp_path / "data" / "cloud-drive-sync").is_dir()
 
+    @xdg_only
     def test_idempotent(self, tmp_path: Path):
         with patch.dict(os.environ, {
             "XDG_CONFIG_HOME": str(tmp_path / "config"),
