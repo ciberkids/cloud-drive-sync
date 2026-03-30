@@ -533,10 +533,10 @@ class TestStaleSocketCleanup:
     """Tests for Bug 5: IpcServer should remove stale socket before binding."""
 
     @pytest.mark.asyncio
-    async def test_start_removes_existing_socket_file(self, tmp_path: Path, handler: RequestHandler):
+    async def test_start_removes_existing_socket_file(self, short_tmp: Path, handler: RequestHandler):
         """EXPECTED: If a socket file already exists (from a crash), IpcServer.start()
         should remove it before binding a new one."""
-        socket_file = tmp_path / "cloud_drive_sync.sock"
+        socket_file = short_tmp / "cds.sock"
         # Create a stale socket file (simulating a daemon crash)
         socket_file.write_text("stale")
 
@@ -554,9 +554,9 @@ class TestStaleSocketCleanup:
             await server.stop()
 
     @pytest.mark.asyncio
-    async def test_start_works_when_no_existing_socket(self, tmp_path: Path, handler: RequestHandler):
+    async def test_start_works_when_no_existing_socket(self, short_tmp: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.start() works fine when no socket file exists."""
-        socket_file = tmp_path / "cloud_drive_sync.sock"
+        socket_file = short_tmp / "cds.sock"
         assert not socket_file.exists()
 
         server = IpcServer(handler, path=socket_file)
@@ -568,9 +568,9 @@ class TestStaleSocketCleanup:
             await server.stop()
 
     @pytest.mark.asyncio
-    async def test_stop_removes_socket_file(self, tmp_path: Path, handler: RequestHandler):
+    async def test_stop_removes_socket_file(self, short_tmp: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.stop() cleans up the socket file."""
-        socket_file = tmp_path / "cloud_drive_sync.sock"
+        socket_file = short_tmp / "cds.sock"
 
         server = IpcServer(handler, path=socket_file)
         await server.start()
@@ -580,10 +580,9 @@ class TestStaleSocketCleanup:
         assert not socket_file.exists()
 
     @pytest.mark.asyncio
-    async def test_start_creates_parent_directory(self, tmp_path: Path, handler: RequestHandler):
+    async def test_start_creates_parent_directory(self, short_tmp: Path, handler: RequestHandler):
         """EXPECTED: IpcServer.start() creates the parent directory if needed."""
-        # Use short names to stay within macOS 108-char Unix socket limit
-        socket_file = tmp_path / "s" / "n" / "cds.sock"
+        socket_file = short_tmp / "s" / "n" / "cds.sock"
         assert not socket_file.parent.exists()
 
         server = IpcServer(handler, path=socket_file)

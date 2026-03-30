@@ -83,12 +83,12 @@ async def db(tmp_path: Path):
 
 
 @pytest.fixture
-async def ipc_server(tmp_path: Path, config: Config, db: Database):
+async def ipc_server(short_tmp: Path, config: Config, db: Database):
     """Start an IPC server on a temporary socket and yield (server, socket_path)."""
     handler = RequestHandler(engine=None, config=config)
     handler.set_db(db)
 
-    sock = tmp_path / "test.sock"
+    sock = short_tmp / "t.sock"
     server = IpcServer(handler, path=sock)
     await server.start()
     yield server, sock
