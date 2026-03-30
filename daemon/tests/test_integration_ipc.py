@@ -93,13 +93,14 @@ async def ipc_server(short_tmp: Path, config: Config, db: Database):
     handler.set_db(db)
 
     if sys.platform == "win32":
-        from unittest.mock import patch as _patch
+        # On Windows, IpcServer uses TCP. Provide a port file path so it
+        # doesn't try to create one in a potentially nonexistent runtime dir.
         port_file = short_tmp / "test.port"
-        with _patch("cloud_drive_sync.ipc.server.ipc_address", return_value=("127.0.0.1", port_file)):
-            server = IpcServer(handler)
-            await server.start()
-            port = server._server.sockets[0].getsockname()[1]
-            yield server, ("127.0.0.1", port)
+        server = IpcServer(handler)
+        server._port_file = port_file
+        await server.start()
+        port = server._server.sockets[0].getsockname()[1]
+        yield server, ("127.0.0.1", port)
     else:
         sock = short_tmp / "t.sock"
         server = IpcServer(handler, path=sock)
