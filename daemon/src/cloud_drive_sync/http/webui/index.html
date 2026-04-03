@@ -114,8 +114,9 @@
       </dl>
     </div>
     <div class="btn-group">
-      <button class="btn" onclick="apiPost('sync/start',{})">Sync Now</button>
+      <button class="btn" onclick="apiPost('sync',{})">Sync Now</button>
       <button class="btn secondary" onclick="apiPost('sync/pause',{})">Pause</button>
+      <button class="btn secondary" onclick="apiPost('sync/resume',{})">Resume</button>
     </div>
   </div>
 
@@ -131,7 +132,9 @@
           <option value="nextcloud">Nextcloud</option>
           <option value="box">Box</option>
         </select>
-        <button class="btn" onclick="addAccount()">Add Account</button>
+        <button class="btn" id="btn-add-account" onclick="addAccount()">Add Account</button>
+      </div>
+      <div id="auth-status" style="display:none;margin-top:12px;padding:12px;background:#1c1c1e;border-radius:6px;font-size:13px;">
       </div>
     </div>
     <div class="card">
@@ -266,14 +269,15 @@ async function refreshStatus() {
     document.getElementById('hdr-status').textContent = 'Disconnected';
     return;
   }
-  document.getElementById('hdr-dot').style.background = '#30d158';
-  document.getElementById('hdr-status').textContent = 'Connected';
-  document.getElementById('st-synced').textContent = data.files_synced ?? '--';
+  const connected = data.connected;
+  document.getElementById('hdr-dot').style.background = connected ? '#30d158' : '#ffd60a';
+  document.getElementById('hdr-status').textContent = connected ? 'Connected' : 'No account';
+  document.getElementById('st-synced').textContent = data.files_synced ?? 0;
   document.getElementById('st-transfers').textContent = data.active_transfers ?? 0;
-  document.getElementById('st-conflicts').textContent = data.conflicts ?? 0;
-  document.getElementById('st-pid').textContent = data.pid ?? '--';
-  document.getElementById('st-uptime').textContent = data.uptime ?? '--';
-  document.getElementById('st-socket').textContent = data.socket_path ?? '--';
+  const daemon = data.daemon || {};
+  document.getElementById('st-pid').textContent = daemon.pid ?? '--';
+  document.getElementById('st-uptime').textContent = daemon.uptime_formatted ?? '--';
+  document.getElementById('st-socket').textContent = daemon.socket_path ?? '--';
 }
 
 /* --- Accounts --- */
@@ -283,31 +287,53 @@ async function refreshAccounts() {
   if (!data || !data.length) { el.innerHTML = '<div class="empty">No accounts configured</div>'; return; }
   el.innerHTML = '<table><thead><tr><th>Provider</th><th>Email</th><th>Status</th><th></th></tr></thead><tbody>' +
     data.map(a => `<tr>
-      <td>${esc(a.provider)}</td><td>${esc(a.email || a.account_id || '--')}</td>
+      <td>${esc(a.provider)}</td><td>${esc(a.email || '--')}</td>
       <td><span class="badge ${a.status === 'connected' ? 'connected' : 'disconnected'}">${esc(a.status)}</span></td>
-      <td><button class="btn danger" onclick="removeAccount('${esc(a.account_id)}')">Remove</button></td>
+      <td><button class="btn danger" onclick="removeAccount('${esc(a.email)}')">Remove</button></td>
     </tr>`).join('') + '</tbody></table>';
 }
 async function addAccount() {
   const provider = document.getElementById('acc-provider').value;
-  await apiPost('accounts', { provider });
-  refreshAccounts();
+  const btn = document.getElementById('btn-add-account');
+  const statusEl = document.getElementById('auth-status');
+
+  btn.disabled = true;
+  btn.textContent = 'Authenticating...';
+  statusEl.style.display = '';
+  statusEl.innerHTML = '<strong>Auth in progress...</strong><br>' +
+    'The daemon is running the headless auth flow. Check the daemon logs or terminal for the authorization URL.<br><br>' +
+    '<code>docker logs -f cloud-drive-sync</code><br><br>' +
+    'Complete the authorization in your browser, then this will update automatically.';
+
+  const result = await apiPost('accounts', { provider, headless: true });
+
+  btn.disabled = false;
+  btn.textContent = 'Add Account';
+
+  if (result && result.status === 'ok') {
+    statusEl.innerHTML = '<span style="color:#30d158">Account added: ' + esc(result.email || provider) + '</span>';
+    setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+    refreshAccounts();
+  } else {
+    const msg = result ? (result.message || JSON.stringify(result)) : 'Request failed';
+    statusEl.innerHTML = '<span style="color:#ff453a">Failed: ' + esc(msg) + '</span>';
+  }
 }
-async function removeAccount(id) {
-  await apiDelete('accounts/' + id);
+async function removeAccount(email) {
+  await apiDelete('accounts/' + encodeURIComponent(email));
   refreshAccounts();
 }
 
 /* --- Sync Folders --- */
 async function refreshFolders() {
-  const data = await apiGet('sync-folders');
+  const data = await apiGet('pairs');
   const el = document.getElementById('folders-list');
   if (!data || !data.length) { el.innerHTML = '<div class="empty">No sync pairs configured</div>'; return; }
   el.innerHTML = '<table><thead><tr><th>Account</th><th>Local Path</th><th>Remote Folder</th><th>Mode</th><th></th></tr></thead><tbody>' +
     data.map(f => `<tr>
       <td>${esc(f.account_id || '--')}</td>
       <td>${esc(f.local_path)}</td>
-      <td>${esc(f.remote_folder_id || '--')}</td>
+      <td>${f.remote_folder_id === 'root' ? 'My Drive' : esc(f.remote_folder_id || '--')}</td>
       <td><select onchange="updateSyncMode('${esc(f.id)}', this.value)">
         <option value="two_way" ${f.sync_mode==='two_way'?'selected':''}>Two-way</option>
         <option value="upload_only" ${f.sync_mode==='upload_only'?'selected':''}>Upload only</option>
@@ -317,10 +343,10 @@ async function refreshFolders() {
     </tr>`).join('') + '</tbody></table>';
 }
 async function updateSyncMode(id, mode) {
-  await apiPut('sync-folders/' + id, { sync_mode: mode });
+  await apiPut('pairs/' + id + '/mode', { sync_mode: mode });
 }
 async function removeSyncFolder(id) {
-  await apiDelete('sync-folders/' + id);
+  await apiDelete('pairs/' + id);
   refreshFolders();
 }
 
@@ -388,24 +414,35 @@ async function resolveConflict(id, resolution) {
 
 /* --- Settings --- */
 async function refreshSettings() {
-  const data = await apiGet('settings');
-  if (!data) return;
-  document.getElementById('set-ul').value = data.bandwidth_upload ?? 0;
-  document.getElementById('set-dl').value = data.bandwidth_download ?? 0;
-  document.getElementById('set-notify-sync').checked = data.notify_sync_complete !== false;
-  document.getElementById('set-notify-conflict').checked = data.notify_conflicts !== false;
-  document.getElementById('set-notify-error').checked = data.notify_errors !== false;
-  if (data.conflict_strategy) document.getElementById('set-conflict-strategy').value = data.conflict_strategy;
+  const [bw, notif] = await Promise.all([
+    apiGet('settings/bandwidth'),
+    apiGet('settings/notifications'),
+  ]);
+  if (bw) {
+    document.getElementById('set-ul').value = bw.max_upload_kbps ?? 0;
+    document.getElementById('set-dl').value = bw.max_download_kbps ?? 0;
+  }
+  if (notif) {
+    document.getElementById('set-notify-sync').checked = notif.notify_sync_complete !== false;
+    document.getElementById('set-notify-conflict').checked = notif.notify_conflicts !== false;
+    document.getElementById('set-notify-error').checked = notif.notify_errors !== false;
+  }
 }
 async function saveSettings() {
-  await apiPut('settings', {
-    bandwidth_upload: parseInt(document.getElementById('set-ul').value) || 0,
-    bandwidth_download: parseInt(document.getElementById('set-dl').value) || 0,
-    notify_sync_complete: document.getElementById('set-notify-sync').checked,
-    notify_conflicts: document.getElementById('set-notify-conflict').checked,
-    notify_errors: document.getElementById('set-notify-error').checked,
-    conflict_strategy: document.getElementById('set-conflict-strategy').value,
-  });
+  await Promise.all([
+    apiPut('settings/bandwidth', {
+      max_upload_kbps: parseInt(document.getElementById('set-ul').value) || 0,
+      max_download_kbps: parseInt(document.getElementById('set-dl').value) || 0,
+    }),
+    apiPut('settings/notifications', {
+      notify_sync_complete: document.getElementById('set-notify-sync').checked,
+      notify_conflicts: document.getElementById('set-notify-conflict').checked,
+      notify_errors: document.getElementById('set-notify-error').checked,
+    }),
+    apiPut('settings/conflict-strategy', {
+      strategy: document.getElementById('set-conflict-strategy').value,
+    }),
+  ]);
 }
 
 /* --- Helpers --- */
