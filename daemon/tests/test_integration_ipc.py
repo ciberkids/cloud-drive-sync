@@ -271,6 +271,130 @@ async def test_set_account_max_transfers_unknown_email(client):
     assert resp["error"] is not None
 
 
+# ── add_account / headless auth tests ────────────────────────
+
+
+@pytest.fixture
+async def ipc_server_with_auth(short_tmp, config, db):
+    """IPC server with a mock auth callback that records calls."""
+    auth_calls = []
+
+    def mock_auth(provider="gdrive", headless=False):
+        auth_calls.append({"provider": provider, "headless": headless})
+        return {"status": "ok", "email": f"test-{provider}@example.com"}
+
+    handler = RequestHandler(engine=None, config=config)
+    handler.set_db(db)
+    handler.set_auth_callback(mock_auth)
+
+    if sys.platform == "win32":
+        port_file = short_tmp / "test_auth.port"
+        server = IpcServer(handler)
+        server._port_file = port_file
+        await server.start()
+        port = server._server.sockets[0].getsockname()[1]
+        yield server, ("127.0.0.1", port), auth_calls
+    else:
+        sock = short_tmp / "a.sock"
+        server = IpcServer(handler, path=sock)
+        await server.start()
+        yield server, sock, auth_calls
+    await server.stop()
+
+
+@pytest.fixture
+async def auth_client(ipc_server_with_auth):
+    """Connect a client to the auth-enabled IPC server."""
+    _server, conn_info, auth_calls = ipc_server_with_auth
+    if sys.platform == "win32":
+        host, port = conn_info
+        reader, writer = await asyncio.open_connection(host, port)
+    else:
+        reader, writer = await asyncio.open_unix_connection(str(conn_info))
+    yield reader, writer, auth_calls
+    writer.close()
+    await writer.wait_closed()
+
+
+async def test_add_account_without_callback(client):
+    """add_account returns no_auth_callback when no callback is set."""
+    reader, writer = client
+    resp = await rpc_call(reader, writer, "add_account", {"provider": "gdrive"}, req_id=20)
+    assert resp.get("error") is None
+    assert resp["result"]["status"] == "no_auth_callback"
+
+
+async def test_add_account_gdrive_headless(auth_client):
+    """add_account routes provider and headless flag to the auth callback."""
+    reader, writer, auth_calls = auth_client
+    resp = await rpc_call(
+        reader, writer, "add_account",
+        {"provider": "gdrive", "headless": True},
+        req_id=21,
+    )
+    assert resp.get("error") is None
+    assert resp["result"]["status"] == "ok"
+    assert len(auth_calls) == 1
+    assert auth_calls[0]["provider"] == "gdrive"
+    assert auth_calls[0]["headless"] is True
+
+
+async def test_add_account_dropbox(auth_client):
+    """add_account routes dropbox provider correctly."""
+    reader, writer, auth_calls = auth_client
+    resp = await rpc_call(
+        reader, writer, "add_account",
+        {"provider": "dropbox", "headless": False},
+        req_id=22,
+    )
+    assert resp.get("error") is None
+    assert resp["result"]["status"] == "ok"
+    assert auth_calls[0]["provider"] == "dropbox"
+    assert auth_calls[0]["headless"] is False
+
+
+async def test_add_account_default_provider(auth_client):
+    """add_account defaults to gdrive when no provider specified."""
+    reader, writer, auth_calls = auth_client
+    resp = await rpc_call(reader, writer, "add_account", {}, req_id=23)
+    assert resp.get("error") is None
+    assert auth_calls[0]["provider"] == "gdrive"
+    assert auth_calls[0]["headless"] is False
+
+
+async def test_add_account_auth_failure(short_tmp, config, db):
+    """add_account returns error when auth callback raises."""
+    def failing_auth(provider="gdrive", headless=False):
+        raise RuntimeError("Auth flow timed out")
+
+    handler = RequestHandler(engine=None, config=config)
+    handler.set_db(db)
+    handler.set_auth_callback(failing_auth)
+
+    if sys.platform == "win32":
+        port_file = short_tmp / "test_fail.port"
+        server = IpcServer(handler)
+        server._port_file = port_file
+        await server.start()
+        port = server._server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    else:
+        sock = short_tmp / "f.sock"
+        server = IpcServer(handler, path=sock)
+        await server.start()
+        reader, writer = await asyncio.open_unix_connection(str(sock))
+
+    try:
+        resp = await rpc_call(reader, writer, "add_account", {"provider": "gdrive"}, req_id=24)
+        assert resp.get("error") is None
+        assert resp["result"]["status"] == "error"
+        assert "Auth flow timed out" in resp["result"]["message"]
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        await server.stop()
+
+
 async def test_unknown_method(client):
     reader, writer = client
     resp = await rpc_call(reader, writer, "nonexistent_method", req_id=13)
