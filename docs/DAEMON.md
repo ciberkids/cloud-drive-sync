@@ -154,26 +154,120 @@ This allows the UI to be fully tested without a Google account or network access
 
 ## Headless Authentication
 
-All providers support headless auth for servers and Docker containers:
+The `--headless` flag disables automatic browser opening. Instead, the daemon prints a URL or code to the console, and you complete authorization on any device with a browser (your phone, a laptop, etc.). This works over SSH, in Docker containers, and on servers without a display.
+
+### Google Drive
 
 ```bash
-# Google Drive (console flow — prints URL, paste authorization code)
 cloud-drive-sync account add --provider gdrive --headless
+```
 
-# OneDrive (device code flow — prints code, authorize on another device)
+What happens:
+1. The daemon starts a temporary local HTTP server and prints an authorization URL
+2. Open that URL in **any browser** (on your phone, another computer, etc.)
+3. Sign in with your Google account and click "Allow"
+4. The browser redirects to `localhost` — if you're on the same machine, it completes automatically
+5. If you're on a different machine (e.g., SSH session), the redirect will fail — copy the full redirect URL from your browser's address bar and the daemon will extract the code
+
+Output looks like:
+```
+Please visit this URL to authorize this application:
+https://accounts.google.com/o/oauth2/auth?client_id=...&scope=...
+```
+
+### OneDrive
+
+```bash
 cloud-drive-sync account add --provider onedrive --headless
+```
 
-# Dropbox (prints URL, paste authorization code)
+What happens:
+1. The daemon prints a **device code** and a verification URL
+2. Open `https://microsoft.com/devicelogin` on any device
+3. Enter the code shown in the terminal
+4. Sign in with your Microsoft account and approve
+5. The daemon detects the approval automatically (polls in the background)
+
+Output looks like:
+```
+To sign in, use a web browser to open https://microsoft.com/devicelogin
+and enter the code ABCD-EFGH to authenticate.
+```
+
+This is the most Docker-friendly flow — no redirect needed.
+
+### Dropbox
+
+```bash
 cloud-drive-sync account add --provider dropbox --headless
+```
 
-# Nextcloud (prompts for server URL, username, app password)
+What happens:
+1. The daemon prints an authorization URL
+2. Open that URL in any browser and click "Allow"
+3. Dropbox shows an authorization code on screen
+4. Copy the code and paste it back into the terminal
+
+Output looks like:
+```
+1. Go to: https://www.dropbox.com/oauth2/authorize?...
+2. Click 'Allow' (you might have to log in first)
+3. Copy the authorization code.
+
+Enter the authorization code: _
+```
+
+### Nextcloud
+
+```bash
 cloud-drive-sync account add --provider nextcloud --headless
+```
 
-# Box (prints URL, paste authorization code)
+What happens:
+1. The daemon prompts for your Nextcloud server URL, username, and app password
+2. No browser needed — you create an app password beforehand in Nextcloud Settings > Security > Devices & sessions
+
+Output looks like:
+```
+Nextcloud server URL: https://cloud.example.com
+Username: alice
+App password: _
+```
+
+### Box
+
+```bash
 cloud-drive-sync account add --provider box --headless
 ```
 
-The `--headless` flag disables automatic browser opening. The daemon prints a URL or device code to the console, and you complete authorization on any device with a browser.
+What happens:
+1. The daemon prints an authorization URL
+2. Open that URL in any browser and sign in to Box
+3. Box shows an authorization code
+4. Paste it back into the terminal
+
+### Docker Usage
+
+In Docker, always use `-it` (interactive + TTY) when adding accounts so you can interact with the auth prompts:
+
+```bash
+# Start the daemon
+docker run -d --name cloud-drive-sync \
+  -p 8080:8080 \
+  -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
+  -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
+  -v ~/Documents:/data/Documents \
+  ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Add account interactively (note: -it is required)
+docker exec -it cloud-drive-sync \
+  python -m cloud_drive_sync account add --provider gdrive --headless
+
+# Verify it worked
+docker exec cloud-drive-sync python -m cloud_drive_sync account list
+```
+
+After adding accounts, the daemon syncs automatically — no restart needed.
 
 ## Docker Deployment
 
