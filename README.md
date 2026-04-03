@@ -59,6 +59,35 @@ graph TB
 
 </details>
 
+## How It Works
+
+Cloud Drive Sync runs in two modes:
+
+### Desktop Mode (with UI)
+
+A native desktop app with system tray integration, built with Tauri + React. The UI launches a background daemon automatically.
+
+- System tray icon with live status (idle, syncing, error, conflict)
+- Visual management of accounts, sync folders, conflicts, and settings
+- Desktop notifications for sync events
+- Works on **Linux** (KDE, GNOME, etc.), **macOS**, and **Windows**
+
+### Headless Mode (without UI)
+
+The daemon runs standalone — ideal for servers, NAS devices, and Docker containers. Three ways to manage it:
+
+| Method | Description |
+|--------|-------------|
+| **CLI** | `cloud-drive-sync status`, `account add`, `pair list`, etc. |
+| **Web UI** | Browser-based dashboard at `http://localhost:8080/` |
+| **REST API** | `curl http://localhost:8080/api/status` — full HTTP API for automation |
+
+The HTTP server (web UI + REST API) starts with `--http-port 8080`. Docker containers enable it by default.
+
+Authentication in headless mode works without a local browser — the daemon prints an authorization URL to the console, and you complete sign-in on any device.
+
+---
+
 ## Installation
 
 Pre-built packages are available from the [latest release](https://github.com/ciberkids/cloud-drive-sync/releases/latest). Each package bundles both the desktop UI and the sync daemon — no separate install needed.
