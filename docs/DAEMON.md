@@ -318,11 +318,38 @@ The daemon can expose an HTTP REST API with a built-in web UI for headless and D
 | GET | `/api/settings/:key` | Read a setting |
 | PUT | `/api/settings/:key` | Update a setting |
 
+#### Adding accounts via Web UI
+
+When you click **Add Account** in the web UI, the daemon runs the headless auth flow in the background. Since the auth prompts appear in the daemon's stdout (not in the browser), follow these steps:
+
+1. Click **Add Account** in the web UI — the button shows "Authenticating..."
+2. In another terminal, check the daemon logs for the authorization URL:
+   ```bash
+   # Docker
+   docker logs -f cloud-drive-sync
+
+   # Docker Compose
+   docker compose logs -f daemon
+
+   # Local
+   # The URL prints directly in the terminal running the daemon
+   ```
+3. Open the authorization URL in your browser and complete sign-in
+4. The web UI updates automatically when auth completes
+
 #### Example curl commands
 
 ```bash
 # Check status
 curl http://localhost:8080/api/status
+
+# List accounts
+curl http://localhost:8080/api/accounts
+
+# Add account (headless)
+curl -X POST http://localhost:8080/api/accounts \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "gdrive", "headless": true}'
 
 # List sync pairs
 curl http://localhost:8080/api/pairs
@@ -330,16 +357,13 @@ curl http://localhost:8080/api/pairs
 # Trigger a sync
 curl -X POST http://localhost:8080/api/sync
 
-# List accounts
-curl http://localhost:8080/api/accounts
-
 # Get recent activity
-curl http://localhost:8080/api/activity
+curl 'http://localhost:8080/api/activity?limit=20'
 
-# Update a setting
-curl -X PUT http://localhost:8080/api/settings/poll_interval \
+# Set bandwidth limits
+curl -X PUT http://localhost:8080/api/settings/bandwidth \
   -H "Content-Type: application/json" \
-  -d '{"value": 60}'
+  -d '{"max_upload_kbps": 1000, "max_download_kbps": 2000}'
 ```
 
 ### Docker Compose
