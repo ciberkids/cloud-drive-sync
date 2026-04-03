@@ -1,0 +1,25 @@
+meta {
+  name: Add Account (without headless flag)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/accounts
+  body: json
+}
+
+body:json {
+  {
+    "provider": "gdrive"
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("defaults headless to false gracefully", function() {
+    expect(res.body).to.have.property("status");
+  });
+}

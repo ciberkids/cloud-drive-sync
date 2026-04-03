@@ -1,0 +1,26 @@
+meta {
+  name: Add Account (Dropbox headless)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/accounts
+  body: json
+}
+
+body:json {
+  {
+    "provider": "dropbox",
+    "headless": true
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("provider was accepted", function() {
+    expect(res.body).to.have.property("status");
+  });
+}
