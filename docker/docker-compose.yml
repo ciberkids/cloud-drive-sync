@@ -16,6 +16,9 @@ services:
       # Your sync folders - add your own here
       - ~/Documents:/data/Documents
       - ~/Photos:/data/Photos
+    ports:
+      # HTTP REST API + Web UI
+      - "8080:8080"
     environment:
       - XDG_RUNTIME_DIR=/run/cloud-drive-sync
 

@@ -27,8 +27,9 @@ def cli(ctx: click.Context, config_path: Path | None, log_level: str | None) -> 
 @cli.command()
 @click.option("--foreground", is_flag=True, help="Run in the foreground (don't daemonize)")
 @click.option("--demo", is_flag=True, help="Run in demo mode with mock Google Drive (no credentials needed)")
+@click.option("--http-port", type=int, default=0, help="Enable HTTP REST API on this port (0 = disabled)")
 @click.pass_context
-def start(ctx: click.Context, foreground: bool, demo: bool) -> None:
+def start(ctx: click.Context, foreground: bool, demo: bool, http_port: int) -> None:
     """Start the sync daemon."""
     from cloud_drive_sync.daemon import Daemon
 
@@ -40,6 +41,7 @@ def start(ctx: click.Context, foreground: bool, demo: bool) -> None:
         config_path=ctx.obj["config_path"],
         log_level=ctx.obj["log_level"],
         demo=demo,
+        http_port=http_port,
     )
 
     if foreground:

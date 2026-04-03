@@ -32,15 +32,18 @@ class Daemon:
         config_path: Path | None = None,
         log_level: str | None = None,
         demo: bool = False,
+        http_port: int = 0,
     ) -> None:
         self._config_path = config_path
         self._log_level_override = log_level
         self._demo = demo
+        self._http_port = http_port
         self._config: Config | None = None
         self._db: Database | None = None
         self._engine: SyncEngine | None = None
         self._handler: RequestHandler | None = None
         self._ipc_server: IpcServer | None = None
+        self._http_server = None
         self._shutdown_event = asyncio.Event()
 
     async def run(self) -> None:
@@ -170,6 +173,12 @@ class Daemon:
             self._ipc_server = IpcServer(handler)
             await self._ipc_server.start()
 
+            # Start HTTP REST API server if port specified
+            if self._http_port > 0:
+                from cloud_drive_sync.http.server import HttpServer
+                self._http_server = HttpServer(handler, port=self._http_port)
+                await self._http_server.start()
+
             # Wire up notifications if engine is ready
             if self._engine:
                 self._engine.set_notify_callback(self._ipc_server.notify_all)
@@ -201,6 +210,9 @@ class Daemon:
 
         if self._engine:
             await self._engine.stop()
+
+        if self._http_server:
+            await self._http_server.stop()
 
         if self._ipc_server:
             await self._ipc_server.stop()

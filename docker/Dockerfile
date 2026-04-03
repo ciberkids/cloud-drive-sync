@@ -25,5 +25,8 @@ VOLUME ["/root/.config/cloud-drive-sync", "/root/.local/share/cloud-drive-sync",
 VOLUME ["/run/cloud-drive-sync"]
 ENV XDG_RUNTIME_DIR=/run/cloud-drive-sync
 
+# HTTP REST API + Web UI
+EXPOSE 8080
+
 ENTRYPOINT ["python", "-m", "cloud_drive_sync"]
-CMD ["start", "--foreground"]
+CMD ["start", "--foreground", "--http-port", "8080"]
