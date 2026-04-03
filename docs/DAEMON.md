@@ -152,6 +152,71 @@ What demo mode does:
 
 This allows the UI to be fully tested without a Google account or network access.
 
+## Headless Authentication
+
+All providers support headless auth for servers and Docker containers:
+
+```bash
+# Google Drive (console flow — prints URL, paste authorization code)
+cloud-drive-sync account add --provider gdrive --headless
+
+# OneDrive (device code flow — prints code, authorize on another device)
+cloud-drive-sync account add --provider onedrive --headless
+
+# Dropbox (prints URL, paste authorization code)
+cloud-drive-sync account add --provider dropbox --headless
+
+# Nextcloud (prompts for server URL, username, app password)
+cloud-drive-sync account add --provider nextcloud --headless
+
+# Box (prints URL, paste authorization code)
+cloud-drive-sync account add --provider box --headless
+```
+
+The `--headless` flag disables automatic browser opening. The daemon prints a URL or device code to the console, and you complete authorization on any device with a browser.
+
+## Docker Deployment
+
+The daemon runs headless in Docker with no GUI dependencies.
+
+### Quick Start
+
+```bash
+docker run -d --name cloud-drive-sync \
+  -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
+  -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
+  -v ~/Documents:/data/Documents \
+  ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Add account (interactive — prints auth URL)
+docker exec -it cloud-drive-sync \
+  python -m cloud_drive_sync account add --provider gdrive --headless
+
+# Check status
+docker exec cloud-drive-sync python -m cloud_drive_sync status
+```
+
+### Docker Compose
+
+See `docker/docker-compose.yml` for a ready-to-use compose file.
+
+### Volumes
+
+| Mount | Purpose |
+|-------|---------|
+| `/root/.config/cloud-drive-sync` | Config (config.toml) |
+| `/root/.local/share/cloud-drive-sync` | Credentials, database |
+| `/run/cloud-drive-sync` | IPC socket (for CLI from host) |
+| `/data/*` | Sync folder mount points |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `XDG_RUNTIME_DIR` | `/run/cloud-drive-sync` | IPC socket directory |
+| `CDS_GOOGLE_CLIENT_ID` | (embedded) | Override Google OAuth client ID |
+| `CDS_GOOGLE_CLIENT_SECRET` | (embedded) | Override Google OAuth client secret |
+
 ## Development
 
 ### Setup

@@ -214,6 +214,8 @@ sequenceDiagram
 
 The daemon supports 16 RPC methods including sync control (`force_sync`, `pause_sync`, `resume_sync`), configuration (`add_sync_pair`, `remove_sync_pair`, `set_conflict_strategy`, `set_sync_mode`, `set_ignore_hidden`), data queries (`get_status`, `get_sync_pairs`, `get_activity_log`, `get_conflicts`), authentication (`start_auth`, `logout`), and Drive browsing (`list_remote_folders`).
 
+> **Docker:** The IPC socket can be bind-mounted from the container to allow CLI management from the host. Set `XDG_RUNTIME_DIR=/run/cloud-drive-sync` in the container and mount that volume.
+
 See [API Reference](API.md) for the full list of methods and notifications.
 
 ## Database Schema
@@ -303,6 +305,8 @@ Activity log of all sync operations.
 - Tokens stored encrypted at the platform data directory (see File Path Conventions) in `credentials.enc` using `cryptography` (Fernet)
 - A random salt is stored alongside in `token_salt`
 - Encryption key is derived from a machine ID: `/etc/machine-id` on Linux, `IOPlatformUUID` via `ioreg` on macOS, `MachineGuid` from the Windows registry
+
+> **Headless auth:** All providers support headless authentication via `--headless` flag. Google Drive uses console flow, OneDrive uses device code flow, others print authorization URLs for manual completion.
 
 ### IPC Socket
 

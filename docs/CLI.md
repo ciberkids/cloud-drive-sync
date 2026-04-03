@@ -128,7 +128,7 @@ cloud-drive-sync account add --provider gdrive --headless
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--provider` | `gdrive` | Cloud provider: `gdrive`, `dropbox`, `onedrive`, `nextcloud`, `box` |
-| `--headless` | off | Use console-based auth flow (paste URL instead of opening browser) |
+| `--headless` | off | Use console-based auth flow (paste URL instead of opening browser). Required for Docker and SSH sessions. |
 
 **What happens:**
 
@@ -136,6 +136,13 @@ cloud-drive-sync account add --provider gdrive --headless
 2. For Nextcloud: prompts for server URL, username, and app password
 3. Credentials are encrypted and stored per-account
 4. The account appears in `account list` and can be assigned to sync pairs
+
+**Docker usage:** When running in a container, use `docker exec` with `--headless`:
+
+```bash
+docker exec -it cloud-drive-sync \
+  python -m cloud_drive_sync account add --provider gdrive --headless
+```
 
 ### `account remove`
 
