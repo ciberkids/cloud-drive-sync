@@ -1,0 +1,30 @@
+meta {
+  name: Get Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/status
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response has connected", function() {
+    expect(res.body).to.have.property("connected");
+  });
+  test("response has syncing", function() {
+    expect(res.body).to.have.property("syncing");
+  });
+  test("response has paused", function() {
+    expect(res.body).to.have.property("paused");
+  });
+  test("response has files_synced", function() {
+    expect(res.body).to.have.property("files_synced");
+  });
+  test("response has active_transfers", function() {
+    expect(res.body).to.have.property("active_transfers");
+  });
+}

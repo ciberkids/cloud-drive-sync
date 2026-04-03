@@ -1,0 +1,22 @@
+meta {
+  name: Set Sync Mode
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/pairs/pair_0/mode
+  body: json
+}
+
+body:json {
+  {
+    "sync_mode": "upload_only"
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

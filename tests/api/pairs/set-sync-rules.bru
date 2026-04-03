@@ -1,0 +1,22 @@
+meta {
+  name: Set Sync Rules
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{baseUrl}}/api/pairs/pair_0/rules
+  body: json
+}
+
+body:json {
+  {
+    "max_file_size_mb": 100
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

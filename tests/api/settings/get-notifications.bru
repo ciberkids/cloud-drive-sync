@@ -1,0 +1,18 @@
+meta {
+  name: Get Notifications
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/settings/notifications
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response has notify_sync_complete", function() {
+    expect(res.body).to.have.property("notify_sync_complete");
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: Get Bandwidth
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/settings/bandwidth
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response has max_upload_kbps", function() {
+    expect(res.body).to.have.property("max_upload_kbps");
+  });
+}

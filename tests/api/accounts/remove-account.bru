@@ -1,0 +1,15 @@
+meta {
+  name: Remove Account
+  type: http
+  seq: 3
+}
+
+delete {
+  url: {{baseUrl}}/api/accounts/test@example.com
+}
+
+tests {
+  test("status is 200 or error", function() {
+    expect(res.status).to.be.oneOf([200, 404]);
+  });
+}

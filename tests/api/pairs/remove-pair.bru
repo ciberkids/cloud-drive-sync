@@ -1,0 +1,15 @@
+meta {
+  name: Remove Pair
+  type: http
+  seq: 3
+}
+
+delete {
+  url: {{baseUrl}}/api/pairs/pair_0
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/accounts
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response is array", function() {
+    expect(res.body).to.be.an("array");
+  });
+}

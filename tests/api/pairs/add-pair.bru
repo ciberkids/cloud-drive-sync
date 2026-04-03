@@ -1,0 +1,26 @@
+meta {
+  name: Add Pair
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/pairs
+  body: json
+}
+
+body:json {
+  {
+    "local_path": "/tmp/test-sync",
+    "remote_folder_id": "root"
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response has id", function() {
+    expect(res.body).to.have.property("id");
+  });
+}

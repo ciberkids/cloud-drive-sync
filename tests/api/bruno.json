@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "Cloud Drive Sync API",
+  "type": "collection",
+  "ignore": ["node_modules"]
+}

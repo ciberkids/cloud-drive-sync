@@ -1,0 +1,15 @@
+meta {
+  name: Force Sync
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/sync
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

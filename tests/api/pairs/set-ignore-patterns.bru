@@ -1,0 +1,22 @@
+meta {
+  name: Set Ignore Patterns
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/pairs/pair_0/ignore-patterns
+  body: json
+}
+
+body:json {
+  {
+    "patterns": ["*.tmp", "node_modules"]
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

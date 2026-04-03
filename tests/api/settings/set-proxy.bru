@@ -1,0 +1,24 @@
+meta {
+  name: Set Proxy
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/settings/proxy
+  body: json
+}
+
+body:json {
+  {
+    "http_proxy": "",
+    "https_proxy": "",
+    "no_proxy": ""
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

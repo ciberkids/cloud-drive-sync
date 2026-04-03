@@ -1,0 +1,23 @@
+meta {
+  name: Set Bandwidth
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/settings/bandwidth
+  body: json
+}
+
+body:json {
+  {
+    "max_upload_kbps": 1000,
+    "max_download_kbps": 2000
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

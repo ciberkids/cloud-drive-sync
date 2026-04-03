@@ -1,0 +1,22 @@
+meta {
+  name: Set Ignore Hidden
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/pairs/pair_0/ignore-hidden
+  body: json
+}
+
+body:json {
+  {
+    "ignore_hidden": true
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

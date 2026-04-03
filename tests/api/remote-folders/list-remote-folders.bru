@@ -1,0 +1,15 @@
+meta {
+  name: List Remote Folders
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/remote-folders?parent_id=root
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

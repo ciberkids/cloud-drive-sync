@@ -1,0 +1,18 @@
+meta {
+  name: Get Activity Log
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/activity?limit=10&offset=0
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response is array", function() {
+    expect(res.body).to.be.an("array");
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: Get Sync Rules
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/pairs/pair_0/rules
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("response has max_file_size_mb", function() {
+    expect(res.body).to.have.property("max_file_size_mb");
+  });
+}

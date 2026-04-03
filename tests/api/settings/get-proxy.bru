@@ -1,0 +1,15 @@
+meta {
+  name: Get Proxy
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/settings/proxy
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

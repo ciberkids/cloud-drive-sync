@@ -1,0 +1,22 @@
+meta {
+  name: Set Conflict Strategy
+  type: http
+  seq: 7
+}
+
+put {
+  url: {{baseUrl}}/api/settings/conflict-strategy
+  body: json
+}
+
+body:json {
+  {
+    "strategy": "keep_both"
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}
