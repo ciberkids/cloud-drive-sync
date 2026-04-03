@@ -253,52 +253,48 @@ class Daemon:
         log.info("Demo mode: local=%s, remote=%s", DEMO_LOCAL, DEMO_REMOTE)
         return client, file_ops, change_poller
 
-    def _do_auth(self) -> dict:
-        """Run the OAuth flow (called from a thread by IPC handler).
-
-        Returns a dict with status info for the UI.
-        """
+    def _do_auth(self, provider: str = "gdrive", headless: bool = False) -> dict:
+        """Run the auth flow for a given provider (called from a thread by IPC handler)."""
         if self._demo:
             log.info("Auth skipped in demo mode")
             return {"status": "ok", "message": "Demo mode — no real auth needed"}
 
-        from cloud_drive_sync.auth.credentials import save_account_credentials, save_credentials
-        from cloud_drive_sync.auth.oauth import run_oauth_flow
+        from cloud_drive_sync.providers.registry import get as get_provider
 
-        # Log auth started
-        self._log_auth_event("auth", "Authentication started", "in_progress")
+        self._log_auth_event("auth", f"Authentication started ({provider})", "in_progress")
 
         try:
-            creds = run_oauth_flow()
-            save_credentials(creds)
-            log.info("Authenticated via OAuth")
+            entry = get_provider(provider)
+            auth_provider = entry.auth_cls()
 
-            # Log auth success
-            self._log_auth_event("auth", "Authentication successful", "success")
+            # Run the provider-specific auth flow
+            creds = auth_provider.run_auth_flow(headless=headless)
 
-            from cloud_drive_sync.drive.client import DriveClient
-            client = DriveClient(creds, proxy=self._config.proxy)
-
-            # Fetch account email for multi-account support
+            # Create client from credentials
             import asyncio
             loop = asyncio.get_event_loop()
 
-            async def _get_email():
-                about = await client.get_about()
-                return about.get("user", {}).get("emailAddress", "unknown")
+            async def _setup():
+                client = await auth_provider.create_client(creds)
+                email = await auth_provider.get_account_email(client)
+                return client, email
 
-            future = asyncio.run_coroutine_threadsafe(_get_email(), loop)
-            email = future.result(timeout=30)
+            future = asyncio.run_coroutine_threadsafe(_setup(), loop)
+            client, email = future.result(timeout=30)
 
-            # Save per-account credentials
-            save_account_credentials(creds, email)
+            # Save credentials
+            auth_provider.save_credentials(creds, email)
 
             # Add account to config if not exists
             if not any(a.email == email for a in self._config.accounts):
-                self._config.accounts.append(Account(email=email, display_name=email))
+                self._config.accounts.append(
+                    Account(email=email, display_name=email, provider=provider)
+                )
                 self._config.save()
 
-            # If engine wasn't started yet (first auth), initialize it now
+            self._log_auth_event("auth", f"Authentication successful ({email})", "success")
+
+            # Initialize or update engine with the new client
             if self._engine is None and self._db is not None:
                 clients = {email: client}
                 self._engine = SyncEngine(
@@ -307,44 +303,30 @@ class Daemon:
                     client,
                     clients=clients,
                 )
-                # Update the handler with the new engine and client
                 self._handler.set_engine(self._engine)
                 self._handler.set_drive_client(client)
 
                 if self._ipc_server:
                     self._engine.set_notify_callback(self._ipc_server.notify_all)
 
-                # Schedule engine start on the event loop
                 loop.call_soon_threadsafe(
                     lambda: asyncio.ensure_future(self._engine.start())
                 )
                 log.info("Sync engine initialized after authentication")
 
             elif self._engine is not None:
-                # Add client to engine's clients dict
                 self._engine._clients[email] = client
-                self._engine._client = client
-                from cloud_drive_sync.drive.operations import FileOperations
-                from cloud_drive_sync.drive.changes import ChangePoller
-                self._engine._ops = FileOperations(client)
-                self._engine._poller = ChangePoller(client)
+                if not self._engine._client:
+                    self._engine._client = client
 
-                # Update executors in active pairs
-                for ps in self._engine._pairs.values():
-                    if ps.executor:
-                        ps.executor._ops = self._engine._ops
-                        ps.executor._drive_client = client
-
-                # Update handler's client reference
                 self._handler.set_drive_client(client)
 
-                # Restart the engine to re-run initial sync with new creds
                 loop.call_soon_threadsafe(
                     lambda: asyncio.ensure_future(self._restart_engine())
                 )
-                log.info("Credentials refreshed for %s, engine restarted", email)
+                log.info("Added %s account %s, engine restarted", provider, email)
 
-            return {"status": "ok"}
+            return {"status": "ok", "email": email}
 
         except Exception as exc:
             log.error("Authentication failed: %s", exc)

@@ -510,11 +510,12 @@ class RequestHandler:
     async def _add_account(self, params: dict) -> dict:
         """Trigger OAuth flow to add a new account."""
         params = params or {}
-        # provider param reserved for future per-provider auth flows
+        provider = params.get("provider", "gdrive")
+        headless = params.get("headless", False)
         if self._auth_callback:
             import asyncio
             try:
-                result = await asyncio.to_thread(self._auth_callback)
+                result = await asyncio.to_thread(self._auth_callback, provider, headless)
                 if isinstance(result, dict):
                     return result
                 return {"status": "ok"}

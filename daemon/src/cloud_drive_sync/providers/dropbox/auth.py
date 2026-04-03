@@ -35,7 +35,14 @@ class DropboxAuth(AuthProvider):
         )
 
         authorize_url = auth_flow.start()
-        print(f"\n1. Go to: {authorize_url}")
+
+        if not headless:
+            import webbrowser
+            webbrowser.open(authorize_url)
+            print(f"Opened browser for authorization. URL: {authorize_url}")
+        else:
+            print(f"\n1. Go to: {authorize_url}")
+
         print("2. Click 'Allow' (you might have to log in first)")
         print("3. Copy the authorization code.\n")
 
