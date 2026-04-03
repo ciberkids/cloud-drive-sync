@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloud Drive Sync - Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1c1c1e; color: #f5f5f7; line-height: 1.5; padding: 0;
+  }
+  header { padding: 16px 24px; border-bottom: 1px solid #3a3a3c; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #30d158; display: inline-block; }
+  header .status-text { font-size: 13px; color: #98989d; margin-left: auto; }
+  nav { display: flex; border-bottom: 1px solid #3a3a3c; padding: 0 24px; gap: 4px; overflow-x: auto; }
+  nav button {
+    background: none; border: none; color: #98989d; padding: 10px 16px; font-size: 14px;
+    cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap;
+  }
+  nav button:hover { color: #f5f5f7; }
+  nav button.active { color: #2997ff; border-bottom-color: #2997ff; }
+  main { padding: 24px; max-width: 960px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .card { background: #2c2c2e; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h3 { font-size: 14px; color: #98989d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .stat { text-align: center; }
+  .stat .value { font-size: 28px; font-weight: 700; color: #2997ff; }
+  .stat .label { font-size: 12px; color: #98989d; }
+  .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; }
+  .info-grid dt { color: #98989d; }
+  .info-grid dd { color: #f5f5f7; word-break: break-all; }
+  .btn {
+    background: #2997ff; color: #fff; border: none; border-radius: 6px; padding: 8px 16px;
+    font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .btn:hover { background: #0a84ff; }
+  .btn.secondary { background: #3a3a3c; }
+  .btn.secondary:hover { background: #48484a; }
+  .btn.danger { background: #ff453a; }
+  .btn.danger:hover { background: #ff6961; }
+  .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #98989d; font-weight: 500; padding: 8px; border-bottom: 1px solid #3a3a3c; }
+  td { padding: 8px; border-bottom: 1px solid #2c2c2e; vertical-align: top; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+  .badge.connected { background: #0d3b1e; color: #30d158; }
+  .badge.disconnected { background: #3b1a18; color: #ff453a; }
+  .badge.error { background: #3b1a18; color: #ff453a; }
+  .badge.success { background: #0d3b1e; color: #30d158; }
+  .badge.pending { background: #3b3000; color: #ffd60a; }
+  select, input[type="number"], input[type="text"] {
+    background: #1c1c1e; border: 1px solid #3a3a3c; color: #f5f5f7; border-radius: 6px;
+    padding: 6px 10px; font-size: 13px;
+  }
+  select:focus, input:focus { outline: none; border-color: #2997ff; }
+  .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: #98989d; }
+  .filter-bar { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-btn {
+    background: #2c2c2e; border: 1px solid #3a3a3c; color: #98989d; border-radius: 14px;
+    padding: 4px 12px; font-size: 12px; cursor: pointer;
+  }
+  .filter-btn:hover, .filter-btn.active { background: #2997ff; color: #fff; border-color: #2997ff; }
+  .empty { text-align: center; color: #636366; padding: 32px; font-size: 14px; }
+  .conflict-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #3a3a3c; }
+  .conflict-item:last-child { border-bottom: none; }
+  .conflict-path { font-weight: 500; margin-bottom: 4px; word-break: break-all; }
+  .conflict-meta { font-size: 12px; color: #98989d; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .checkbox-row input { accent-color: #2997ff; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="status-dot" id="hdr-dot"></span>
+  <h1>Cloud Drive Sync</h1>
+  <span class="status-text" id="hdr-status">Connecting...</span>
+</header>
+
+<nav id="tabs">
+  <button class="active" data-tab="status">Status</button>
+  <button data-tab="accounts">Accounts</button>
+  <button data-tab="folders">Sync Folders</button>
+  <button data-tab="activity">Activity</button>
+  <button data-tab="conflicts">Conflicts</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+
+<main>
+  <!-- Status Tab -->
+  <div class="tab active" id="tab-status">
+    <div class="card">
+      <h3>Overview</h3>
+      <div class="stats">
+        <div class="stat"><div class="value" id="st-synced">--</div><div class="label">Files Synced</div></div>
+        <div class="stat"><div class="value" id="st-transfers">--</div><div class="label">Active Transfers</div></div>
+        <div class="stat"><div class="value" id="st-conflicts">--</div><div class="label">Conflicts</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Daemon Info</h3>
+      <dl class="info-grid">
+        <dt>PID</dt><dd id="st-pid">--</dd>
+        <dt>Uptime</dt><dd id="st-uptime">--</dd>
+        <dt>Socket</dt><dd id="st-socket">--</dd>
+      </dl>
+    </div>
+    <div class="btn-group">
+      <button class="btn" onclick="apiPost('sync/start',{})">Sync Now</button>
+      <button class="btn secondary" onclick="apiPost('sync/pause',{})">Pause</button>
+    </div>
+  </div>
+
+  <!-- Accounts Tab -->
+  <div class="tab" id="tab-accounts">
+    <div class="card">
+      <h3>Add Account</h3>
+      <div class="form-row">
+        <select id="acc-provider">
+          <option value="gdrive">Google Drive</option>
+          <option value="dropbox">Dropbox</option>
+          <option value="onedrive">OneDrive</option>
+          <option value="nextcloud">Nextcloud</option>
+          <option value="box">Box</option>
+        </select>
+        <button class="btn" onclick="addAccount()">Add Account</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Accounts</h3>
+      <div id="accounts-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Sync Folders Tab -->
+  <div class="tab" id="tab-folders">
+    <div class="card">
+      <h3>Sync Pairs</h3>
+      <div id="folders-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Activity Tab -->
+  <div class="tab" id="tab-activity">
+    <div class="filter-bar" id="activity-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="upload">Upload</button>
+      <button class="filter-btn" data-filter="download">Download</button>
+      <button class="filter-btn" data-filter="delete">Delete</button>
+      <button class="filter-btn" data-filter="sync">Sync</button>
+      <button class="filter-btn" data-filter="conflict">Conflict</button>
+      <button class="filter-btn" data-filter="error">Error</button>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Time</th><th>Event</th><th>Path</th><th>Details</th><th>Status</th></tr></thead>
+        <tbody id="activity-body"></tbody>
+      </table>
+      <div id="activity-empty" class="empty" style="display:none">No activity yet</div>
+    </div>
+    <div style="text-align:center;margin-top:12px;">
+      <button class="btn secondary" id="activity-more" onclick="loadMoreActivity()">Load More</button>
+    </div>
+  </div>
+
+  <!-- Conflicts Tab -->
+  <div class="tab" id="tab-conflicts">
+    <div class="card">
+      <h3>Unresolved Conflicts</h3>
+      <div id="conflicts-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div class="tab" id="tab-settings">
+    <div class="card">
+      <h3>Bandwidth Limits</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Upload (KB/s, 0 = unlimited)</label>
+          <input type="number" id="set-ul" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label>Download (KB/s, 0 = unlimited)</label>
+          <input type="number" id="set-dl" min="0" value="0">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Notifications</h3>
+      <div class="checkbox-row"><input type="checkbox" id="set-notify-sync" checked><label for="set-notify-sync">Sync complete</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="set-notify-conflict" checked><label for="set-notify-conflict">Conflicts</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="set-notify-error" checked><label for="set-notify-error">Errors</label></div>
+    </div>
+    <div class="card">
+      <h3>Conflict Strategy</h3>
+      <select id="set-conflict-strategy">
+        <option value="ask">Ask each time</option>
+        <option value="keep_local">Always keep local</option>
+        <option value="keep_remote">Always keep remote</option>
+        <option value="keep_both">Always keep both</option>
+        <option value="newest">Keep newest</option>
+      </select>
+    </div>
+    <div class="btn-group">
+      <button class="btn" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</main>
+
+<script>
+/* --- API helpers --- */
+async function apiGet(path) {
+  try {
+    const res = await fetch('/api/' + path);
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch (e) { console.error('GET /api/' + path, e); return null; }
+}
+async function apiPost(path, body) {
+  try {
+    const res = await fetch('/api/' + path, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    return await res.json();
+  } catch (e) { console.error('POST /api/' + path, e); return null; }
+}
+async function apiPut(path, body) {
+  try {
+    const res = await fetch('/api/' + path, {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    return await res.json();
+  } catch (e) { console.error('PUT /api/' + path, e); return null; }
+}
+async function apiDelete(path) {
+  try {
+    const res = await fetch('/api/' + path, { method: 'DELETE' });
+    return await res.json();
+  } catch (e) { console.error('DELETE /api/' + path, e); return null; }
+}
+
+/* --- Tab switching --- */
+document.getElementById('tabs').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('tab-' + e.target.dataset.tab).classList.add('active');
+  refreshTab(e.target.dataset.tab);
+});
+
+/* --- Status --- */
+async function refreshStatus() {
+  const data = await apiGet('status');
+  if (!data) {
+    document.getElementById('hdr-dot').style.background = '#ff453a';
+    document.getElementById('hdr-status').textContent = 'Disconnected';
+    return;
+  }
+  document.getElementById('hdr-dot').style.background = '#30d158';
+  document.getElementById('hdr-status').textContent = 'Connected';
+  document.getElementById('st-synced').textContent = data.files_synced ?? '--';
+  document.getElementById('st-transfers').textContent = data.active_transfers ?? 0;
+  document.getElementById('st-conflicts').textContent = data.conflicts ?? 0;
+  document.getElementById('st-pid').textContent = data.pid ?? '--';
+  document.getElementById('st-uptime').textContent = data.uptime ?? '--';
+  document.getElementById('st-socket').textContent = data.socket_path ?? '--';
+}
+
+/* --- Accounts --- */
+async function refreshAccounts() {
+  const data = await apiGet('accounts');
+  const el = document.getElementById('accounts-list');
+  if (!data || !data.length) { el.innerHTML = '<div class="empty">No accounts configured</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Provider</th><th>Email</th><th>Status</th><th></th></tr></thead><tbody>' +
+    data.map(a => `<tr>
+      <td>${esc(a.provider)}</td><td>${esc(a.email || a.account_id || '--')}</td>
+      <td><span class="badge ${a.status === 'connected' ? 'connected' : 'disconnected'}">${esc(a.status)}</span></td>
+      <td><button class="btn danger" onclick="removeAccount('${esc(a.account_id)}')">Remove</button></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+async function addAccount() {
+  const provider = document.getElementById('acc-provider').value;
+  await apiPost('accounts', { provider });
+  refreshAccounts();
+}
+async function removeAccount(id) {
+  await apiDelete('accounts/' + id);
+  refreshAccounts();
+}
+
+/* --- Sync Folders --- */
+async function refreshFolders() {
+  const data = await apiGet('sync-folders');
+  const el = document.getElementById('folders-list');
+  if (!data || !data.length) { el.innerHTML = '<div class="empty">No sync pairs configured</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Account</th><th>Local Path</th><th>Remote Folder</th><th>Mode</th><th></th></tr></thead><tbody>' +
+    data.map(f => `<tr>
+      <td>${esc(f.account_id || '--')}</td>
+      <td>${esc(f.local_path)}</td>
+      <td>${esc(f.remote_folder_id || '--')}</td>
+      <td><select onchange="updateSyncMode('${esc(f.id)}', this.value)">
+        <option value="two_way" ${f.sync_mode==='two_way'?'selected':''}>Two-way</option>
+        <option value="upload_only" ${f.sync_mode==='upload_only'?'selected':''}>Upload only</option>
+        <option value="download_only" ${f.sync_mode==='download_only'?'selected':''}>Download only</option>
+      </select></td>
+      <td><button class="btn danger" onclick="removeSyncFolder('${esc(f.id)}')">Remove</button></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+async function updateSyncMode(id, mode) {
+  await apiPut('sync-folders/' + id, { sync_mode: mode });
+}
+async function removeSyncFolder(id) {
+  await apiDelete('sync-folders/' + id);
+  refreshFolders();
+}
+
+/* --- Activity --- */
+const EVENT_ICONS = { upload: '\u2B06', download: '\u2B07', delete: '\u274C', sync: '\u{1F504}', conflict: '\u26A0', error: '\u{1F6D1}' };
+let activityOffset = 0;
+let activityFilter = 'all';
+const ACTIVITY_LIMIT = 50;
+
+document.getElementById('activity-filters').addEventListener('click', e => {
+  if (!e.target.classList.contains('filter-btn')) return;
+  document.querySelectorAll('#activity-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  activityFilter = e.target.dataset.filter;
+  activityOffset = 0;
+  document.getElementById('activity-body').innerHTML = '';
+  loadActivity();
+});
+
+async function loadActivity() {
+  let url = `activity?limit=${ACTIVITY_LIMIT}&offset=${activityOffset}`;
+  if (activityFilter !== 'all') url += `&type=${activityFilter}`;
+  const data = await apiGet(url);
+  const tbody = document.getElementById('activity-body');
+  const emptyEl = document.getElementById('activity-empty');
+  if (!data || !data.length) {
+    if (activityOffset === 0) emptyEl.style.display = '';
+    document.getElementById('activity-more').style.display = 'none';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  document.getElementById('activity-more').style.display = '';
+  tbody.innerHTML += data.map(a => `<tr>
+    <td style="white-space:nowrap">${esc(formatTime(a.timestamp))}</td>
+    <td>${EVENT_ICONS[a.event_type] || '\u2022'} ${esc(a.event_type)}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(a.path || '--')}</td>
+    <td>${esc(a.details || '')}</td>
+    <td><span class="badge ${a.status === 'error' ? 'error' : a.status === 'pending' ? 'pending' : 'success'}">${esc(a.status || '')}</span></td>
+  </tr>`).join('');
+}
+function loadMoreActivity() { activityOffset += ACTIVITY_LIMIT; loadActivity(); }
+
+/* --- Conflicts --- */
+async function refreshConflicts() {
+  const data = await apiGet('conflicts');
+  const el = document.getElementById('conflicts-list');
+  if (!data || !data.length) { el.innerHTML = '<div class="empty">No conflicts</div>'; return; }
+  el.innerHTML = data.map(c => `<div class="conflict-item">
+    <div>
+      <div class="conflict-path">${esc(c.path)}</div>
+      <div class="conflict-meta">Local: ${esc(fmtSize(c.local_size))} &middot; ${esc(formatTime(c.local_mtime))}</div>
+      <div class="conflict-meta">Remote: ${esc(fmtSize(c.remote_size))} &middot; ${esc(formatTime(c.remote_mtime))}</div>
+    </div>
+    <div class="btn-group" style="flex-shrink:0">
+      <button class="btn" onclick="resolveConflict('${esc(c.id)}','keep_local')">Keep Local</button>
+      <button class="btn secondary" onclick="resolveConflict('${esc(c.id)}','keep_remote')">Keep Remote</button>
+      <button class="btn secondary" onclick="resolveConflict('${esc(c.id)}','keep_both')">Keep Both</button>
+    </div>
+  </div>`).join('');
+}
+async function resolveConflict(id, resolution) {
+  await apiPost('conflicts/' + id + '/resolve', { resolution });
+  refreshConflicts();
+}
+
+/* --- Settings --- */
+async function refreshSettings() {
+  const data = await apiGet('settings');
+  if (!data) return;
+  document.getElementById('set-ul').value = data.bandwidth_upload ?? 0;
+  document.getElementById('set-dl').value = data.bandwidth_download ?? 0;
+  document.getElementById('set-notify-sync').checked = data.notify_sync_complete !== false;
+  document.getElementById('set-notify-conflict').checked = data.notify_conflicts !== false;
+  document.getElementById('set-notify-error').checked = data.notify_errors !== false;
+  if (data.conflict_strategy) document.getElementById('set-conflict-strategy').value = data.conflict_strategy;
+}
+async function saveSettings() {
+  await apiPut('settings', {
+    bandwidth_upload: parseInt(document.getElementById('set-ul').value) || 0,
+    bandwidth_download: parseInt(document.getElementById('set-dl').value) || 0,
+    notify_sync_complete: document.getElementById('set-notify-sync').checked,
+    notify_conflicts: document.getElementById('set-notify-conflict').checked,
+    notify_errors: document.getElementById('set-notify-error').checked,
+    conflict_strategy: document.getElementById('set-conflict-strategy').value,
+  });
+}
+
+/* --- Helpers --- */
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+function formatTime(ts) {
+  if (!ts) return '--';
+  try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
+}
+function fmtSize(bytes) {
+  if (bytes == null) return '--';
+  const units = ['B','KB','MB','GB'];
+  let i = 0; let v = Number(bytes);
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(i ? 1 : 0) + ' ' + units[i];
+}
+
+function refreshTab(tab) {
+  const loaders = { status: refreshStatus, accounts: refreshAccounts, folders: refreshFolders,
+    activity: () => { activityOffset = 0; document.getElementById('activity-body').innerHTML = ''; loadActivity(); },
+    conflicts: refreshConflicts, settings: refreshSettings };
+  if (loaders[tab]) loaders[tab]();
+}
+
+/* --- Init & auto-refresh --- */
+refreshStatus();
+setInterval(() => {
+  const active = document.querySelector('#tabs button.active');
+  if (active) refreshTab(active.dataset.tab);
+}, 5000);
+</script>
+</body>
+</html>
