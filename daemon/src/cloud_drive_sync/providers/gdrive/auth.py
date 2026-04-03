@@ -21,14 +21,35 @@ class GoogleDriveAuth(AuthProvider):
         return run_oauth_flow()
 
     def _run_console_flow(self) -> Any:
-        """Run OAuth flow in headless/console mode."""
+        """Run OAuth flow in headless/console mode.
 
+        Uses run_local_server with open_browser=False so the user can
+        copy the URL manually. Falls back to manual code entry if the
+        local server can't bind (e.g., Docker without port forwarding).
+        """
         from cloud_drive_sync.auth.oauth import _create_oauth_flow
 
-        log.info("Starting OAuth2 console flow (headless)...")
+        log.info("Starting OAuth2 headless flow...")
         flow = _create_oauth_flow()
-        credentials = flow.run_console()
-        log.info("OAuth2 console authorization successful")
+
+        try:
+            # Try local server without auto-opening browser
+            credentials = flow.run_local_server(
+                port=0,
+                open_browser=False,
+                prompt="consent",
+                success_message="Authorization complete. You may close this tab.",
+            )
+        except OSError:
+            # Fallback: manual OOB-style flow for environments where
+            # a local HTTP server can't bind (rare)
+            auth_uri, _ = flow.authorization_url(prompt="consent")
+            print(f"\nVisit this URL to authorize:\n{auth_uri}\n")
+            code = input("Enter the authorization code: ").strip()
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+
+        log.info("OAuth2 headless authorization successful")
         return credentials
 
     def save_credentials(self, creds: Any, account_id: str) -> None:
