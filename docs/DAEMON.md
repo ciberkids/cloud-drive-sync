@@ -183,10 +183,13 @@ The daemon runs headless in Docker with no GUI dependencies.
 
 ```bash
 docker run -d --name cloud-drive-sync \
+  -p 8080:8080 \
   -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
   -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
   -v ~/Documents:/data/Documents \
   ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Open http://localhost:8080/ for the web management UI
 
 # Add account (interactive — prints auth URL)
 docker exec -it cloud-drive-sync \
@@ -194,6 +197,55 @@ docker exec -it cloud-drive-sync \
 
 # Check status
 docker exec cloud-drive-sync python -m cloud_drive_sync status
+```
+
+### HTTP REST API
+
+The daemon can expose an HTTP REST API with a built-in web UI for headless and Docker management.
+
+- Enable with the `--http-port` flag: `cloud-drive-sync-daemon start --foreground --http-port 8080`
+- Docker containers enable it by default on port 8080.
+- **Web UI**: http://localhost:8080/
+- **REST API**: http://localhost:8080/api/*
+
+#### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | Daemon and sync status |
+| GET | `/api/accounts` | List all accounts |
+| POST | `/api/accounts` | Add a new account |
+| GET | `/api/pairs` | List sync pairs |
+| POST | `/api/pairs` | Add a sync pair |
+| DELETE | `/api/pairs/:id` | Remove a sync pair |
+| POST | `/api/sync` | Trigger an immediate sync |
+| GET | `/api/activity` | Recent sync activity log |
+| GET | `/api/conflicts` | List unresolved conflicts |
+| GET | `/api/settings/:key` | Read a setting |
+| PUT | `/api/settings/:key` | Update a setting |
+
+#### Example curl commands
+
+```bash
+# Check status
+curl http://localhost:8080/api/status
+
+# List sync pairs
+curl http://localhost:8080/api/pairs
+
+# Trigger a sync
+curl -X POST http://localhost:8080/api/sync
+
+# List accounts
+curl http://localhost:8080/api/accounts
+
+# Get recent activity
+curl http://localhost:8080/api/activity
+
+# Update a setting
+curl -X PUT http://localhost:8080/api/settings/poll_interval \
+  -H "Content-Type: application/json" \
+  -d '{"value": 60}'
 ```
 
 ### Docker Compose

@@ -62,9 +62,16 @@ cloud-drive-sync start --foreground
 # Start in demo mode (no real cloud account needed)
 cloud-drive-sync start --demo
 
+# Start with HTTP REST API and web UI
+cloud-drive-sync start --foreground --http-port 8080
+
 # Start with debug logging
 cloud-drive-sync --log-level debug start --foreground
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--http-port PORT` | Enable HTTP REST API and web UI on the given port. Default 0 (disabled). Docker containers default to port 8080. |
 
 The daemon creates a PID file at `~/.local/run/cloud-drive-sync/daemon.pid` and listens on a Unix socket at `~/.local/run/cloud-drive-sync/daemon.sock`.
 

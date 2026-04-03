@@ -39,6 +39,8 @@ graph TB
     DriveClient -->|"HTTPS"| GoogleDrive[("Google Drive\nAPI v3")]
 ```
 
+The daemon optionally exposes an HTTP REST API (`--http-port`) with a built-in web UI for headless/Docker management. The HTTP server calls the same `RequestHandler` as the IPC socket -- no separate backend.
+
 ## Component Breakdown
 
 ### Daemon (`daemon/`)

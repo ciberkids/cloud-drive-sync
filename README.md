@@ -139,10 +139,15 @@ cloud-drive-sync-daemon status
 ```bash
 # Run the daemon in a container
 docker run -d --name cloud-drive-sync \
+  -p 8080:8080 \
   -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
   -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
   -v ~/Documents:/data/Documents \
   ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Open http://localhost:8080/ for the web management UI, or use the REST API:
+curl http://localhost:8080/api/status
+curl http://localhost:8080/api/pairs
 
 # Add a Google account (headless auth - prints URL, you enter the code)
 docker exec -it cloud-drive-sync python -m cloud_drive_sync account add --provider gdrive --headless
