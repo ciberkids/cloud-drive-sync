@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  daemon:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: cloud-drive-sync
+    restart: unless-stopped
+    volumes:
+      # Config and credentials (persist across restarts)
+      - cloud-drive-sync-config:/root/.config/cloud-drive-sync
+      - cloud-drive-sync-data:/root/.local/share/cloud-drive-sync
+      # IPC socket for CLI access from host
+      - cloud-drive-sync-run:/run/cloud-drive-sync
+      # Your sync folders - add your own here
+      - ~/Documents:/data/Documents
+      - ~/Photos:/data/Photos
+    environment:
+      - XDG_RUNTIME_DIR=/run/cloud-drive-sync
+
+volumes:
+  cloud-drive-sync-config:
+  cloud-drive-sync-data:
+  cloud-drive-sync-run:

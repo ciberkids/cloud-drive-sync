@@ -226,9 +226,40 @@ jobs:
           name: ui-flatpak
           path: flatpak/cloud-drive-sync.flatpak
 
+  build-docker:
+    name: Build & Push Docker Image
+    needs: build-daemon
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cloud-drive-sync:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository_owner }}/cloud-drive-sync:latest
+
   release:
     name: Create GitHub Release
-    needs: [build-daemon, build-ui, build-flatpak]
+    needs: [build-daemon, build-ui, build-flatpak, build-docker]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4

@@ -134,6 +134,34 @@ cloud-drive-sync-daemon pair add --local ~/Documents --remote root
 cloud-drive-sync-daemon status
 ```
 
+### Docker
+
+```bash
+# Run the daemon in a container
+docker run -d --name cloud-drive-sync \
+  -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
+  -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
+  -v ~/Documents:/data/Documents \
+  ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Add a Google account (headless auth - prints URL, you enter the code)
+docker exec -it cloud-drive-sync python -m cloud_drive_sync account add --provider gdrive --headless
+
+# Check status
+docker exec cloud-drive-sync python -m cloud_drive_sync status
+
+# View logs
+docker logs -f cloud-drive-sync
+```
+
+Or with Docker Compose (see `docker/docker-compose.yml`):
+
+```bash
+cd docker
+docker compose up -d
+docker compose exec daemon python -m cloud_drive_sync account add --provider gdrive --headless
+```
+
 ### macOS
 
 ```bash
