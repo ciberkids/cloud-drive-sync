@@ -20,6 +20,9 @@ class GoogleDriveAuth(AuthProvider):
             return self._run_console_flow()
         return run_oauth_flow()
 
+    # Pending auth flow for two-step HTTP auth
+    _pending_flow = None
+
     def _run_console_flow(self) -> Any:
         """Run OAuth flow in headless/console mode.
 
@@ -28,6 +31,8 @@ class GoogleDriveAuth(AuthProvider):
         the code. This works in Docker, SSH, and any environment where
         a local HTTP redirect server would be unreachable.
         """
+        import sys
+
         from cloud_drive_sync.auth.oauth import _create_oauth_flow
 
         log.info("Starting OAuth2 headless flow...")
@@ -39,13 +44,39 @@ class GoogleDriveAuth(AuthProvider):
             access_type="offline",
         )
 
+        # If stdin is not a TTY (e.g., HTTP API, Docker without -it),
+        # store the flow and return the URL for the caller to handle
+        if not sys.stdin.isatty():
+            log.info("No TTY detected, returning auth URL for two-step flow")
+            GoogleDriveAuth._pending_flow = flow
+            raise _AuthUrlReady(auth_uri)
+
         print(f"\nVisit this URL to authorize:\n\n  {auth_uri}\n")
         print("Sign in, click 'Allow', then copy the authorization code.\n")
+        sys.stdout.flush()
         code = input("Enter the authorization code: ").strip()
 
         flow.fetch_token(code=code)
         log.info("OAuth2 headless authorization successful")
         return flow.credentials
+
+    @classmethod
+    def exchange_code(cls, code: str) -> Any:
+        """Complete a pending two-step auth flow by exchanging the code."""
+        if cls._pending_flow is None:
+            raise ValueError("No pending auth flow. Call add_account first.")
+        flow = cls._pending_flow
+        cls._pending_flow = None
+        flow.fetch_token(code=code)
+        log.info("OAuth2 code exchange successful")
+        return flow.credentials
+
+
+class _AuthUrlReady(Exception):
+    """Raised when auth URL is ready but code input is needed via HTTP."""
+    def __init__(self, url: str):
+        self.url = url
+        super().__init__(url)
 
     def save_credentials(self, creds: Any, account_id: str) -> None:
         from cloud_drive_sync.auth.credentials import save_account_credentials

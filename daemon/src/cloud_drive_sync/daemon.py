@@ -168,6 +168,7 @@ class Daemon:
             # Initialize IPC (works with or without engine)
             handler = RequestHandler(self._engine, self._config)
             handler.set_auth_callback(self._do_auth)
+            handler.set_exchange_code_callback(self._exchange_auth_code)
             handler.set_db(self._db)
             self._handler = handler
             self._ipc_server = IpcServer(handler)
@@ -280,7 +281,14 @@ class Daemon:
             auth_provider = entry.auth_cls()
 
             # Run the provider-specific auth flow
-            creds = auth_provider.run_auth_flow(headless=headless)
+            # If no TTY is available (HTTP API / Docker), _AuthUrlReady is raised
+            # with the auth URL — return it so the HTTP client can show it
+            try:
+                creds = auth_provider.run_auth_flow(headless=headless)
+            except Exception as auth_exc:
+                if type(auth_exc).__name__ == "_AuthUrlReady":
+                    return {"status": "auth_url", "auth_url": str(auth_exc), "provider": provider}
+                raise
 
             # Create client from credentials
             import asyncio
@@ -343,6 +351,61 @@ class Daemon:
         except Exception as exc:
             log.error("Authentication failed: %s", exc)
             self._log_auth_event("auth", f"Authentication failed: {exc}", "error")
+            return {"status": "error", "message": str(exc)}
+
+    def _exchange_auth_code(self, provider: str = "gdrive", code: str = "") -> dict:
+        """Complete a two-step auth flow by exchanging the authorization code."""
+        from cloud_drive_sync.providers.registry import get as get_provider
+
+        try:
+            entry = get_provider(provider)
+            auth_provider = entry.auth_cls()
+
+            # Call the provider's code exchange method
+            if hasattr(auth_provider, "exchange_code"):
+                creds = auth_provider.exchange_code(code)
+            else:
+                return {"status": "error", "message": f"Provider {provider} does not support code exchange"}
+
+            # Complete setup (same as _do_auth after getting creds)
+            import asyncio
+            loop = asyncio.get_event_loop()
+
+            async def _setup():
+                client = await auth_provider.create_client(creds)
+                email = await auth_provider.get_account_email(client)
+                return client, email
+
+            future = asyncio.run_coroutine_threadsafe(_setup(), loop)
+            client, email = future.result(timeout=30)
+
+            auth_provider.save_credentials(creds, email)
+
+            if not any(a.email == email for a in self._config.accounts):
+                self._config.accounts.append(
+                    Account(email=email, display_name=email, provider=provider)
+                )
+                self._config.save()
+
+            self._log_auth_event("auth", f"Authentication successful ({email})", "success")
+
+            if self._engine is None and self._db is not None:
+                clients = {email: client}
+                self._engine = SyncEngine(self._config, self._db, client, clients=clients)
+                self._handler.set_engine(self._engine)
+                self._handler.set_drive_client(client)
+                if self._ipc_server:
+                    self._engine.set_notify_callback(self._ipc_server.notify_all)
+                loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._engine.start()))
+            elif self._engine is not None:
+                self._engine._clients[email] = client
+                self._handler.set_drive_client(client)
+                loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._restart_engine()))
+
+            return {"status": "ok", "email": email}
+
+        except Exception as exc:
+            log.error("Code exchange failed: %s", exc)
             return {"status": "error", "message": str(exc)}
 
     async def _restart_engine(self) -> None:

@@ -41,6 +41,7 @@ class HttpServer:
         # Accounts
         r.add_get("/api/accounts", self._list_accounts)
         r.add_post("/api/accounts", self._add_account)
+        r.add_post("/api/accounts/auth-code", self._exchange_auth_code)
         r.add_delete("/api/accounts/{email}", self._remove_account)
         r.add_put("/api/accounts/{email}/max-transfers", self._set_account_max_transfers)
         # Sync pairs
@@ -100,6 +101,7 @@ class HttpServer:
     async def _get_status(self, req): return self._json(await self._rpc("get_status"))
     async def _list_accounts(self, req): return self._json(await self._rpc("list_accounts"))
     async def _add_account(self, req): return self._json(await self._rpc("add_account", await self._body(req)))
+    async def _exchange_auth_code(self, req): return self._json(await self._rpc("exchange_auth_code", await self._body(req)))
     async def _remove_account(self, req): return self._json(await self._rpc("remove_account", {"email": req.match_info["email"]}))
     async def _set_account_max_transfers(self, req):
         body = await self._body(req)

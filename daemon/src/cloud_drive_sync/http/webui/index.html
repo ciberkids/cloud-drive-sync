@@ -83,6 +83,7 @@
   <span class="status-dot" id="hdr-dot"></span>
   <h1>Cloud Drive Sync</h1>
   <span class="status-text" id="hdr-status">Connecting...</span>
+  <span style="font-size:11px;color:#636366" id="hdr-version"></span>
 </header>
 
 <nav id="tabs">
@@ -278,6 +279,7 @@ async function refreshStatus() {
   document.getElementById('st-pid').textContent = daemon.pid ?? '--';
   document.getElementById('st-uptime').textContent = daemon.uptime_formatted ?? '--';
   document.getElementById('st-socket').textContent = daemon.socket_path ?? '--';
+  if (daemon.version) document.getElementById('hdr-version').textContent = 'v' + daemon.version;
 }
 
 /* --- Accounts --- */
@@ -300,12 +302,27 @@ async function addAccount() {
   btn.disabled = true;
   btn.textContent = 'Authenticating...';
   statusEl.style.display = '';
-  statusEl.innerHTML = '<strong>Auth in progress...</strong><br>' +
-    'The daemon is running the headless auth flow. Check the daemon logs or terminal for the authorization URL.<br><br>' +
-    '<code>docker logs -f cloud-drive-sync</code><br><br>' +
-    'Complete the authorization in your browser, then this will update automatically.';
+  statusEl.innerHTML = 'Starting auth flow...';
 
   const result = await apiPost('accounts', { provider, headless: true });
+
+  if (result && result.status === 'auth_url') {
+    // Two-step flow: show the URL and a code input
+    statusEl.innerHTML =
+      '<strong>Authorization required</strong><br><br>' +
+      '1. Open this URL in your browser:<br>' +
+      '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" style="color:#2997ff;word-break:break-all">' +
+      esc(result.auth_url) + '</a><br><br>' +
+      '2. Sign in and click "Allow"<br>' +
+      '3. Copy the authorization code and paste it here:<br><br>' +
+      '<div class="form-row">' +
+      '<input type="text" id="auth-code-input" placeholder="Paste authorization code" style="flex:1">' +
+      '<button class="btn" onclick="submitAuthCode(\'' + esc(provider) + '\')">Submit Code</button>' +
+      '</div>';
+    btn.disabled = false;
+    btn.textContent = 'Add Account';
+    return;
+  }
 
   btn.disabled = false;
   btn.textContent = 'Add Account';
@@ -316,7 +333,26 @@ async function addAccount() {
     refreshAccounts();
   } else {
     const msg = result ? (result.message || JSON.stringify(result)) : 'Request failed';
-    statusEl.innerHTML = '<span style="color:#ff453a">Failed: ' + esc(msg) + '</span>';
+    statusEl.innerHTML = '<span style="color:#ff453a">Error: ' + esc(msg) + '</span>';
+  }
+}
+
+async function submitAuthCode(provider) {
+  const code = document.getElementById('auth-code-input').value.trim();
+  if (!code) return;
+
+  const statusEl = document.getElementById('auth-status');
+  statusEl.innerHTML = 'Exchanging code...';
+
+  const result = await apiPost('accounts/auth-code', { provider, code });
+
+  if (result && result.status === 'ok') {
+    statusEl.innerHTML = '<span style="color:#30d158">Account added: ' + esc(result.email || provider) + '</span>';
+    setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+    refreshAccounts();
+  } else {
+    const msg = result ? (result.message || JSON.stringify(result)) : 'Code exchange failed';
+    statusEl.innerHTML = '<span style="color:#ff453a">Error: ' + esc(msg) + '</span>';
   }
 }
 async function removeAccount(email) {

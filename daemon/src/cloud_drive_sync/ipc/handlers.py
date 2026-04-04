@@ -27,6 +27,7 @@ class RequestHandler:
         self._engine = engine
         self._config = config
         self._auth_callback = None
+        self._exchange_code_callback = None
         self._db = None
         self._drive_client = None
         self._start_time = time.monotonic()
@@ -63,11 +64,16 @@ class RequestHandler:
             "get_proxy": self._get_proxy,
             "get_file_status": self._get_file_status,
             "set_account_max_transfers": self._set_account_max_transfers,
+            "exchange_auth_code": self._exchange_auth_code,
         }
 
     def set_auth_callback(self, callback) -> None:
         """Set a callback for handling auth flow (runs in a thread)."""
         self._auth_callback = callback
+
+    def set_exchange_code_callback(self, callback) -> None:
+        """Set a callback for exchanging an auth code (two-step flow)."""
+        self._exchange_code_callback = callback
 
     def set_engine(self, engine: SyncEngine) -> None:
         """Set or replace the sync engine (e.g. after authentication)."""
@@ -80,6 +86,14 @@ class RequestHandler:
     def set_drive_client(self, client) -> None:
         """Set the drive client (for folder browsing)."""
         self._drive_client = client
+
+    @staticmethod
+    def _get_version() -> str:
+        try:
+            from importlib.metadata import version
+            return version("cloud-drive-sync")
+        except Exception:
+            return "dev"
 
     async def handle(self, request: JsonRpcRequest) -> JsonRpcResponse:
         """Dispatch a request to its handler and return a response."""
@@ -126,6 +140,7 @@ class RequestHandler:
             "uptime": int(uptime),
             "uptime_formatted": self._format_uptime(uptime),
             "socket_path": sock_path,
+            "version": self._get_version(),
         }
 
         if self._engine is None:
@@ -764,3 +779,25 @@ class RequestHandler:
                 return {"status": "ok", "max_concurrent_transfers": value}
 
         raise TypeError(f"Account {email} not found")
+
+    async def _exchange_auth_code(self, params: dict) -> dict:
+        """Complete a two-step auth flow by exchanging the authorization code."""
+        params = params or {}
+        code = params.get("code")
+        provider = params.get("provider", "gdrive")
+        if not code:
+            raise TypeError("code is required")
+
+        if self._auth_callback:
+            import asyncio
+            try:
+                # The auth callback with code triggers the exchange path
+                result = await asyncio.to_thread(
+                    self._exchange_code_callback, provider, code
+                )
+                if isinstance(result, dict):
+                    return result
+                return {"status": "ok"}
+            except Exception as exc:
+                return {"status": "error", "message": str(exc)}
+        return {"status": "no_auth_callback"}
