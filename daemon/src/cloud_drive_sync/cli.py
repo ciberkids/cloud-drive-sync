@@ -152,7 +152,21 @@ def account_add(provider: str, headless: bool):
     click.echo(f"Adding {provider} account...")
     try:
         result = _run_client_call("add_account", {"provider": provider, "headless": headless})
-        if isinstance(result, dict) and result.get("status") == "ok":
+        if isinstance(result, dict) and result.get("status") == "auth_url":
+            # Two-step flow: daemon returned the auth URL, we need to collect the code
+            auth_url = result.get("auth_url", "")
+            click.echo(f"\nVisit this URL to authorize:\n\n  {auth_url}\n")
+            click.echo("Sign in, click 'Allow', then copy the authorization code.\n")
+            code = click.prompt("Enter the authorization code")
+            result = _run_client_call("exchange_auth_code", {"provider": provider, "code": code})
+            if isinstance(result, dict) and result.get("status") == "ok":
+                click.echo(f"Account added: {result.get('email', provider)}")
+            elif isinstance(result, dict) and result.get("status") == "error":
+                click.echo(f"Failed: {result.get('message', 'Unknown error')}", err=True)
+                sys.exit(1)
+            else:
+                click.echo("Account added.")
+        elif isinstance(result, dict) and result.get("status") == "ok":
             email = result.get("email", "unknown")
             click.echo(f"Account added: {email}")
         elif isinstance(result, dict) and result.get("status") == "error":
