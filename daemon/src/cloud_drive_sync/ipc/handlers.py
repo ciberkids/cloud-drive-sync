@@ -203,7 +203,19 @@ class RequestHandler:
             return f"{minutes}m {s}s"
         return f"{s}s"
 
+    def _cleanup_orphaned_pairs(self) -> None:
+        """Remove pairs referencing accounts that no longer exist."""
+        known_emails = {a.email for a in self._config.accounts}
+        before = len(self._config.sync.pairs)
+        self._config.sync.pairs = [
+            p for p in self._config.sync.pairs
+            if not p.account_id or p.account_id in known_emails
+        ]
+        if len(self._config.sync.pairs) < before:
+            self._config.save()
+
     async def _get_sync_pairs(self, params: dict) -> list[dict]:
+        self._cleanup_orphaned_pairs()
         return [
             {
                 "id": str(i),
