@@ -13,6 +13,13 @@ After every code change, always follow this sequence:
 7. **Commit and push** — descriptive commit message, push to main
 8. **Check GitHub Issues** — look for open issues that may be affected by changes
 9. **Tag a release** — if the changes are significant, tag `vX.Y.Z` to trigger the release pipeline (produces DEB, RPM, AppImage, Flatpak, DMG, MSI/NSIS, Docker image, standalone daemon). The pipeline auto-injects the version from the git tag into `pyproject.toml` and `tauri.conf.json` — no manual version bumping needed.
+10. **Update release notes** — after the release pipeline completes, update the GitHub release with a description of what changed. Use the GitHub API:
+    ```bash
+    curl -s -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" \
+      "https://api.github.com/repos/ciberkids/cloud-drive-sync/releases/{release_id}" \
+      -d '{"body": "## vX.Y.Z — Title\n\n- Change 1\n- Change 2\n"}'
+    ```
+    Get the release ID from `https://api.github.com/repos/ciberkids/cloud-drive-sync/releases/tags/vX.Y.Z`.
 
 ## Parallelization
 
