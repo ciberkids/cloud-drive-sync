@@ -73,10 +73,13 @@ class HttpServer:
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         # Remote folders
         r.add_get("/api/remote-folders", self._list_remote_folders)
-        # Web UI — serve index.html for all non-API routes
+        # Web UI — serve React SPA from webui/ directory
         if WEBUI_DIR.exists():
-            r.add_get("/", self._serve_index)
-            r.add_static("/static", WEBUI_DIR)
+            assets_dir = WEBUI_DIR / "assets"
+            if assets_dir.exists():
+                r.add_static("/assets", assets_dir)
+            # SPA fallback: all non-API GET routes serve index.html
+            r.add_get("/{path:.*}", self._serve_index)
 
     async def _rpc(self, method: str, params: dict | None = None):
         """Call the JSON-RPC handler and return the result."""

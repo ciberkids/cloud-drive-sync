@@ -1,4 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+/**
+ * HTTP-based IPC client for the web UI served by the daemon's HTTP server.
+ * Replaces Tauri's invoke() with fetch() calls to /api/* endpoints.
+ * Used when the React app is served via the daemon's HTTP server (headless mode).
+ */
+
 import type {
   Account,
   DaemonStatus,
@@ -8,12 +13,44 @@ import type {
   ConflictResolution,
 } from "./types";
 
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/${path}`);
+  if (!res.ok) throw new Error(`API error: ${res.statusText}`);
+  return res.json();
+}
+
+async function post<T>(path: string, body?: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`API error: ${res.statusText}`);
+  return res.json();
+}
+
+async function put<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api/${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.statusText}`);
+  return res.json();
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/${path}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`API error: ${res.statusText}`);
+  return res.json();
+}
+
 export async function getStatus(): Promise<DaemonStatus> {
-  return invoke<DaemonStatus>("get_status");
+  return get<DaemonStatus>("status");
 }
 
 export async function getSyncPairs(): Promise<SyncPair[]> {
-  return invoke<SyncPair[]>("get_sync_pairs");
+  return get<SyncPair[]>("pairs");
 }
 
 export async function addSyncPair(
@@ -22,99 +59,99 @@ export async function addSyncPair(
   ignoreHidden?: boolean,
   accountId?: string
 ): Promise<SyncPair> {
-  return invoke<SyncPair>("add_sync_pair", {
-    localPath,
-    remoteFolderId,
-    ignoreHidden,
-    accountId,
+  return post<SyncPair>("pairs", {
+    local_path: localPath,
+    remote_folder_id: remoteFolderId,
+    ignore_hidden: ignoreHidden,
+    account_id: accountId,
   });
 }
 
 export async function removeSyncPair(pairId: string): Promise<void> {
-  return invoke("remove_sync_pair", { pairId });
+  await del(`pairs/${pairId}`);
 }
 
 export async function setConflictStrategy(strategy: string): Promise<void> {
-  return invoke("set_conflict_strategy", { strategy });
+  await put("settings/conflict-strategy", { strategy });
 }
 
 export async function resolveConflict(
   conflictId: string,
   resolution: ConflictResolution
 ): Promise<void> {
-  return invoke("resolve_conflict", { conflictId, resolution });
+  await post(`conflicts/${conflictId}/resolve`, { resolution });
 }
 
 export async function forceSync(pairId?: string): Promise<void> {
-  return invoke("force_sync", { pairId });
+  await post("sync", pairId ? { pair_id: pairId } : {});
 }
 
 export async function pauseSync(pairId?: string): Promise<void> {
-  return invoke("pause_sync", { pairId });
+  await post("sync/pause", pairId ? { pair_id: pairId } : {});
 }
 
 export async function resumeSync(pairId?: string): Promise<void> {
-  return invoke("resume_sync", { pairId });
+  await post("sync/resume", pairId ? { pair_id: pairId } : {});
 }
 
 export async function getActivityLog(
   limit: number,
   offset: number
 ): Promise<LogEntry[]> {
-  return invoke<LogEntry[]>("get_activity_log", { limit, offset });
+  return get<LogEntry[]>(`activity?limit=${limit}&offset=${offset}`);
 }
 
 export async function getConflicts(): Promise<ConflictRecord[]> {
-  return invoke<ConflictRecord[]>("get_conflicts");
+  return get<ConflictRecord[]>("conflicts");
 }
 
 export async function startAuth(): Promise<unknown> {
-  return invoke("start_auth");
+  return post("accounts", { provider: "gdrive", headless: true });
 }
 
 export async function logout(): Promise<void> {
-  return invoke("logout");
+  // No direct equivalent — use removeAccount
 }
 
 export async function connectDaemon(): Promise<void> {
-  return invoke("connect_daemon");
+  // No-op for HTTP — always connected if server is reachable
 }
 
 export async function setSyncMode(
   pairId: string,
   syncMode: string
 ): Promise<void> {
-  return invoke("set_sync_mode", { pairId, syncMode });
+  await put(`pairs/${pairId}/mode`, { sync_mode: syncMode });
 }
 
 export async function setIgnoreHidden(
   pairId: string,
   ignoreHidden: boolean
 ): Promise<void> {
-  return invoke("set_ignore_hidden", { pairId, ignoreHidden });
+  await put(`pairs/${pairId}/ignore-hidden`, { ignore_hidden: ignoreHidden });
 }
 
 export async function setIgnorePatterns(
   pairId: string,
   patterns: string[]
 ): Promise<void> {
-  return invoke("set_ignore_patterns", { pairId, patterns });
+  await put(`pairs/${pairId}/ignore-patterns`, { patterns });
 }
 
 export async function addAccount(provider?: string): Promise<unknown> {
-  return invoke("add_account", { provider: provider || "gdrive" });
+  return post("accounts", { provider: provider || "gdrive", headless: true });
 }
 
 export async function exchangeAuthCode(provider: string, code: string): Promise<unknown> {
-  return invoke("exchange_auth_code", { provider, code });
+  return post("accounts/auth-code", { provider, code });
 }
 
 export async function removeAccount(email: string): Promise<void> {
-  return invoke("remove_account", { email });
+  await del(`accounts/${encodeURIComponent(email)}`);
 }
 
 export async function listAccounts(): Promise<Account[]> {
-  return invoke<Account[]>("list_accounts");
+  return get<Account[]>("accounts");
 }
 
 export async function setNotificationPrefs(prefs: {
@@ -126,11 +163,7 @@ export async function setNotificationPrefs(prefs: {
   notify_conflicts: boolean;
   notify_errors: boolean;
 }> {
-  return invoke("set_notification_prefs", {
-    notifySyncComplete: prefs.notify_sync_complete,
-    notifyConflicts: prefs.notify_conflicts,
-    notifyErrors: prefs.notify_errors,
-  });
+  return put("settings/notifications", prefs);
 }
 
 export async function getNotificationPrefs(): Promise<{
@@ -138,7 +171,7 @@ export async function getNotificationPrefs(): Promise<{
   notify_conflicts: boolean;
   notify_errors: boolean;
 }> {
-  return invoke("get_notification_prefs");
+  return get("settings/notifications");
 }
 
 export async function setBandwidthLimits(params: {
@@ -148,9 +181,9 @@ export async function setBandwidthLimits(params: {
   max_upload_kbps: number;
   max_download_kbps: number;
 }> {
-  return invoke("set_bandwidth_limits", {
-    maxUploadKbps: params.max_upload_kbps,
-    maxDownloadKbps: params.max_download_kbps,
+  return put("settings/bandwidth", {
+    max_upload_kbps: params.max_upload_kbps,
+    max_download_kbps: params.max_download_kbps,
   });
 }
 
@@ -158,7 +191,7 @@ export async function getBandwidthLimits(): Promise<{
   max_upload_kbps: number;
   max_download_kbps: number;
 }> {
-  return invoke("get_bandwidth_limits");
+  return get("settings/bandwidth");
 }
 
 export async function setSyncRules(
@@ -170,7 +203,7 @@ export async function setSyncRules(
     min_date?: string;
   }
 ): Promise<unknown> {
-  return invoke("set_sync_rules", { pairId, rules });
+  return put(`pairs/${pairId}/rules`, rules);
 }
 
 export async function getSyncRules(
@@ -181,7 +214,7 @@ export async function getSyncRules(
   exclude_regex: string[];
   min_date: string;
 }> {
-  return invoke("get_sync_rules", { pairId });
+  return get(`pairs/${pairId}/rules`);
 }
 
 export async function setProxy(prefs: {
@@ -193,11 +226,7 @@ export async function setProxy(prefs: {
   https_proxy: string;
   no_proxy: string;
 }> {
-  return invoke("set_proxy", {
-    httpProxy: prefs.http_proxy,
-    httpsProxy: prefs.https_proxy,
-    noProxy: prefs.no_proxy,
-  });
+  return put("settings/proxy", prefs);
 }
 
 export async function getProxy(): Promise<{
@@ -205,7 +234,7 @@ export async function getProxy(): Promise<{
   https_proxy: string;
   no_proxy: string;
 }> {
-  return invoke("get_proxy");
+  return get("settings/proxy");
 }
 
 export async function listRemoteFolders(
@@ -217,12 +246,16 @@ export async function listRemoteFolders(
   parent_id: string;
   error?: string;
 }> {
-  return invoke("list_remote_folders", { parentId, accountId });
+  let url = `remote-folders?parent_id=${encodeURIComponent(parentId)}`;
+  if (accountId) url += `&account_id=${encodeURIComponent(accountId)}`;
+  return get(url);
 }
 
 export async function setAccountMaxTransfers(
   email: string,
   maxConcurrentTransfers: number
 ): Promise<unknown> {
-  return invoke("set_account_max_transfers", { email, maxConcurrentTransfers });
+  return put(`accounts/${encodeURIComponent(email)}/max-transfers`, {
+    max_concurrent_transfers: maxConcurrentTransfers,
+  });
 }

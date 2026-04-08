@@ -61,14 +61,29 @@ export function AccountManager() {
     }
   }, [status.connected, refreshAccounts]);
 
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [authCode, setAuthCode] = useState("");
+  const [authProvider, setAuthProvider] = useState("gdrive");
+
   const handleAddAccount = async () => {
     setAuthInProgress(true);
     setAuthMessage(null);
+    setAuthUrl(null);
+    setAuthCode("");
     try {
-      const result = (await ipc.addAccount()) as {
+      const result = (await ipc.addAccount(selectedProvider)) as {
         status?: string;
         message?: string;
+        auth_url?: string;
+        provider?: string;
       } | null;
+      if (result && result.status === "auth_url" && result.auth_url) {
+        // Two-step flow: show auth URL and code input
+        setAuthUrl(result.auth_url);
+        setAuthProvider(result.provider || selectedProvider);
+        setAuthInProgress(false);
+        return;
+      }
       if (result && result.status === "ok") {
         setAuthMessage("Account added successfully!");
         await refreshAccounts();
@@ -78,6 +93,34 @@ export function AccountManager() {
     } catch (e) {
       console.error("Add account failed:", e);
       setAuthMessage(`Failed to add account: ${e}`);
+    } finally {
+      setAuthInProgress(false);
+    }
+  };
+
+  const handleSubmitAuthCode = async () => {
+    if (!authCode.trim()) return;
+    setAuthInProgress(true);
+    setAuthMessage(null);
+    try {
+      const exchangeFn = (ipc as Record<string, unknown>).exchangeAuthCode as
+        | ((provider: string, code: string) => Promise<{ status?: string; email?: string; message?: string }>)
+        | undefined;
+      if (exchangeFn) {
+        const result = await exchangeFn(authProvider, authCode.trim());
+        if (result && result.status === "ok") {
+          setAuthMessage(`Account added: ${result.email || authProvider}`);
+          setAuthUrl(null);
+          setAuthCode("");
+          await refreshAccounts();
+        } else {
+          setAuthMessage(`Failed: ${result?.message || "Unknown error"}`);
+        }
+      } else {
+        setAuthMessage("Code exchange not supported in this mode");
+      }
+    } catch (e) {
+      setAuthMessage(`Failed: ${e}`);
     } finally {
       setAuthInProgress(false);
     }
@@ -223,12 +266,50 @@ export function AccountManager() {
         </button>
       </div>
 
-      {authInProgress && (
+      {authInProgress && !authUrl && (
         <p className="auth-message">
           A browser window should open for sign-in. Complete the authorization
           there, then return here. If you close the browser, the request will
           time out after 2 minutes and you can try again.
         </p>
+      )}
+
+      {authUrl && (
+        <div className="auth-message" style={{ lineHeight: 1.8 }}>
+          <strong>Step 1:</strong>{" "}
+          <a href={authUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ textDecoration: "none", display: "inline-block", margin: "8px 0" }}>
+            Sign in with {providerLabel(authProvider)}
+          </a>
+          <br />
+          <strong>Step 2:</strong> After clicking "Allow", your browser will show a page that{" "}
+          <strong>can't load</strong> — that's expected.
+          <br />
+          <span style={{ color: "var(--text-secondary)", fontSize: "12px" }}>
+            The address bar will look like:{" "}
+            <code style={{ background: "var(--bg-primary)", padding: "2px 6px", borderRadius: "4px" }}>
+              http://localhost/?code=4/0AfJohX...
+            </code>
+          </span>
+          <br />
+          <strong>Step 3:</strong> Copy the <strong>entire URL</strong> from the address bar and paste it here:
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <input
+              type="text"
+              className="input"
+              placeholder="http://localhost/?code=4/0AfJohX..."
+              value={authCode}
+              onChange={(e) => setAuthCode(e.target.value)}
+              style={{ flex: 1, fontFamily: "monospace", fontSize: "12px" }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmitAuthCode}
+              disabled={!authCode.trim() || authInProgress}
+            >
+              Complete Setup
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
