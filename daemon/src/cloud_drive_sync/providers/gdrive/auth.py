@@ -10,8 +10,18 @@ from cloud_drive_sync.util.logging import get_logger
 log = get_logger("providers.gdrive.auth")
 
 
+class _AuthUrlReady(Exception):
+    """Raised when auth URL is ready but code input is needed via HTTP."""
+    def __init__(self, url: str):
+        self.url = url
+        super().__init__(url)
+
+
 class GoogleDriveAuth(AuthProvider):
     """Handles Google Drive OAuth2 authentication."""
+
+    # Pending auth flow for two-step HTTP auth
+    _pending_flow = None
 
     def run_auth_flow(self, headless: bool = False) -> Any:
         from cloud_drive_sync.auth.oauth import run_oauth_flow
@@ -19,9 +29,6 @@ class GoogleDriveAuth(AuthProvider):
         if headless:
             return self._run_console_flow()
         return run_oauth_flow()
-
-    # Pending auth flow for two-step HTTP auth
-    _pending_flow = None
 
     def _run_console_flow(self) -> Any:
         """Run OAuth flow in headless/console mode.
@@ -70,13 +77,6 @@ class GoogleDriveAuth(AuthProvider):
         flow.fetch_token(code=code)
         log.info("OAuth2 code exchange successful")
         return flow.credentials
-
-
-class _AuthUrlReady(Exception):
-    """Raised when auth URL is ready but code input is needed via HTTP."""
-    def __init__(self, url: str):
-        self.url = url
-        super().__init__(url)
 
     def save_credentials(self, creds: Any, account_id: str) -> None:
         from cloud_drive_sync.auth.credentials import save_account_credentials
