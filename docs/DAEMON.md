@@ -163,17 +163,27 @@ cloud-drive-sync account add --provider gdrive --headless
 ```
 
 What happens:
-1. The daemon starts a temporary local HTTP server and prints an authorization URL
+1. The daemon prints an authorization URL
 2. Open that URL in **any browser** (on your phone, another computer, etc.)
 3. Sign in with your Google account and click "Allow"
-4. The browser redirects to `localhost` — if you're on the same machine, it completes automatically
-5. If you're on a different machine (e.g., SSH session), the redirect will fail — copy the full redirect URL from your browser's address bar and the daemon will extract the code
+4. Google redirects to `http://localhost?code=...` — this page won't load (that's normal)
+5. Copy the **full URL** from your browser's address bar and paste it back into the terminal
+6. The daemon extracts the code and completes authorization
 
 Output looks like:
 ```
-Please visit this URL to authorize this application:
-https://accounts.google.com/o/oauth2/auth?client_id=...&scope=...
+Visit this URL to authorize:
+
+  https://accounts.google.com/o/oauth2/auth?client_id=...&scope=...
+
+Sign in, click 'Allow'.
+Your browser will redirect to a localhost URL that won't load.
+Copy the FULL URL from your browser's address bar and paste it here.
+
+Paste the redirect URL (or just the code): http://localhost?code=4/0A...
 ```
+
+When using the **web UI** (http://localhost:8080/), the auth URL is shown as a clickable link with a code input field — no terminal needed.
 
 ### OneDrive
 

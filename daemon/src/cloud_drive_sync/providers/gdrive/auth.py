@@ -44,7 +44,10 @@ class GoogleDriveAuth(AuthProvider):
 
         log.info("Starting OAuth2 headless flow...")
         flow = _create_oauth_flow()
-        flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+        # Use localhost redirect — Google redirects to http://localhost?code=...
+        # The user copies the code from the browser address bar.
+        # Note: urn:ietf:wg:oauth:2.0:oob is deprecated and rejected by Google.
+        flow.redirect_uri = "http://localhost"
 
         auth_uri, _ = flow.authorization_url(
             prompt="consent",
@@ -59,13 +62,29 @@ class GoogleDriveAuth(AuthProvider):
             raise _AuthUrlReady(auth_uri)
 
         print(f"\nVisit this URL to authorize:\n\n  {auth_uri}\n")
-        print("Sign in, click 'Allow', then copy the authorization code.\n")
+        print("Sign in, click 'Allow'.")
+        print("Your browser will redirect to a localhost URL that won't load.")
+        print("Copy the FULL URL from your browser's address bar and paste it here.\n")
         sys.stdout.flush()
-        code = input("Enter the authorization code: ").strip()
+        response = input("Paste the redirect URL (or just the code): ").strip()
 
+        # Accept either the full redirect URL or just the code
+        code = self._extract_code(response)
         flow.fetch_token(code=code)
         log.info("OAuth2 headless authorization successful")
         return flow.credentials
+
+    @staticmethod
+    def _extract_code(response: str) -> str:
+        """Extract the auth code from a redirect URL or raw code string."""
+        from urllib.parse import parse_qs, urlparse
+
+        if response.startswith("http"):
+            parsed = urlparse(response)
+            params = parse_qs(parsed.query)
+            if "code" in params:
+                return params["code"][0]
+        return response
 
     @classmethod
     def exchange_code(cls, code: str) -> Any:
@@ -74,6 +93,7 @@ class GoogleDriveAuth(AuthProvider):
             raise ValueError("No pending auth flow. Call add_account first.")
         flow = cls._pending_flow
         cls._pending_flow = None
+        code = cls._extract_code(code)
         flow.fetch_token(code=code)
         log.info("OAuth2 code exchange successful")
         return flow.credentials
