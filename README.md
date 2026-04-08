@@ -339,6 +339,13 @@ cloud-drive-sync-daemon account add --provider gdrive
 
 A browser window will open for Google sign-in. No setup required.
 
+> **"This app isn't verified" warning:** Since the app uses Google Drive's full access scope and hasn't been through Google's verification process, you'll see a warning screen. This is normal for open-source apps. To proceed:
+> 1. Click **"Advanced"** (bottom left)
+> 2. Click **"Go to Cloud Drive Sync (unsafe)"**
+> 3. Review the permissions and click **"Allow"**
+>
+> Your data stays on your machine — the app syncs directly between your computer and Google Drive. See [Google's explanation](https://support.google.com/cloud/answer/7454865).
+
 > **Power users:** To use your own OAuth credentials, place a `client_secret.json` in `~/.config/cloud-drive-sync/` or set `CDS_GOOGLE_CLIENT_ID` and `CDS_GOOGLE_CLIENT_SECRET` environment variables.
 
 ### Dropbox (OAuth 2.0 PKCE)
