@@ -42,6 +42,7 @@ class HttpServer:
         r.add_get("/api/accounts", self._list_accounts)
         r.add_post("/api/accounts", self._add_account)
         r.add_post("/api/accounts/auth-code", self._exchange_auth_code)
+        r.add_get("/api/accounts/oauth-callback", self._oauth_callback)
         r.add_delete("/api/accounts/{email}", self._remove_account)
         r.add_put("/api/accounts/{email}/max-transfers", self._set_account_max_transfers)
         # Sync pairs
@@ -102,6 +103,40 @@ class HttpServer:
     async def _list_accounts(self, req): return self._json(await self._rpc("list_accounts"))
     async def _add_account(self, req): return self._json(await self._rpc("add_account", await self._body(req)))
     async def _exchange_auth_code(self, req): return self._json(await self._rpc("exchange_auth_code", await self._body(req)))
+    async def _oauth_callback(self, req):
+        """OAuth redirect callback — Google redirects here with ?code=..."""
+        code = req.query.get("code", "")
+        error = req.query.get("error", "")
+        if error:
+            return web.Response(
+                text=f"<html><body style='background:#1c1c1e;color:#ff453a;font-family:sans-serif;padding:40px;text-align:center'>"
+                     f"<h2>Authorization Failed</h2><p>{error}</p>"
+                     f"<p>You can close this tab.</p></body></html>",
+                content_type="text/html",
+            )
+        if not code:
+            return web.Response(
+                text="<html><body style='background:#1c1c1e;color:#ff453a;font-family:sans-serif;padding:40px;text-align:center'>"
+                     "<h2>Missing authorization code</h2></body></html>",
+                content_type="text/html",
+            )
+        # Exchange the code
+        provider = req.query.get("state", "gdrive")
+        result = await self._rpc("exchange_auth_code", {"provider": provider, "code": code})
+        email = result.get("email", "") if isinstance(result, dict) else ""
+        return web.Response(
+            text=f"<html><body style='background:#1c1c1e;color:#30d158;font-family:sans-serif;padding:40px;text-align:center'>"
+                 f"<h2>Authorization Successful</h2>"
+                 f"<p>Account <strong>{email}</strong> has been added.</p>"
+                 f"<p>You can close this tab and return to the dashboard.</p>"
+                 f"<script>setTimeout(()=>window.close(),3000)</script></body></html>",
+            content_type="text/html",
+        )
+
+    def get_oauth_callback_url(self) -> str:
+        """Return the OAuth callback URL for this HTTP server."""
+        return f"http://localhost:{self._port}/api/accounts/oauth-callback"
+
     async def _remove_account(self, req): return self._json(await self._rpc("remove_account", {"email": req.match_info["email"]}))
     async def _set_account_max_transfers(self, req):
         body = await self._body(req)

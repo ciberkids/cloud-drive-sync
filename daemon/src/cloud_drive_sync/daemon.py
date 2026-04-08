@@ -42,12 +42,14 @@ class Daemon:
         self._db: Database | None = None
         self._engine: SyncEngine | None = None
         self._handler: RequestHandler | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._ipc_server: IpcServer | None = None
         self._http_server = None
         self._shutdown_event = asyncio.Event()
 
     async def run(self) -> None:
         """Main entry point: initialize all components and run the event loop."""
+        self._loop = asyncio.get_running_loop()
         ensure_dirs()
 
         # Load config
@@ -179,6 +181,13 @@ class Daemon:
                 from cloud_drive_sync.http.server import HttpServer
                 self._http_server = HttpServer(handler, port=self._http_port)
                 await self._http_server.start()
+                # Tell auth providers to use the HTTP callback for OAuth redirects
+                try:
+                    from cloud_drive_sync.providers.gdrive.auth import GoogleDriveAuth
+                    GoogleDriveAuth._oauth_callback_url = self._http_server.get_oauth_callback_url()
+                    log.info("OAuth callback URL: %s", GoogleDriveAuth._oauth_callback_url)
+                except ImportError:
+                    pass
 
             # Wire up notifications if engine is ready
             if self._engine:
@@ -291,8 +300,7 @@ class Daemon:
                 raise
 
             # Create client from credentials
-            import asyncio
-            loop = asyncio.get_event_loop()
+            loop = self._loop
 
             async def _setup():
                 client = await auth_provider.create_client(creds)
@@ -368,8 +376,7 @@ class Daemon:
                 return {"status": "error", "message": f"Provider {provider} does not support code exchange"}
 
             # Complete setup (same as _do_auth after getting creds)
-            import asyncio
-            loop = asyncio.get_event_loop()
+            loop = self._loop
 
             async def _setup():
                 client = await auth_provider.create_client(creds)

@@ -307,18 +307,44 @@ async function addAccount() {
   const result = await apiPost('accounts', { provider, headless: true });
 
   if (result && result.status === 'auth_url') {
-    // Two-step flow: show the URL and a code input
-    statusEl.innerHTML =
-      '<strong>Authorization required</strong><br><br>' +
-      '1. Open this URL in your browser:<br>' +
-      '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" style="color:#2997ff;word-break:break-all">' +
-      esc(result.auth_url) + '</a><br><br>' +
-      '2. Sign in and click "Allow"<br>' +
-      '3. Copy the authorization code and paste it here:<br><br>' +
-      '<div class="form-row">' +
-      '<input type="text" id="auth-code-input" placeholder="Paste authorization code" style="flex:1">' +
-      '<button class="btn" onclick="submitAuthCode(\'' + esc(provider) + '\')">Submit Code</button>' +
-      '</div>';
+    // Check if the auth URL uses our callback (auto-redirect flow)
+    const usesCallback = result.auth_url.includes('oauth-callback');
+    if (usesCallback) {
+      // Auto-redirect flow: open auth URL, poll for account changes
+      statusEl.innerHTML =
+        '<strong>Authorization required</strong><br><br>' +
+        'Click the link below to sign in with Google:<br><br>' +
+        '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" class="btn" style="display:inline-block;text-decoration:none">' +
+        'Sign in with Google</a><br><br>' +
+        '<span style="color:#98989d">Waiting for authorization to complete...</span>';
+      // Poll for account changes
+      const pollAuth = setInterval(async () => {
+        const accounts = await apiGet('accounts');
+        if (accounts && accounts.length > 0) {
+          clearInterval(pollAuth);
+          btn.disabled = false;
+          btn.textContent = 'Add Account';
+          statusEl.innerHTML = '<span style="color:#30d158">Account added!</span>';
+          setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+          refreshAccounts();
+        }
+      }, 2000);
+      // Stop polling after 2 minutes
+      setTimeout(() => clearInterval(pollAuth), 120000);
+    } else {
+      // Manual code flow: show URL and code input
+      statusEl.innerHTML =
+        '<strong>Authorization required</strong><br><br>' +
+        '1. Open this URL in your browser:<br>' +
+        '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" style="color:#2997ff;word-break:break-all">' +
+        esc(result.auth_url) + '</a><br><br>' +
+        '2. Sign in and click "Allow"<br>' +
+        '3. Copy the full URL from the browser address bar and paste it here:<br><br>' +
+        '<div class="form-row">' +
+        '<input type="text" id="auth-code-input" placeholder="Paste the redirect URL or authorization code" style="flex:1">' +
+        '<button class="btn" onclick="submitAuthCode(\'' + esc(provider) + '\')">Submit</button>' +
+        '</div>';
+    }
     btn.disabled = false;
     btn.textContent = 'Add Account';
     return;
