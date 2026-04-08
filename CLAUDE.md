@@ -12,7 +12,7 @@ After every code change, always follow this sequence:
 6. **Update screenshots** — if the UI changed, refresh screenshots: `cd ui && DEMO=1 npx vite --port 1421` then capture with Chrome headless (see memory reference_screenshots.md)
 7. **Commit and push** — descriptive commit message, push to main
 8. **Check GitHub Issues** — look for open issues that may be affected by changes
-9. **Tag a release** — if the changes are significant, tag `vX.Y.Z` to trigger the release pipeline (produces DEB, RPM, AppImage, Flatpak, DMG, MSI/NSIS, Docker image, standalone daemon). **Before tagging, bump the version** in both `daemon/pyproject.toml` and `ui/src-tauri/tauri.conf.json` to match the tag.
+9. **Tag a release** — if the changes are significant, tag `vX.Y.Z` to trigger the release pipeline (produces DEB, RPM, AppImage, Flatpak, DMG, MSI/NSIS, Docker image, standalone daemon). The pipeline auto-injects the version from the git tag into `pyproject.toml` and `tauri.conf.json` — no manual version bumping needed.
 
 ## Parallelization
 

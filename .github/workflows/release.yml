@@ -30,6 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set version from git tag
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          sed -i "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
+          echo "Set daemon version to $VERSION"
+        shell: bash
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -70,6 +78,16 @@ jobs:
             ext: ""
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set version from git tag
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" ui/src-tauri/tauri.conf.json
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
+          rm -f ui/src-tauri/tauri.conf.json.bak daemon/pyproject.toml.bak
+          echo "Set version to $VERSION"
+        shell: bash
 
       - uses: actions/setup-node@v4
         with:
@@ -246,6 +264,9 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Inject version into pyproject.toml
+        run: sed -i "s/^version = .*/version = \"${{ steps.version.outputs.VERSION }}\"/" daemon/pyproject.toml
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
