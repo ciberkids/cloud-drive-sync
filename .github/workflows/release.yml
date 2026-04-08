@@ -34,7 +34,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          sed -i "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
+          rm -f daemon/pyproject.toml.bak
           echo "Set daemon version to $VERSION"
         shell: bash
 
