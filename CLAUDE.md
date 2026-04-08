@@ -62,6 +62,21 @@ done
 - `packaging/` — Homebrew cask, Scoop manifest
 - `flatpak/` — Flatpak manifest + metainfo
 
+## GitHub Issues
+
+When fixing a bug reported as a GitHub issue:
+
+1. **Comment on the issue** explaining root cause, fix, and prevention before closing
+2. Use `Fixes #N` in the commit message to auto-close
+3. Use the GitHub PAT from memory (`reference_github_token.md`) for API calls:
+   ```bash
+   curl -s -X POST \
+     -H "Authorization: Bearer $GITHUB_TOKEN" \
+     -H "Accept: application/vnd.github+json" \
+     "https://api.github.com/repos/ciberkids/cloud-drive-sync/issues/N/comments" \
+     -d '{"body":"Fixed in vX.Y.Z. Root cause: ... Fix: ... Prevention: ..."}'
+   ```
+
 ## Embedded Credentials
 
 Google OAuth client ID/secret are embedded in `daemon/src/cloud_drive_sync/auth/oauth.py`. GitHub Push Protection will flag these — they must be explicitly allowed via the unblock URLs in the push rejection message. This is standard practice for open-source desktop OAuth apps.
