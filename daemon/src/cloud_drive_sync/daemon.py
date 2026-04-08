@@ -181,13 +181,6 @@ class Daemon:
                 from cloud_drive_sync.http.server import HttpServer
                 self._http_server = HttpServer(handler, port=self._http_port)
                 await self._http_server.start()
-                # Tell auth providers to use the HTTP callback for OAuth redirects
-                try:
-                    from cloud_drive_sync.providers.gdrive.auth import GoogleDriveAuth
-                    GoogleDriveAuth._oauth_callback_url = self._http_server.get_oauth_callback_url()
-                    log.info("OAuth callback URL: %s", GoogleDriveAuth._oauth_callback_url)
-                except ImportError:
-                    pass
 
             # Wire up notifications if engine is ready
             if self._engine:

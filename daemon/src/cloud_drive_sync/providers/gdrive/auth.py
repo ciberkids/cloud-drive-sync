@@ -22,8 +22,6 @@ class GoogleDriveAuth(AuthProvider):
 
     # Pending auth flow for two-step HTTP auth
     _pending_flow = None
-    # OAuth callback URL set by HttpServer when running (enables auto-redirect)
-    _oauth_callback_url: str | None = None
 
     def run_auth_flow(self, headless: bool = False) -> Any:
         from cloud_drive_sync.auth.oauth import run_oauth_flow
@@ -47,18 +45,14 @@ class GoogleDriveAuth(AuthProvider):
         log.info("Starting OAuth2 headless flow...")
         flow = _create_oauth_flow()
 
-        # If the HTTP server is running, use its callback URL as redirect
-        # so Google redirects directly to our server (no manual code pasting)
-        if GoogleDriveAuth._oauth_callback_url:
-            flow.redirect_uri = GoogleDriveAuth._oauth_callback_url
-            log.info("Using HTTP callback redirect: %s", GoogleDriveAuth._oauth_callback_url)
-        else:
-            flow.redirect_uri = "http://localhost"
+        # Always use http://localhost redirect — Google redirects to
+        # http://localhost?code=... which the user copies back.
+        # Works regardless of reverse proxy, Docker port mapping, or domain.
+        flow.redirect_uri = "http://localhost"
 
         auth_uri, _ = flow.authorization_url(
             prompt="consent",
             access_type="offline",
-            state="gdrive",  # passed back in callback for provider identification
         )
 
         # If stdin is not a TTY (e.g., HTTP API, Docker without -it),

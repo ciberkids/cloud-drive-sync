@@ -183,7 +183,18 @@ Copy the FULL URL from your browser's address bar and paste it here.
 Paste the redirect URL (or just the code): http://localhost?code=4/0A...
 ```
 
-When using the **web UI** (http://localhost:8080/), the auth URL is shown as a clickable link with a code input field — no terminal needed.
+#### Via the Web UI
+
+When using the web UI (e.g., `http://localhost:8080/` or behind a reverse proxy):
+
+1. Go to the **Accounts** tab and click **Add Account**
+2. A "Sign in with Google" button appears — click it to open the auth page
+3. Sign in and click "Allow"
+4. Your browser redirects to a localhost page that won't load — that's expected
+5. Copy the **entire URL** from your browser's address bar (it contains `?code=...`)
+6. Paste it into the input field in the web UI and click **Complete Setup**
+
+This works regardless of domain, port, or reverse proxy configuration.
 
 ### OneDrive
 

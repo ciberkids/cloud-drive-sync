@@ -307,44 +307,27 @@ async function addAccount() {
   const result = await apiPost('accounts', { provider, headless: true });
 
   if (result && result.status === 'auth_url') {
-    // Check if the auth URL uses our callback (auto-redirect flow)
-    const usesCallback = result.auth_url.includes('oauth-callback');
-    if (usesCallback) {
-      // Auto-redirect flow: open auth URL, poll for account changes
-      statusEl.innerHTML =
-        '<strong>Authorization required</strong><br><br>' +
-        'Click the link below to sign in with Google:<br><br>' +
-        '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" class="btn" style="display:inline-block;text-decoration:none">' +
-        'Sign in with Google</a><br><br>' +
-        '<span style="color:#98989d">Waiting for authorization to complete...</span>';
-      // Poll for account changes
-      const pollAuth = setInterval(async () => {
-        const accounts = await apiGet('accounts');
-        if (accounts && accounts.length > 0) {
-          clearInterval(pollAuth);
-          btn.disabled = false;
-          btn.textContent = 'Add Account';
-          statusEl.innerHTML = '<span style="color:#30d158">Account added!</span>';
-          setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
-          refreshAccounts();
-        }
-      }, 2000);
-      // Stop polling after 2 minutes
-      setTimeout(() => clearInterval(pollAuth), 120000);
-    } else {
-      // Manual code flow: show URL and code input
-      statusEl.innerHTML =
-        '<strong>Authorization required</strong><br><br>' +
-        '1. Open this URL in your browser:<br>' +
-        '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" style="color:#2997ff;word-break:break-all">' +
-        esc(result.auth_url) + '</a><br><br>' +
-        '2. Sign in and click "Allow"<br>' +
-        '3. Copy the full URL from the browser address bar and paste it here:<br><br>' +
-        '<div class="form-row">' +
-        '<input type="text" id="auth-code-input" placeholder="Paste the redirect URL or authorization code" style="flex:1">' +
-        '<button class="btn" onclick="submitAuthCode(\'' + esc(provider) + '\')">Submit</button>' +
-        '</div>';
-    }
+    statusEl.innerHTML =
+      '<div style="margin-bottom:16px">' +
+      '<strong style="font-size:15px">Step 1:</strong> Click to sign in<br><br>' +
+      '<a href="' + esc(result.auth_url) + '" target="_blank" rel="noopener" class="btn" ' +
+      'style="display:inline-block;text-decoration:none;font-size:14px;padding:10px 20px">' +
+      'Sign in with ' + esc(provider === 'gdrive' ? 'Google' : provider) + '</a>' +
+      '</div>' +
+      '<div style="margin-bottom:16px">' +
+      '<strong style="font-size:15px">Step 2:</strong> After clicking "Allow", your browser will show a page that ' +
+      '<strong>can\'t load</strong> — that\'s expected.<br><br>' +
+      '<span style="color:#98989d">The address bar will show something like:<br>' +
+      '<code style="background:#1c1c1e;padding:4px 8px;border-radius:4px;font-size:12px">' +
+      'http://localhost/?code=4/0AfJohX...</code></span>' +
+      '</div>' +
+      '<div>' +
+      '<strong style="font-size:15px">Step 3:</strong> Copy the <strong>entire URL</strong> from the address bar and paste it here:<br><br>' +
+      '<div class="form-row">' +
+      '<input type="text" id="auth-code-input" placeholder="http://localhost/?code=4/0AfJohX..." ' +
+      'style="flex:1;font-family:monospace;font-size:12px;padding:10px">' +
+      '<button class="btn" onclick="submitAuthCode(\'' + esc(provider) + '\')" style="padding:10px 20px">Complete Setup</button>' +
+      '</div></div>';
     btn.disabled = false;
     btn.textContent = 'Add Account';
     return;
