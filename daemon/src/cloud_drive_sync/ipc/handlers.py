@@ -548,10 +548,10 @@ class RequestHandler:
         # Remove from config
         self._config.accounts = [a for a in self._config.accounts if a.email != email]
 
-        # Remove account_id from pairs using this account
-        for pair in self._config.sync.pairs:
-            if pair.account_id == email:
-                pair.account_id = ""
+        # Remove sync pairs belonging to this account
+        self._config.sync.pairs = [
+            p for p in self._config.sync.pairs if p.account_id != email
+        ]
 
         self._config.save()
 
