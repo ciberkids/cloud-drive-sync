@@ -171,6 +171,7 @@ class Daemon:
             handler = RequestHandler(self._engine, self._config)
             handler.set_auth_callback(self._do_auth)
             handler.set_exchange_code_callback(self._exchange_auth_code)
+            handler.set_shutdown_callback(lambda: self._shutdown_event.set())
             handler.set_db(self._db)
             self._handler = handler
             self._ipc_server = IpcServer(handler)

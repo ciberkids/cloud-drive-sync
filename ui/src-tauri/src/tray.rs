@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
+use crate::commands::BridgeState;
 
 /// Ensure tray icon files exist on disk (appindicator on Linux needs file paths).
 fn ensure_tray_icons() -> std::path::PathBuf {
@@ -25,7 +28,6 @@ fn ensure_tray_icons() -> std::path::PathBuf {
 
         for (name, data) in icons {
             let path = icon_dir.join(name);
-            // Always overwrite to ensure icons are up-to-date after upgrades
             let _ = std::fs::write(&path, data);
         }
     }
@@ -34,25 +36,22 @@ fn ensure_tray_icons() -> std::path::PathBuf {
 }
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    // Write icons to disk for appindicator compatibility
     let _icon_dir = ensure_tray_icons();
 
-    let status_i = MenuItem::with_id(app, "status", "Status: Connecting...", false, None::<&str>)?;
-    let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
-    let open_i = MenuItem::with_id(app, "open", "Open Settings", true, None::<&str>)?;
+    let open_i = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)?;
     let force_sync_i = MenuItem::with_id(app, "force_sync", "Sync Now", true, None::<&str>)?;
     let pause_i = MenuItem::with_id(app, "pause", "Pause Sync", true, None::<&str>)?;
+    let resume_i = MenuItem::with_id(app, "resume", "Resume Sync", true, None::<&str>)?;
     let separator2 = MenuItem::with_id(app, "sep2", "─────────────", false, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
         &[
-            &status_i,
-            &separator1,
             &open_i,
             &force_sync_i,
             &pause_i,
+            &resume_i,
             &separator2,
             &quit_i,
         ],
@@ -82,13 +81,53 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "force_sync" => {
+                // Call daemon directly via IPC + notify frontend
+                call_daemon(app, "force_sync", None);
                 let _ = app.emit("tray-action", "force_sync");
             }
             "pause" => {
+                call_daemon(app, "pause_sync", None);
+                let _ = app.emit("tray-action", "toggle_pause");
+            }
+            "resume" => {
+                call_daemon(app, "resume_sync", None);
                 let _ = app.emit("tray-action", "toggle_pause");
             }
             "quit" => {
-                app.exit(0);
+                // Stop daemon before exiting, verify it stopped
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let bridge_state = app_clone.state::<BridgeState>();
+
+                    // Send shutdown command
+                    {
+                        let bridge = bridge_state.0.lock().await;
+                        log::info!("Sending shutdown to daemon...");
+                        let _ = bridge.call("shutdown", None).await;
+                    }
+
+                    // Wait and verify daemon stopped
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    {
+                        let bridge = bridge_state.0.lock().await;
+                        match bridge.call("get_status", None).await {
+                            Ok(_) => {
+                                // Daemon still responding — warn user
+                                log::warn!("Daemon did not shut down cleanly");
+                                if let Some(window) = app_clone.get_webview_window("main") {
+                                    let _ = window.show();
+                                }
+                                let _ = app_clone.emit("daemon-error",
+                                    "Daemon did not shut down cleanly. It may still be running in the background.");
+                            }
+                            Err(_) => {
+                                // Connection failed = daemon stopped
+                                log::info!("Daemon shut down successfully");
+                            }
+                        }
+                    }
+                    app_clone.exit(0);
+                });
             }
             _ => {}
         })
@@ -112,6 +151,19 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Call the daemon via the IPC bridge from tray menu handlers.
+fn call_daemon(app: &AppHandle, method: &str, params: Option<serde_json::Value>) {
+    let bridge_state = app.state::<BridgeState>();
+    let bridge = Arc::clone(&bridge_state.0);
+    let method = method.to_string();
+    tauri::async_runtime::spawn(async move {
+        let bridge = bridge.lock().await;
+        if let Err(e) = bridge.call(&method, params).await {
+            log::error!("Tray action {} failed: {}", method, e);
+        }
+    });
+}
+
 pub fn update_tray_status(app: &AppHandle, status: &str) {
     if let Some(tray) = app.tray_by_id("main") {
         let tooltip = format!("Cloud Drive Sync - {}", status);
@@ -133,7 +185,6 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
             }
         };
 
-        // On Linux, try loading from disk (better appindicator compat)
         #[cfg(target_os = "linux")]
         {
             let icon_dir = dirs::data_dir()
@@ -141,11 +192,7 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
                 .join("cloud-drive-sync")
                 .join("tray-icons");
             let icon_path = icon_dir.join(icon_name);
-
-            // Set temp dir to our stable icon directory so KDE/appindicator
-            // can reliably find the icon files (avoids transparent icon issue)
             let _ = tray.set_temp_dir_path(Some(&icon_dir));
-
             if icon_path.exists() {
                 if let Ok(data) = std::fs::read(&icon_path) {
                     if let Ok(icon) = Image::from_bytes(&data) {
@@ -156,7 +203,6 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
             }
         }
 
-        // On non-Linux (or Linux fallback), use embedded icons directly
         let icon_bytes: &[u8] = match icon_name {
             "tray-syncing.png" => include_bytes!("../icons/tray-syncing.png"),
             "tray-error.png" => include_bytes!("../icons/tray-error.png"),
@@ -166,5 +212,12 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
         if let Ok(icon) = Image::from_bytes(icon_bytes) {
             let _ = tray.set_icon(Some(icon));
         }
+    }
+}
+
+/// Update the tray tooltip with daemon details.
+pub fn update_tray_info(app: &AppHandle, info: &str) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_tooltip(Some(info));
     }
 }

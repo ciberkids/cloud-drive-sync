@@ -28,6 +28,7 @@ class RequestHandler:
         self._config = config
         self._auth_callback = None
         self._exchange_code_callback = None
+        self._shutdown_callback = None
         self._db = None
         self._drive_client = None
         self._start_time = time.monotonic()
@@ -65,6 +66,7 @@ class RequestHandler:
             "get_file_status": self._get_file_status,
             "set_account_max_transfers": self._set_account_max_transfers,
             "exchange_auth_code": self._exchange_auth_code,
+            "shutdown": self._shutdown,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -74,6 +76,10 @@ class RequestHandler:
     def set_exchange_code_callback(self, callback) -> None:
         """Set a callback for exchanging an auth code (two-step flow)."""
         self._exchange_code_callback = callback
+
+    def set_shutdown_callback(self, callback) -> None:
+        """Set a callback for shutting down the daemon."""
+        self._shutdown_callback = callback
 
     def set_engine(self, engine: SyncEngine) -> None:
         """Set or replace the sync engine (e.g. after authentication)."""
@@ -813,3 +819,9 @@ class RequestHandler:
             except Exception as exc:
                 return {"status": "error", "message": str(exc)}
         return {"status": "no_auth_callback"}
+
+    async def _shutdown(self, params: dict) -> dict:
+        """Gracefully shut down the daemon."""
+        if self._shutdown_callback:
+            self._shutdown_callback()
+        return {"status": "ok", "message": "Shutting down"}
