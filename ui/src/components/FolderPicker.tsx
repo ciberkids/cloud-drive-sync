@@ -14,6 +14,7 @@ export function FolderPicker({
   label = "Local folder",
 }: FolderPickerProps) {
   const [home, setHome] = useState("/home");
+  const hasNativeDialog = !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
   useEffect(() => {
     getHomeDir().then((dir) => setHome(dir)).catch(() => {});
@@ -42,9 +43,11 @@ export function FolderPicker({
           placeholder={`${home}/Google Drive`}
           className="input"
         />
-        <button onClick={handlePick} className="btn btn-secondary" type="button">
-          Browse
-        </button>
+        {hasNativeDialog && (
+          <button onClick={handlePick} className="btn btn-secondary" type="button">
+            Browse
+          </button>
+        )}
       </div>
     </div>
   );
