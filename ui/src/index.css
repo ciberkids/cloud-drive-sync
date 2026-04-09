@@ -944,6 +944,66 @@ body {
   flex: 1;
 }
 
+.folder-browser {
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.folder-browser-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.folder-browser-path {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-browser-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.folder-browser-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.folder-browser-item:hover {
+  background: var(--bg-secondary);
+}
+
+.folder-browser-parent {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.folder-browser-error {
+  padding: 8px 12px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.folder-browser-loading,
+.folder-browser-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 /* Conflicts */
 .conflicts {
   max-width: 700px;

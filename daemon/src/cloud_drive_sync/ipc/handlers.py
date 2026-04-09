@@ -67,6 +67,7 @@ class RequestHandler:
             "set_account_max_transfers": self._set_account_max_transfers,
             "exchange_auth_code": self._exchange_auth_code,
             "shutdown": self._shutdown,
+            "list_local_dirs": self._list_local_dirs,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -825,3 +826,33 @@ class RequestHandler:
         if self._shutdown_callback:
             self._shutdown_callback()
         return {"status": "ok", "message": "Shutting down"}
+
+    async def _list_local_dirs(self, params: dict) -> dict:
+        """List directories on the host filesystem for the file browser."""
+        from pathlib import Path
+
+        params = params or {}
+        parent = params.get("path", str(Path.home()))
+
+        try:
+            p = Path(parent).resolve()
+            if not p.is_dir():
+                return {"path": str(p), "dirs": [], "error": "Not a directory"}
+
+            dirs = []
+            for entry in sorted(p.iterdir()):
+                if entry.is_dir() and not entry.name.startswith("."):
+                    dirs.append({"name": entry.name, "path": str(entry)})
+
+            # Include parent for navigation
+            parent_path = str(p.parent) if p.parent != p else None
+
+            return {
+                "path": str(p),
+                "parent": parent_path,
+                "dirs": dirs,
+            }
+        except PermissionError:
+            return {"path": parent, "dirs": [], "error": "Permission denied"}
+        except Exception as e:
+            return {"path": parent, "dirs": [], "error": str(e)}

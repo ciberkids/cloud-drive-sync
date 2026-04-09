@@ -251,6 +251,18 @@ export async function listRemoteFolders(
   return get(url);
 }
 
+export async function listLocalDirs(
+  path?: string
+): Promise<{
+  path: string;
+  parent: string | null;
+  dirs: Array<{ name: string; path: string }>;
+  error?: string;
+}> {
+  const url = path ? `local-dirs?path=${encodeURIComponent(path)}` : "local-dirs";
+  return get(url);
+}
+
 export async function setAccountMaxTransfers(
   email: string,
   maxConcurrentTransfers: number
