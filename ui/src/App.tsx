@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { SyncStatus } from "./components/SyncStatus";
 import { Settings } from "./components/Settings";
 import { ConflictDialog } from "./components/ConflictDialog";
@@ -62,6 +63,41 @@ function DaemonBanner() {
   const status = useStatus();
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  // Listen for daemon status messages from the Rust backend
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>("daemon-status-msg", (event) => {
+      setStatusMsg(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // Clear status message once connected
+  useEffect(() => {
+    if (status.daemon_reachable && status.connected) {
+      // Keep message visible briefly, then clear
+      const timer = setTimeout(() => setStatusMsg(null), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [status.daemon_reachable, status.connected]);
+
+  // Show startup status message (connecting, starting daemon, etc.)
+  if (statusMsg && !status.daemon_reachable) {
+    return (
+      <div className="daemon-banner daemon-banner-info">
+        <span className="daemon-banner-icon">&#x231B;</span>
+        <div className="daemon-banner-text">
+          <span>{statusMsg}</span>
+        </div>
+      </div>
+    );
+  }
 
   // Daemon reachable and account connected — nothing to show
   if (status.daemon_reachable && status.connected) return null;

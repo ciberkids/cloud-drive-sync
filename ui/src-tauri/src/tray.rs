@@ -99,6 +99,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 tauri::async_runtime::spawn(async move {
                     let bridge_state = app_clone.state::<BridgeState>();
 
+                    // Inform user
+                    update_tray_info(&app_clone, "Cloud Drive Sync — Shutting down...");
+                    let _ = app_clone.emit("daemon-status-msg", "Stopping daemon...");
+
                     // Send shutdown command
                     {
                         let bridge = bridge_state.0.lock().await;
@@ -114,11 +118,14 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                             Ok(_) => {
                                 // Daemon still responding — warn user
                                 log::warn!("Daemon did not shut down cleanly");
+                                update_tray_info(&app_clone, "Cloud Drive Sync — Daemon did not stop!");
                                 if let Some(window) = app_clone.get_webview_window("main") {
                                     let _ = window.show();
                                 }
-                                let _ = app_clone.emit("daemon-error",
-                                    "Daemon did not shut down cleanly. It may still be running in the background.");
+                                let _ = app_clone.emit("daemon-status-msg",
+                                    "Warning: Daemon did not shut down cleanly. It may still be running.");
+                                // Give user a moment to see the warning
+                                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                             }
                             Err(_) => {
                                 // Connection failed = daemon stopped

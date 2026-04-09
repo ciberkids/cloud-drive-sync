@@ -144,6 +144,15 @@ body {
   border-bottom-color: color-mix(in srgb, var(--warning) 30%, var(--border-color));
 }
 
+.daemon-banner-info {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary));
+  border-bottom-color: color-mix(in srgb, var(--accent) 30%, var(--border-color));
+}
+
+.daemon-banner-info .daemon-banner-icon {
+  color: var(--accent);
+}
+
 .daemon-banner code {
   font-size: 12px;
   background: color-mix(in srgb, var(--warning) 10%, var(--bg-primary));

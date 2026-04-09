@@ -88,6 +88,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 // Step 1: Check for stale PID / zombie daemon
                 tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Starting...");
+                let _ = connect_handle.emit("daemon-status-msg", "Checking daemon status...");
                 check_daemon_health(&connect_handle);
 
                 // Step 2: Try connecting
@@ -101,15 +102,18 @@ fn main() {
                                 log::info!("Connected to daemon");
                                 tray::update_tray_status(&connect_handle, "Connected");
                                 tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Connected");
+                                let _ = connect_handle.emit("daemon-status-msg", "Connected to daemon");
                                 let _ = connect_handle.emit("daemon-connected", ());
                                 break;
                             }
                             Err(e) => {
                                 log::warn!("Failed to connect to daemon (attempt {}): {}", attempts + 1, e);
+                                let msg = format!("Connecting to daemon (attempt {})...", attempts + 1);
                                 tray::update_tray_info(
                                     &connect_handle,
-                                    &format!("Cloud Drive Sync — Connecting (attempt {})...", attempts + 1),
+                                    &format!("Cloud Drive Sync — {}", msg),
                                 );
+                                let _ = connect_handle.emit("daemon-status-msg", &msg);
                             }
                         }
                     }
@@ -118,6 +122,7 @@ fn main() {
                     if launch_sidecar && attempts == 2 && !sidecar_launched {
                         log::info!("Daemon not reachable, attempting to start daemon");
                         tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Starting daemon...");
+                        let _ = connect_handle.emit("daemon-status-msg", "Starting daemon...");
 
                         // Try sidecar first (Tauri bundled binary), then fall back to system PATH
                         let sidecar_ok = match connect_handle.shell().sidecar("bin/cloud-drive-sync-daemon") {
@@ -166,6 +171,7 @@ fn main() {
                         log::error!("Could not connect to daemon after {} attempts", attempts);
                         tray::update_tray_status(&connect_handle, "Daemon offline");
                         tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Daemon not running");
+                        let _ = connect_handle.emit("daemon-status-msg", "Could not connect to daemon after multiple attempts");
                         let _ = connect_handle.emit("daemon-offline", ());
 
                         // Show notification about failed connection
