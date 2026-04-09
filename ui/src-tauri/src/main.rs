@@ -114,27 +114,52 @@ fn main() {
                         }
                     }
                     attempts += 1;
-                    // Only launch sidecar in non-tray mode (standalone app)
+                    // Only launch daemon in non-tray mode (standalone app)
                     if launch_sidecar && attempts == 2 && !sidecar_launched {
-                        log::info!("Daemon not reachable, attempting sidecar launch");
+                        log::info!("Daemon not reachable, attempting to start daemon");
                         tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Starting daemon...");
-                        match connect_handle.shell().sidecar("bin/cloud-drive-sync-daemon") {
-                            Ok(cmd) => {
-                                match cmd.args(["start", "--foreground"]).spawn() {
-                                    Ok((_rx, _child)) => {
-                                        log::info!("Sidecar daemon launched");
-                                        sidecar_launched = true;
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to spawn sidecar: {}", e);
-                                        tray::update_tray_info(
-                                            &connect_handle,
-                                            "Cloud Drive Sync — Failed to start daemon",
-                                        );
-                                    }
+
+                        // Try sidecar first (Tauri bundled binary), then fall back to system PATH
+                        let sidecar_ok = match connect_handle.shell().sidecar("bin/cloud-drive-sync-daemon") {
+                            Ok(cmd) => match cmd.args(["start", "--foreground"]).spawn() {
+                                Ok((_rx, _child)) => {
+                                    log::info!("Daemon launched via sidecar");
+                                    true
+                                }
+                                Err(e) => {
+                                    log::warn!("Sidecar failed: {}, trying system PATH", e);
+                                    false
+                                }
+                            },
+                            Err(e) => {
+                                log::warn!("Sidecar not available: {}, trying system PATH", e);
+                                false
+                            }
+                        };
+
+                        if !sidecar_ok {
+                            // Fall back to system PATH (installed via RPM/DEB/Flatpak)
+                            match std::process::Command::new("cloud-drive-sync-daemon")
+                                .args(["start", "--foreground"])
+                                .stdin(std::process::Stdio::null())
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .spawn()
+                            {
+                                Ok(_child) => {
+                                    log::info!("Daemon launched from system PATH");
+                                    sidecar_launched = true;
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to start daemon: {}", e);
+                                    tray::update_tray_info(
+                                        &connect_handle,
+                                        "Cloud Drive Sync — Failed to start daemon",
+                                    );
                                 }
                             }
-                            Err(e) => log::error!("Failed to create sidecar command: {}", e),
+                        } else {
+                            sidecar_launched = true;
                         }
                     }
                     if attempts >= 10 {
