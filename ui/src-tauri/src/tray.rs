@@ -45,8 +45,8 @@ fn ensure_tray_icons() -> std::path::PathBuf {
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let _icon_dir = ensure_tray_icons();
 
-    let status_i = MenuItem::with_id(app, "status", "Status: Starting...", false, None::<&str>)?;
-    let info_i = MenuItem::with_id(app, "info", "Daemon: connecting...", false, None::<&str>)?;
+    let status_i = MenuItem::with_id(app, "status", "Status: Starting...", true, None::<&str>)?;
+    let info_i = MenuItem::with_id(app, "info", "Daemon: connecting...", true, None::<&str>)?;
     let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
     let open_i = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)?;
     let force_sync_i = MenuItem::with_id(app, "force_sync", "Sync Now", true, None::<&str>)?;
