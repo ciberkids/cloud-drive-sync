@@ -10,6 +10,27 @@ import { AccountManager } from "./components/AccountManager";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
 
+function ThemeToggle() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("theme") as "dark" | "light") || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  return (
+    <button
+      className="theme-toggle"
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+    >
+      {theme === "dark" ? "\u2600" : "\u263E"}
+    </button>
+  );
+}
+
 function NavBar() {
   const status = useStatus();
   const dotClass = status.daemon_reachable
@@ -22,6 +43,7 @@ function NavBar() {
     <nav className="sidebar">
       <div className="sidebar-header">
         <h1>Cloud Drive Sync</h1>
+        <ThemeToggle />
         <span
           className={`connection-dot ${dotClass}`}
           title={
