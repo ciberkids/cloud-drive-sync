@@ -63,6 +63,7 @@ jobs:
     needs: build-daemon
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04

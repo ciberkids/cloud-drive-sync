@@ -347,14 +347,10 @@ fn is_process_alive(pid: u32) -> bool {
 
 #[cfg(windows)]
 fn is_process_alive(pid: u32) -> bool {
-    use std::ptr;
-    unsafe {
-        let handle = winapi::um::processthreadsapi::OpenProcess(0x1000, 0, pid);
-        if handle.is_null() {
-            false
-        } else {
-            winapi::um::handleapi::CloseHandle(handle);
-            true
-        }
-    }
+    // Use tasklist to check if PID exists (no extra crate needed)
+    std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+        .unwrap_or(false)
 }
