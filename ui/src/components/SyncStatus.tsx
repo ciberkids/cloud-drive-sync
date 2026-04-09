@@ -103,7 +103,8 @@ export function SyncStatus() {
   };
 
   const statusText = () => {
-    if (!status.connected) return "Disconnected";
+    if (!status.daemon_reachable) return "Daemon not running";
+    if (!status.connected) return "No account connected";
     if (status.error) return `Error: ${status.error}`;
     if (syncPending) return "Syncing...";
     if (status.syncing) return "Syncing...";
@@ -112,6 +113,7 @@ export function SyncStatus() {
   };
 
   const statusClass = () => {
+    if (!status.daemon_reachable) return "status-disconnected";
     if (!status.connected) return "status-disconnected";
     if (status.error) return "status-error";
     if (status.syncing || syncPending) return "status-syncing";

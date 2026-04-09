@@ -8,8 +8,8 @@ export function Transfers() {
     <div className="transfers-page">
       <h2>Transfers</h2>
 
-      {!status.connected && (
-        <p className="empty-message">Not connected to daemon.</p>
+      {!status.daemon_reachable && (
+        <p className="empty-message">Daemon is not running. Start the daemon to see active transfers.</p>
       )}
 
       {status.connected && transfers.length === 0 && (
