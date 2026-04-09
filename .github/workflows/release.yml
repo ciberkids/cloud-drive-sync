@@ -219,12 +219,15 @@ jobs:
 
           # Bundle appindicator shared libs for system tray support
           sudo apt-get update
-          sudo apt-get install -y libayatana-appindicator3-1 libayatana-ido3-0.4-0
+          sudo apt-get install -y libayatana-appindicator3-1 libayatana-ido3-0.4-0 || \
+            sudo apt-get install -y libayatana-appindicator3-1
           mkdir -p $GITHUB_WORKSPACE/flatpak/appindicator-libs
-          # Copy all transitive dependencies for appindicator
-          for lib in libayatana-appindicator3 libayatana-indicator3 libayatana-ido3 libdbusmenu-gtk3 libdbusmenu-glib; do
-            cp -a /usr/lib/x86_64-linux-gnu/${lib}.so* $GITHUB_WORKSPACE/flatpak/appindicator-libs/ 2>/dev/null || true
+          # Copy all transitive dependencies for appindicator (glob to catch versioned names)
+          for pattern in "libayatana-appindicator3*" "libayatana-indicator3*" "libayatana-ido3*" "libdbusmenu-gtk3*" "libdbusmenu-glib*"; do
+            find /usr/lib/x86_64-linux-gnu/ -name "$pattern" -exec cp -a {} $GITHUB_WORKSPACE/flatpak/appindicator-libs/ \; 2>/dev/null || true
           done
+          echo "Bundled libs:"
+          ls -la $GITHUB_WORKSPACE/flatpak/appindicator-libs/
 
           ls -lh $GITHUB_WORKSPACE/flatpak/
 

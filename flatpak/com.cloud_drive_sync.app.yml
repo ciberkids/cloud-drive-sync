@@ -4,7 +4,13 @@ runtime-version: "46"
 sdk: org.gnome.Sdk
 command: cloud-drive-sync-ui
 
+build-options:
+  env:
+    LD_LIBRARY_PATH: /app/lib
+
 finish-args:
+  # Ensure /app/lib is in the library path
+  - --env=LD_LIBRARY_PATH=/app/lib
   # Display
   - --socket=x11
   - --socket=wayland
