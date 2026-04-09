@@ -112,46 +112,24 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 let _ = app.emit("tray-action", "toggle_pause");
             }
             "quit" => {
-                // Stop daemon before exiting, verify it stopped
                 let app_clone = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    use tauri_plugin_notification::NotificationExt;
-
                     let bridge_state = app_clone.state::<BridgeState>();
 
                     // Update tray to show we're shutting down
                     update_tray_status(&app_clone, "Shutting down...");
                     update_tray_info(&app_clone, "Stopping daemon...");
 
-                    // Send shutdown command
+                    // Send shutdown command (best effort — daemon may already be gone)
                     {
                         let bridge = bridge_state.0.lock().await;
                         log::info!("Sending shutdown to daemon...");
                         let _ = bridge.call("shutdown", None).await;
                     }
 
-                    // Wait and verify daemon stopped
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    {
-                        let bridge = bridge_state.0.lock().await;
-                        match bridge.call("get_status", None).await {
-                            Ok(_) => {
-                                // Daemon still responding — notify user
-                                log::warn!("Daemon did not shut down cleanly");
-                                if let Ok(perm) = app_clone.notification().permission_state() {
-                                    if perm == tauri_plugin_notification::PermissionState::Granted {
-                                        let _ = app_clone.notification().builder()
-                                            .title("Cloud Drive Sync")
-                                            .body("Daemon did not stop cleanly. It may still be running in the background. Use 'cloud-drive-sync-daemon stop' to force stop.")
-                                            .show();
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                log::info!("Daemon shut down successfully");
-                            }
-                        }
-                    }
+                    // Give daemon time to shut down gracefully
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    log::info!("Exiting");
                     app_clone.exit(0);
                 });
             }

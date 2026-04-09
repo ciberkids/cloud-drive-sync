@@ -121,8 +121,19 @@ fn main() {
                     // Only launch daemon in non-tray mode (standalone app)
                     if launch_sidecar && attempts == 2 && !sidecar_launched {
                         log::info!("Daemon not reachable, attempting to start daemon");
+                        tray::update_tray_status(&connect_handle, "Starting daemon...");
                         tray::update_tray_info(&connect_handle, "Cloud Drive Sync — Starting daemon...");
                         let _ = connect_handle.emit("daemon-status-msg", "Starting daemon...");
+
+                        // Notify user that we're starting the daemon
+                        if let Ok(perm) = connect_handle.notification().permission_state() {
+                            if perm == tauri_plugin_notification::PermissionState::Granted {
+                                let _ = connect_handle.notification().builder()
+                                    .title("Cloud Drive Sync")
+                                    .body("Starting sync daemon...")
+                                    .show();
+                            }
+                        }
 
                         // Try sidecar first (Tauri bundled binary), then fall back to system PATH
                         let sidecar_ok = match connect_handle.shell().sidecar("bin/cloud-drive-sync-daemon") {
