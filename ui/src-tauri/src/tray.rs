@@ -6,7 +6,14 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
+
 use crate::commands::BridgeState;
+
+/// Stored menu item references for runtime updates.
+pub struct TrayMenuItems {
+    pub status: MenuItem<tauri::Wry>,
+    pub info: MenuItem<tauri::Wry>,
+}
 
 /// Ensure tray icon files exist on disk (appindicator on Linux needs file paths).
 fn ensure_tray_icons() -> std::path::PathBuf {
@@ -38,6 +45,9 @@ fn ensure_tray_icons() -> std::path::PathBuf {
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let _icon_dir = ensure_tray_icons();
 
+    let status_i = MenuItem::with_id(app, "status", "Status: Starting...", false, None::<&str>)?;
+    let info_i = MenuItem::with_id(app, "info", "Daemon: connecting...", false, None::<&str>)?;
+    let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
     let open_i = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)?;
     let force_sync_i = MenuItem::with_id(app, "force_sync", "Sync Now", true, None::<&str>)?;
     let pause_i = MenuItem::with_id(app, "pause", "Pause Sync", true, None::<&str>)?;
@@ -45,9 +55,18 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let separator2 = MenuItem::with_id(app, "sep2", "─────────────", false, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
+    // Store menu items for runtime updates
+    app.manage(TrayMenuItems {
+        status: status_i.clone(),
+        info: info_i.clone(),
+    });
+
     let menu = Menu::with_items(
         app,
         &[
+            &status_i,
+            &info_i,
+            &separator1,
             &open_i,
             &force_sync_i,
             &pause_i,
@@ -81,7 +100,6 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "force_sync" => {
-                // Call daemon directly via IPC + notify frontend
                 call_daemon(app, "force_sync", None);
                 let _ = app.emit("tray-action", "force_sync");
             }
@@ -100,7 +118,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let bridge_state = app_clone.state::<BridgeState>();
 
                     // Inform user
-                    update_tray_info(&app_clone, "Cloud Drive Sync — Shutting down...");
+                    update_tray_info(&app_clone, "Shutting down...");
                     let _ = app_clone.emit("daemon-status-msg", "Stopping daemon...");
 
                     // Send shutdown command
@@ -116,19 +134,16 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         let bridge = bridge_state.0.lock().await;
                         match bridge.call("get_status", None).await {
                             Ok(_) => {
-                                // Daemon still responding — warn user
                                 log::warn!("Daemon did not shut down cleanly");
-                                update_tray_info(&app_clone, "Cloud Drive Sync — Daemon did not stop!");
+                                update_tray_info(&app_clone, "Daemon did not stop!");
                                 if let Some(window) = app_clone.get_webview_window("main") {
                                     let _ = window.show();
                                 }
                                 let _ = app_clone.emit("daemon-status-msg",
                                     "Warning: Daemon did not shut down cleanly. It may still be running.");
-                                // Give user a moment to see the warning
                                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                             }
                             Err(_) => {
-                                // Connection failed = daemon stopped
                                 log::info!("Daemon shut down successfully");
                             }
                         }
@@ -172,8 +187,13 @@ fn call_daemon(app: &AppHandle, method: &str, params: Option<serde_json::Value>)
 }
 
 pub fn update_tray_status(app: &AppHandle, status: &str) {
+    // Update the status menu item text
+    if let Some(items) = app.try_state::<TrayMenuItems>() {
+        let _ = items.status.set_text(format!("Status: {}", status));
+    }
+
     if let Some(tray) = app.tray_by_id("main") {
-        let tooltip = format!("Cloud Drive Sync - {}", status);
+        let tooltip = format!("Cloud Drive Sync — {}", status);
         let _ = tray.set_tooltip(Some(&tooltip));
 
         // Select icon based on status
@@ -222,8 +242,11 @@ pub fn update_tray_status(app: &AppHandle, status: &str) {
     }
 }
 
-/// Update the tray tooltip with daemon details.
+/// Update the info menu item with daemon details.
 pub fn update_tray_info(app: &AppHandle, info: &str) {
+    if let Some(items) = app.try_state::<TrayMenuItems>() {
+        let _ = items.info.set_text(info);
+    }
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_tooltip(Some(info));
     }
