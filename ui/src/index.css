@@ -1717,6 +1717,13 @@ body {
   color: var(--text-secondary);
 }
 
+.about-build-date {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 .about-description {
   font-size: 14px;
   color: var(--text-secondary);
