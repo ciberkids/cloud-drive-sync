@@ -58,12 +58,12 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 | Component | File | Description |
 |---|---|---|
 | **App** | `src/App.tsx` | Root layout with sidebar navigation, routing, and daemon connection banner |
-| **SyncStatus** | `src/components/SyncStatus.tsx` | Status dashboard: connection state, file counts, sync/pause controls |
+| **SyncStatus** | `src/components/SyncStatus.tsx` | Status dashboard: connection state, file counts, sync/pause controls, daemon info (PID, uptime, version, start time) |
 | **Settings** | `src/components/Settings.tsx` | Sync pair management (add/remove), sync mode selector, conflict strategy selector |
 | **ConflictDialog** | `src/components/ConflictDialog.tsx` | Lists unresolved conflicts with per-file and batch resolution buttons |
 | **ActivityLog** | `src/components/ActivityLog.tsx` | Paginated, filterable activity feed with event type icons |
 | **AccountManager** | `src/components/AccountManager.tsx` | Google account login/logout |
-| **FolderPicker** | `src/components/FolderPicker.tsx` | Native local folder selection dialog via Tauri plugin |
+| **FolderPicker** | `src/components/FolderPicker.tsx` | Local folder selection: native dialog (Tauri) or server-side browser with New Folder creation (HTTP/headless) |
 | **RemoteFolderBrowser** | `src/components/RemoteFolderBrowser.tsx` | Hierarchical Google Drive folder browser for selecting remote sync targets |
 | **RemoteFolderPicker** | `src/components/RemoteFolderPicker.tsx` | Wrapper component that combines the folder browser with selection UI |
 

@@ -5,6 +5,8 @@ export interface DaemonInfo {
   uptime: number | null;
   uptime_formatted: string | null;
   socket_path: string | null;
+  version: string | null;
+  started_at: string | null;
 }
 
 export interface LiveTransfer {

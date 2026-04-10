@@ -68,6 +68,7 @@ class RequestHandler:
             "exchange_auth_code": self._exchange_auth_code,
             "shutdown": self._shutdown,
             "list_local_dirs": self._list_local_dirs,
+            "mkdir_local": self._mkdir_local,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -137,10 +138,12 @@ class RequestHandler:
         return pair_id
 
     async def _get_status(self, params: dict) -> dict:
+        import datetime
         from cloud_drive_sync.util.paths import socket_path
 
         uptime = time.monotonic() - self._start_time
         sock_path = str(socket_path())
+        started_at = (datetime.datetime.now() - datetime.timedelta(seconds=uptime)).strftime("%Y-%m-%d %H:%M")
 
         daemon_info = {
             "pid": self._pid,
@@ -148,6 +151,7 @@ class RequestHandler:
             "uptime_formatted": self._format_uptime(uptime),
             "socket_path": sock_path,
             "version": self._get_version(),
+            "started_at": started_at,
         }
 
         if self._engine is None:
@@ -856,3 +860,23 @@ class RequestHandler:
             return {"path": parent, "dirs": [], "error": "Permission denied"}
         except Exception as e:
             return {"path": parent, "dirs": [], "error": str(e)}
+
+    async def _mkdir_local(self, params: dict) -> dict:
+        """Create a new directory on the host filesystem."""
+        from pathlib import Path
+
+        params = params or {}
+        path = params.get("path", "")
+        if not path:
+            return {"ok": False, "error": "No path provided"}
+
+        try:
+            p = Path(path)
+            p.mkdir(parents=False, exist_ok=False)
+            return {"ok": True, "path": str(p)}
+        except FileExistsError:
+            return {"ok": False, "error": "Directory already exists"}
+        except PermissionError:
+            return {"ok": False, "error": "Permission denied"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}

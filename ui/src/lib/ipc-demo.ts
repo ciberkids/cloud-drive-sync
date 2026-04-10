@@ -26,6 +26,8 @@ const DEMO_STATUS: DaemonStatus = {
     uptime: 86400,
     uptime_formatted: "1d 0h 0m",
     socket_path: "/run/user/1000/cloud-drive-sync.sock",
+    version: "1.2.0",
+    started_at: "2026-04-09 10:00",
   },
 };
 
@@ -144,3 +146,4 @@ export async function setProxy() { return { http_proxy: "", https_proxy: "", no_
 export async function getProxy() { return { http_proxy: "", https_proxy: "", no_proxy: "" }; }
 export async function listRemoteFolders() { return { folders: [{ id: "f1", name: "Documents" }, { id: "f2", name: "Photos" }, { id: "f3", name: "Work" }], parent_id: "root" }; }
 export async function setAccountMaxTransfers() { return {}; }
+export async function mkdirLocal() { return { ok: true }; }

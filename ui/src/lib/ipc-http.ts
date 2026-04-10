@@ -263,6 +263,12 @@ export async function listLocalDirs(
   return get(url);
 }
 
+export async function mkdirLocal(
+  path: string
+): Promise<{ ok: boolean; path?: string; error?: string }> {
+  return post("local-dirs", { path });
+}
+
 export async function setAccountMaxTransfers(
   email: string,
   maxConcurrentTransfers: number

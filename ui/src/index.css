@@ -1004,6 +1004,21 @@ body {
   font-size: 13px;
 }
 
+.folder-browser-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.folder-browser-new .input-sm {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
 /* Conflicts */
 .conflicts {
   max-width: 700px;

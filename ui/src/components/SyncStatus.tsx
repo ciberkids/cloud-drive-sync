@@ -233,6 +233,18 @@ export function SyncStatus() {
                 {status.daemon.socket_path ?? "N/A"}
               </span>
             </div>
+            {status.daemon.version && (
+              <div className="daemon-row">
+                <span className="daemon-label">Version</span>
+                <span className="daemon-value">{status.daemon.version}</span>
+              </div>
+            )}
+            {status.daemon.started_at && (
+              <div className="daemon-row">
+                <span className="daemon-label">Started</span>
+                <span className="daemon-value">{status.daemon.started_at}</span>
+              </div>
+            )}
           </div>
         </div>
       )}

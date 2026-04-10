@@ -26,6 +26,9 @@ export function FolderPicker({
   const [browserParent, setBrowserParent] = useState<string | null>(null);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderError, setNewFolderError] = useState<string | null>(null);
 
   useEffect(() => {
     getHomeDir().then((dir) => setHome(dir)).catch(() => {});
@@ -79,6 +82,32 @@ export function FolderPicker({
     setShowBrowser(false);
   };
 
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setNewFolderError(null);
+    try {
+      const ipc = await import("../lib/ipc");
+      const mkdirLocal = (ipc as Record<string, unknown>).mkdirLocal as
+        | ((p: string) => Promise<{ ok: boolean; error?: string }>)
+        | undefined;
+      if (!mkdirLocal) {
+        setNewFolderError("Not available");
+        return;
+      }
+      const newPath = `${browserPath}/${newFolderName.trim()}`;
+      const result = await mkdirLocal(newPath);
+      if (result.ok) {
+        setNewFolderName("");
+        setShowNewFolder(false);
+        loadDir(browserPath);
+      } else {
+        setNewFolderError(result.error ?? "Failed to create folder");
+      }
+    } catch (e) {
+      setNewFolderError(String(e));
+    }
+  };
+
   return (
     <div className="folder-picker">
       {label && <label className="field-label">{label}</label>}
@@ -114,12 +143,36 @@ export function FolderPicker({
             </button>
             <button
               className="btn btn-sm"
+              onClick={() => { setShowNewFolder((v) => !v); setNewFolderName(""); setNewFolderError(null); }}
+              type="button"
+              title="New folder"
+            >
+              + New folder
+            </button>
+            <button
+              className="btn btn-sm"
               onClick={() => setShowBrowser(false)}
               type="button"
             >
               Cancel
             </button>
           </div>
+          {showNewFolder && (
+            <div className="folder-browser-new">
+              <input
+                type="text"
+                className="input input-sm"
+                placeholder="Folder name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateFolder(); if (e.key === "Escape") setShowNewFolder(false); }}
+                autoFocus
+              />
+              <button className="btn btn-sm btn-primary" onClick={handleCreateFolder} type="button">Create</button>
+              <button className="btn btn-sm" onClick={() => setShowNewFolder(false)} type="button">Cancel</button>
+              {newFolderError && <span className="folder-browser-error">{newFolderError}</span>}
+            </div>
+          )}
           {browserError && <div className="folder-browser-error">{browserError}</div>}
           <div className="folder-browser-list">
             {loading && <div className="folder-browser-loading">Loading...</div>}

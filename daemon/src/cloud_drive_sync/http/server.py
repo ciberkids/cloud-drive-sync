@@ -75,6 +75,7 @@ class HttpServer:
         r.add_get("/api/remote-folders", self._list_remote_folders)
         # Local filesystem browser (for headless/web UI)
         r.add_get("/api/local-dirs", self._list_local_dirs)
+        r.add_post("/api/local-dirs", self._mkdir_local)
         # Web UI — serve React SPA from webui/ directory
         if WEBUI_DIR.exists():
             assets_dir = WEBUI_DIR / "assets"
@@ -193,6 +194,8 @@ class HttpServer:
     async def _list_local_dirs(self, req):
         params = {"path": req.query.get("path", "")}
         return self._json(await self._rpc("list_local_dirs", params))
+    async def _mkdir_local(self, req):
+        return self._json(await self._rpc("mkdir_local", await self._body(req)))
     async def _serve_index(self, req):
         return web.FileResponse(WEBUI_DIR / "index.html")
 
