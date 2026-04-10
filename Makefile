@@ -35,7 +35,12 @@ clean: ## Clean build artifacts
 	rm -rf $(UI_DIR)/node_modules $(UI_DIR)/src-tauri/target
 	rm -rf artifacts/
 
-build: build-daemon build-ui ## Build both daemon and UI
+build: build-webui build-daemon build-ui ## Build everything (webui, daemon, UI)
+
+build-webui: ## Build React web UI and copy into daemon http/webui package
+	cd $(UI_DIR) && npm run build
+	rm -rf $(DAEMON_DIR)/src/cloud_drive_sync/http/webui
+	cp -r $(UI_DIR)/dist $(DAEMON_DIR)/src/cloud_drive_sync/http/webui
 
 build-daemon: ## Build daemon with Docker (PyInstaller)
 	docker build -f docker/Dockerfile.daemon -t cloud-drive-sync-daemon-builder .

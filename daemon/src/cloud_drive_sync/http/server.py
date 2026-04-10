@@ -81,8 +81,8 @@ class HttpServer:
             assets_dir = WEBUI_DIR / "assets"
             if assets_dir.exists():
                 r.add_static("/assets", assets_dir)
-            # SPA fallback: all non-API GET routes serve index.html
-            r.add_get("/{path:.*}", self._serve_index)
+            # SPA fallback: serve static root files if they exist, otherwise index.html
+            r.add_get("/{path:.*}", self._serve_spa)
 
     async def _rpc(self, method: str, params: dict | None = None):
         """Call the JSON-RPC handler and return the result."""
@@ -196,7 +196,13 @@ class HttpServer:
         return self._json(await self._rpc("list_local_dirs", params))
     async def _mkdir_local(self, req):
         return self._json(await self._rpc("mkdir_local", await self._body(req)))
-    async def _serve_index(self, req):
+    async def _serve_spa(self, req):
+        """Serve static root files if they exist (e.g. favicon), otherwise SPA index."""
+        path = req.match_info.get("path", "")
+        if path:
+            candidate = WEBUI_DIR / path
+            if candidate.exists() and candidate.is_file() and WEBUI_DIR in candidate.parents:
+                return web.FileResponse(candidate)
         return web.FileResponse(WEBUI_DIR / "index.html")
 
     async def start(self) -> None:
