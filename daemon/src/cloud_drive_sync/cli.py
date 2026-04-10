@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import click
@@ -13,7 +14,15 @@ from cloud_drive_sync.util.logging import get_logger
 log = get_logger("cli")
 
 
+def _get_version() -> str:
+    try:
+        return _pkg_version("cloud-drive-sync")
+    except Exception:
+        return "dev"
+
+
 @click.group()
+@click.version_option(version=_get_version(), prog_name="cloud-drive-sync-daemon")
 @click.option("--config", "config_path", type=click.Path(path_type=Path), default=None, help="Path to config.toml")
 @click.option("--log-level", type=click.Choice(["debug", "info", "warning", "error"], case_sensitive=False), default=None)
 @click.pass_context
