@@ -38,7 +38,7 @@ clean: ## Clean build artifacts
 build: build-webui build-daemon build-ui ## Build everything (webui, daemon, UI)
 
 build-webui: ## Build React web UI and copy into daemon http/webui package
-	cd $(UI_DIR) && npm run build
+	cd $(UI_DIR) && WEB=1 npm run build
 	rm -rf $(DAEMON_DIR)/src/cloud_drive_sync/http/webui
 	cp -r $(UI_DIR)/dist $(DAEMON_DIR)/src/cloud_drive_sync/http/webui
 

@@ -8,7 +8,7 @@ After every code change, always follow this sequence:
 2. **Run lint** — `cd daemon && .venv/bin/ruff check src/ tests/`
 3. **Run Rust check** — `cd ui/src-tauri && cargo check` (create sidecar placeholder first if needed)
 4. **Run TS check** — `cd ui && npx tsc --noEmit`
-5. **Rebuild web UI** — if any UI file changed, run `make build-webui` to rebuild the React app and copy it into `daemon/src/cloud_drive_sync/http/webui/`. This is what the HTTP/headless version actually serves — skipping this means the HTTP UI is stale and missing new pages/features.
+5. **Rebuild web UI** — if any UI file changed, run `make build-webui` to rebuild the React app and copy it into `daemon/src/cloud_drive_sync/http/webui/`. This builds with `WEB=1` so the bundle uses `fetch()` to `/api/*` instead of Tauri's `invoke()` — without this flag the HTTP UI cannot reach the daemon at all.
 6. **Update documentation** — if the change affects user-facing behavior, update docs/ (DAEMON.md, ARCHITECTURE.md, CLI.md, UI.md) and README.md. docs/ is the single source of truth; the wiki auto-syncs from it.
 7. **Update screenshots** — if the UI changed, refresh screenshots: `cd ui && DEMO=1 npx vite --port 1421` then capture with Chrome headless (see memory reference_screenshots.md)
 8. **Commit and push** — descriptive commit message, push to main
