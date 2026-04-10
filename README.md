@@ -4,6 +4,10 @@
 
 It grew into a full multi-cloud sync platform supporting **Google Drive**, **Dropbox**, **OneDrive**, **Nextcloud**, and **Box**, running on **Linux, macOS, and Windows** — with Proton Drive planned for Q2 2026+.
 
+If this project is useful to you, consider supporting it:
+
+<a href="https://buymeacoffee.com/ciberkids"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"></a>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/architecture.png">
   <img alt="Architecture diagram" src="docs/screenshots/architecture.png">
