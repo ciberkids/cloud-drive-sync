@@ -101,7 +101,8 @@ class RequestHandler:
             from importlib.metadata import version
             return version("cloud-drive-sync")
         except Exception:
-            return "dev"
+            from cloud_drive_sync import __version__
+            return __version__
 
     async def handle(self, request: JsonRpcRequest) -> JsonRpcResponse:
         """Dispatch a request to its handler and return a response."""
