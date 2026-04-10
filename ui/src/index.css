@@ -1757,26 +1757,15 @@ body {
   color: var(--text-secondary);
 }
 
-.bmc-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #FFDD00;
-  color: #000;
-  font-weight: 600;
-  font-size: 14px;
-  padding: 8px 18px;
-  border-radius: 8px;
-  text-decoration: none;
+.bmc-button-img {
+  height: 50px;
+  width: auto;
+  display: block;
   transition: opacity 0.15s;
 }
 
-.bmc-button:hover {
+.bmc-button-img:hover {
   opacity: 0.85;
-}
-
-.bmc-icon {
-  font-size: 18px;
 }
 
 .about-links {

@@ -41,10 +41,12 @@ export function About() {
           href="https://buymeacoffee.com/ciberkids"
           target="_blank"
           rel="noopener noreferrer"
-          className="bmc-button"
         >
-          <span className="bmc-icon">&#x2615;</span>
-          Buy me a coffee
+          <img
+            src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+            alt="Buy Me A Coffee"
+            className="bmc-button-img"
+          />
         </a>
       </div>
 
