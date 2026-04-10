@@ -145,6 +145,8 @@ class RequestHandler:
         sock_path = str(socket_path())
         started_at = (datetime.datetime.now() - datetime.timedelta(seconds=uptime)).strftime("%Y-%m-%d %H:%M")
 
+        from cloud_drive_sync import __build_date__
+
         daemon_info = {
             "pid": self._pid,
             "uptime": int(uptime),
@@ -152,6 +154,7 @@ class RequestHandler:
             "socket_path": sock_path,
             "version": self._get_version(),
             "started_at": started_at,
+            "build_date": __build_date__ or None,
         }
 
         if self._engine is None:

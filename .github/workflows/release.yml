@@ -33,10 +33,13 @@ jobs:
       - name: Set version from git tag
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
+          BUILD_DATE="$(date -u +%Y-%m-%d)"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
           rm -f daemon/pyproject.toml.bak
-          echo "Set daemon version to $VERSION"
+          sed -i.bak "s/^__build_date__ = .*/__build_date__ = \"$BUILD_DATE\"/" daemon/src/cloud_drive_sync/__init__.py
+          rm -f daemon/src/cloud_drive_sync/__init__.py.bak
+          echo "Set daemon version to $VERSION, build date to $BUILD_DATE"
         shell: bash
 
       - uses: actions/setup-python@v5
@@ -84,11 +87,14 @@ jobs:
       - name: Set version from git tag
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
+          BUILD_DATE="$(date -u +%Y-%m-%d)"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" ui/src-tauri/tauri.conf.json
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" daemon/pyproject.toml
           rm -f ui/src-tauri/tauri.conf.json.bak daemon/pyproject.toml.bak
-          echo "Set version to $VERSION"
+          sed -i.bak "s/^__build_date__ = .*/__build_date__ = \"$BUILD_DATE\"/" daemon/src/cloud_drive_sync/__init__.py
+          rm -f daemon/src/cloud_drive_sync/__init__.py.bak
+          echo "Set version to $VERSION, build date to $BUILD_DATE"
         shell: bash
 
       - uses: actions/setup-node@v4

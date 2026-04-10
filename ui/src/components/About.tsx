@@ -3,6 +3,7 @@ import { useStatus } from "../lib/hooks";
 export function About() {
   const status = useStatus();
   const version = status.daemon?.version ?? null;
+  const buildDate = status.daemon?.build_date ?? null;
 
   return (
     <div className="about-page">
@@ -11,6 +12,7 @@ export function About() {
         <div>
           <h2>Cloud Drive Sync</h2>
           {version && <span className="about-version">v{version}</span>}
+          {buildDate && <span className="about-build-date">Build date: {buildDate}</span>}
         </div>
       </div>
 

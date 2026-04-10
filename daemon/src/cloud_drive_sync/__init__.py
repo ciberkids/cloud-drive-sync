@@ -1,3 +1,9 @@
 """cloud-drive-sync: Bidirectional Google Drive sync daemon for Linux."""
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("cloud-drive-sync")
+except Exception:
+    __version__ = "dev"
+
+__build_date__ = ""

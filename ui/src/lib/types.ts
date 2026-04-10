@@ -7,6 +7,7 @@ export interface DaemonInfo {
   socket_path: string | null;
   version: string | null;
   started_at: string | null;
+  build_date: string | null;
 }
 
 export interface LiveTransfer {

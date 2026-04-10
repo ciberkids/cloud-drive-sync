@@ -28,6 +28,7 @@ const DEMO_STATUS: DaemonStatus = {
     socket_path: "/run/user/1000/cloud-drive-sync.sock",
     version: "1.2.0",
     started_at: "2026-04-09 10:00",
+    build_date: "2026-04-09",
   },
 };
 
