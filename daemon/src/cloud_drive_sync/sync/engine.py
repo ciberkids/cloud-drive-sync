@@ -123,8 +123,12 @@ class SyncEngine:
     async def _start_pair(self, pair: SyncPair, pair_id: str) -> None:
         local_root = Path(pair.local_path)
         if not local_root.is_dir():
-            log.error("Local path %s does not exist, skipping pair %s", local_root, pair_id)
-            return
+            try:
+                local_root.mkdir(parents=True, exist_ok=True)
+                log.info("Created local sync directory %s for %s", local_root, pair_id)
+            except Exception as exc:
+                log.error("Cannot create local sync directory %s for %s: %s", local_root, pair_id, exc)
+                return
 
         # Resolve the client for this pair
         client = self._clients.get(pair.account_id) if pair.account_id else self._client

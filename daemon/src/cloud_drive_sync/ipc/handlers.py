@@ -277,7 +277,15 @@ class RequestHandler:
         )
         self._config.sync.pairs.append(pair)
         self._config.save()
-        pair_id = str(len(self._config.sync.pairs) - 1)
+        index = len(self._config.sync.pairs) - 1
+        pair_id = str(index)
+        internal_pair_id = f"pair_{index}"
+
+        # Register the new pair with the running engine immediately so sync
+        # starts without requiring a daemon restart.
+        if self._engine is not None:
+            await self._engine._start_pair(pair, internal_pair_id)
+
         return {
             "id": pair_id,
             "local_path": local_path,
