@@ -1687,3 +1687,114 @@ body {
   display: flex;
   gap: 6px;
 }
+
+/* About page */
+.about-page {
+  max-width: 480px;
+  padding: 8px 0;
+}
+
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.about-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+}
+
+.about-header h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.about-version {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.about-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.about-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.about-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.about-badge-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.about-support {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.about-support p {
+  font-size: 14px;
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.bmc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #FFDD00;
+  color: #000;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.bmc-button:hover {
+  opacity: 0.85;
+}
+
+.bmc-icon {
+  font-size: 18px;
+}
+
+.about-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.about-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-links a:hover {
+  text-decoration: underline;
+}
+
+.about-links-sep {
+  color: var(--text-secondary);
+}
