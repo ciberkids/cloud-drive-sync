@@ -4,7 +4,9 @@
 
 After every code change, always follow this sequence:
 
-1. **Run tests** — `cd daemon && python -m pytest tests/ -x -q` (445+ tests must pass)
+> **IMPORTANT:** Steps 1–4 are the local CI gate. Run them as one block immediately before `git commit`, after ALL edits are done — never after only part of the changes. A partial run that passes does not count; only the final run over the complete changeset does.
+
+1. **Run tests** — `cd daemon && python -m pytest tests/ -x -q` (must pass)
 2. **Run lint** — `cd daemon && .venv/bin/ruff check src/ tests/`
 3. **Run Rust check** — `cd ui/src-tauri && cargo check` (create sidecar placeholder first if needed)
 4. **Run TS check** — `cd ui && npx tsc --noEmit`
