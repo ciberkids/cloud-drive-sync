@@ -95,17 +95,37 @@ class TestEngineLifecycle:
             await eng.stop()
 
     @pytest.mark.asyncio
-    async def test_nonexistent_local_path_skipped(self, config: Config, db, mock_client):
-        config.sync.pairs[0].local_path = "/nonexistent/path/12345"
+    async def test_nonexistent_local_path_auto_created(self, config: Config, db, mock_client, tmp_path):
+        """Engine auto-creates the local directory if it doesn't exist yet."""
+        new_dir = tmp_path / "auto_created_sync_dir"
+        assert not new_dir.exists()
+        config.sync.pairs[0].local_path = str(new_dir)
         ops = MockFileOperations(mock_client)
         poller = MockChangePoller(mock_client)
         eng = SyncEngine(config, db, mock_client, file_ops=ops, change_poller=poller)
         try:
             await eng.start()
             await asyncio.sleep(0.2)
-            assert len(eng.pairs) == 0
+            assert new_dir.is_dir(), "Engine should have created the directory"
+            assert len(eng.pairs) == 1, "Pair should be registered after dir creation"
         finally:
             await eng.stop()
+
+    @pytest.mark.asyncio
+    async def test_uncreateable_local_path_skipped(self, config: Config, db, mock_client):
+        """Engine skips pairs when the local directory cannot be created."""
+        from unittest.mock import patch
+        config.sync.pairs[0].local_path = "/nonexistent/path/12345"
+        ops = MockFileOperations(mock_client)
+        poller = MockChangePoller(mock_client)
+        eng = SyncEngine(config, db, mock_client, file_ops=ops, change_poller=poller)
+        with patch("cloud_drive_sync.sync.engine.Path.mkdir", side_effect=PermissionError("denied")):
+            try:
+                await eng.start()
+                await asyncio.sleep(0.2)
+                assert len(eng.pairs) == 0
+            finally:
+                await eng.stop()
 
 
 class TestPauseResume:
