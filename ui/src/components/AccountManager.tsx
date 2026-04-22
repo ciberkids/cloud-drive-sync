@@ -160,7 +160,7 @@ export function AccountManager() {
   // Group pairs by account_id
   const pairsByAccount: Record<string, SyncPair[]> = {};
   for (const pair of pairs) {
-    const key = pair.account_id || "";
+    const key = `${pair.provider || 'gdrive'}:${pair.account_id || ""}`;
     if (!pairsByAccount[key]) pairsByAccount[key] = [];
     pairsByAccount[key].push(pair);
   }
@@ -174,7 +174,7 @@ export function AccountManager() {
           {accounts.map((acct) => {
             const provider = acct.provider || "gdrive";
             const color = providerColor(provider);
-            const acctPairs = pairsByAccount[acct.email] || [];
+            const acctPairs = pairsByAccount[`${acct.provider || 'gdrive'}:${acct.email}`] || [];
 
             return (
               <div
@@ -187,6 +187,7 @@ export function AccountManager() {
                     <span
                       className="provider-dot"
                       style={{ background: color }}
+                      title={providerLabel(provider)}
                     />
                     <span className="provider-name">
                       {providerLabel(provider)}

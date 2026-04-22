@@ -256,19 +256,19 @@ export function Settings() {
   // Create groups for all known accounts first
   for (const acct of accounts) {
     const group: PairGroup = {
-      accountId: acct.email,
+      accountId: `${acct.provider || 'gdrive'}:${acct.email}`,
       account: acct,
       provider: acct.provider || "gdrive",
       pairs: [],
     };
-    groupMap.set(acct.email, group);
+    groupMap.set(group.accountId, group);
     groups.push(group);
   }
 
   for (const pair of pairs) {
-    const key = pair.account_id || "";
+    const acct = accountMap.get(pair.account_id || "") || null;
+    const key = `${pair.provider || acct?.provider || 'gdrive'}:${pair.account_id || ""}`;
     if (!groupMap.has(key)) {
-      const acct = accountMap.get(key) || null;
       const provider = pair.provider || acct?.provider || "gdrive";
       const group: PairGroup = {
         accountId: key,
@@ -450,7 +450,9 @@ export function Settings() {
             {groups.map((group) => {
               const color = providerColor(group.provider);
               const label = providerLabel(group.provider);
-              const email = group.accountId || "Default account";
+              const email = group.accountId.includes(':')
+                ? group.accountId.split(':').slice(1).join(':')
+                : (group.accountId || "Default account");
               const isAdding = addingForAccount === group.accountId;
 
               return (
@@ -463,6 +465,7 @@ export function Settings() {
                     <span
                       className="provider-dot"
                       style={{ background: color }}
+                      title={label}
                     />
                     <div className="sync-group-identity">
                       <span className="sync-group-provider">{label}</span>
@@ -515,7 +518,7 @@ export function Settings() {
                             const val = parseInt(e.target.value) || 0;
                             try {
                               await ipc.setAccountMaxTransfers(
-                                group.accountId,
+                                email,
                                 val
                               );
                               // Refresh accounts to get updated value
@@ -542,10 +545,10 @@ export function Settings() {
                         <RemoteFolderBrowser
                           authenticated={status.connected}
                           onAddPair={(remoteId, localPath) =>
-                            handleAddPair(remoteId, localPath, group.accountId)
+                            handleAddPair(remoteId, localPath, email)
                           }
                           existingRemoteIds={existingRemoteIds}
-                          accountId={group.accountId}
+                          accountId={email}
                         />
                       </div>
                     )}
