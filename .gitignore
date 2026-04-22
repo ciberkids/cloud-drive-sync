@@ -10,6 +10,11 @@ build/
 .venv/
 venv/
 
+# Test / coverage artifacts
+.coverage
+coverage.xml
+=*
+
 # Node
 node_modules/
 npm-debug.log*
