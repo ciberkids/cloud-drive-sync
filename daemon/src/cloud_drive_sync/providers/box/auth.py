@@ -49,7 +49,7 @@ class BoxAuth(AuthProvider):
             )
         return client_id, client_secret
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
         from box_sdk_gen import BoxOAuth, OAuthConfig
 
         client_id, client_secret = self._get_client_config()

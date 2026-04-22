@@ -232,8 +232,12 @@ class AuthProvider(ABC):
     """Abstract interface for provider authentication."""
 
     @abstractmethod
-    def run_auth_flow(self, headless: bool = False) -> Any:
-        """Run the authentication flow. Returns provider-specific credentials."""
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
+        """Run the authentication flow. Returns provider-specific credentials.
+
+        *extra* carries pre-supplied credentials for non-OAuth providers so the
+        daemon can complete auth without a TTY.  OAuth providers may ignore it.
+        """
 
     @abstractmethod
     def save_credentials(self, creds: Any, account_id: str) -> None:

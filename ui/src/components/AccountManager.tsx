@@ -65,13 +65,34 @@ export function AccountManager() {
   const [authCode, setAuthCode] = useState("");
   const [authProvider, setAuthProvider] = useState("gdrive");
 
+  // Credential-form state for non-OAuth providers (e.g. Nextcloud)
+  const [ncServerUrl, setNcServerUrl] = useState("");
+  const [ncUsername, setNcUsername] = useState("");
+  const [ncAppPassword, setNcAppPassword] = useState("");
+
+  const CREDENTIAL_PROVIDERS = new Set(["nextcloud"]);
+
   const handleAddAccount = async () => {
     setAuthInProgress(true);
     setAuthMessage(null);
     setAuthUrl(null);
     setAuthCode("");
+
+    // For credential-based providers, validate form fields before sending
+    if (CREDENTIAL_PROVIDERS.has(selectedProvider)) {
+      if (!ncServerUrl.trim() || !ncUsername.trim() || !ncAppPassword.trim()) {
+        setAuthMessage("Please fill in all fields: server URL, username, and app password.");
+        setAuthInProgress(false);
+        return;
+      }
+    }
+
+    const extra = CREDENTIAL_PROVIDERS.has(selectedProvider)
+      ? { server_url: ncServerUrl.trim().replace(/\/$/, ""), username: ncUsername.trim(), app_password: ncAppPassword.trim() }
+      : undefined;
+
     try {
-      const result = (await ipc.addAccount(selectedProvider)) as {
+      const result = (await ipc.addAccount(selectedProvider, extra)) as {
         status?: string;
         message?: string;
         auth_url?: string;
@@ -257,16 +278,57 @@ export function AccountManager() {
             </option>
           ))}
         </select>
-        <button
-          onClick={handleAddAccount}
-          disabled={authInProgress || selectedProvider === "proton"}
-          className="btn btn-primary"
-        >
-          {authInProgress ? "Waiting for browser..." : "Add Account"}
-        </button>
+
+        {!CREDENTIAL_PROVIDERS.has(selectedProvider) && (
+          <button
+            onClick={handleAddAccount}
+            disabled={authInProgress || selectedProvider === "proton"}
+            className="btn btn-primary"
+          >
+            {authInProgress ? "Waiting for browser..." : "Add Account"}
+          </button>
+        )}
       </div>
 
-      {authInProgress && !authUrl && (
+      {CREDENTIAL_PROVIDERS.has(selectedProvider) && (
+        <div className="nextcloud-creds-form">
+          <input
+            type="url"
+            className="input"
+            placeholder="Server URL (e.g. https://cloud.example.com)"
+            value={ncServerUrl}
+            onChange={(e) => setNcServerUrl(e.target.value)}
+            disabled={authInProgress}
+          />
+          <input
+            type="text"
+            className="input"
+            placeholder="Username"
+            value={ncUsername}
+            onChange={(e) => setNcUsername(e.target.value)}
+            disabled={authInProgress}
+            autoComplete="username"
+          />
+          <input
+            type="password"
+            className="input"
+            placeholder="App password (Settings → Security → Devices & sessions)"
+            value={ncAppPassword}
+            onChange={(e) => setNcAppPassword(e.target.value)}
+            disabled={authInProgress}
+            autoComplete="new-password"
+          />
+          <button
+            onClick={handleAddAccount}
+            disabled={authInProgress}
+            className="btn btn-primary"
+          >
+            {authInProgress ? "Connecting…" : "Connect"}
+          </button>
+        </div>
+      )}
+
+      {authInProgress && !authUrl && !CREDENTIAL_PROVIDERS.has(selectedProvider) && (
         <p className="auth-message">
           A browser window should open for sign-in. Complete the authorization
           there, then return here. If you close the browser, the request will

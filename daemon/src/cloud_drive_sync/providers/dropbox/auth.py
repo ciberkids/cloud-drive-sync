@@ -21,7 +21,7 @@ class DropboxAuth(AuthProvider):
     def __init__(self, app_key: str = "") -> None:
         self._app_key = app_key or _DEFAULT_APP_KEY
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
         """Run Dropbox OAuth2 PKCE flow.
 
         Returns a dict with access_token, refresh_token, app_key, and expiry.

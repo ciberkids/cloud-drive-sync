@@ -101,8 +101,8 @@ export async function setIgnorePatterns(
   return invoke("set_ignore_patterns", { pairId, patterns });
 }
 
-export async function addAccount(provider?: string): Promise<unknown> {
-  return invoke("add_account", { provider: provider || "gdrive" });
+export async function addAccount(provider?: string, extra?: Record<string, string>): Promise<unknown> {
+  return invoke("add_account", { provider: provider || "gdrive", ...extra });
 }
 
 export async function exchangeAuthCode(provider: string, code: string): Promise<unknown> {

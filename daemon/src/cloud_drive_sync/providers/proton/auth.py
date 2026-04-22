@@ -14,7 +14,7 @@ class ProtonDriveAuth(AuthProvider):
     NotImplementedError until Proton Drive support is completed.
     """
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
         raise NotImplementedError("Proton Drive support planned for Q2 2026+")
 
     def save_credentials(self, creds: Any, account_id: str) -> None:

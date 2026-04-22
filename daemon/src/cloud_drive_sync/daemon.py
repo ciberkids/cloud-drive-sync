@@ -79,8 +79,13 @@ class Daemon:
                 from cloud_drive_sync.auth.credentials import load_account_credentials, load_credentials
                 from cloud_drive_sync.drive.client import DriveClient
 
-                # Ensure Google Drive provider is registered
+                # Ensure all providers are registered (each __init__ guards missing deps)
                 import cloud_drive_sync.providers.gdrive  # noqa: F401
+                import cloud_drive_sync.providers.nextcloud  # noqa: F401
+                import cloud_drive_sync.providers.dropbox  # noqa: F401
+                import cloud_drive_sync.providers.onedrive  # noqa: F401
+                import cloud_drive_sync.providers.box  # noqa: F401
+                import cloud_drive_sync.providers.proton  # noqa: F401
 
                 client = None
                 file_ops = None
@@ -269,7 +274,7 @@ class Daemon:
         log.info("Demo mode: local=%s, remote=%s", DEMO_LOCAL, DEMO_REMOTE)
         return client, file_ops, change_poller
 
-    def _do_auth(self, provider: str = "gdrive", headless: bool = False) -> dict:
+    def _do_auth(self, provider: str = "gdrive", headless: bool = False, extra: dict | None = None) -> dict:
         """Run the auth flow for a given provider (called from a thread by IPC handler)."""
         if self._demo:
             log.info("Auth skipped in demo mode")
@@ -283,11 +288,14 @@ class Daemon:
             entry = get_provider(provider)
             auth_provider = entry.auth_cls()
 
-            # Run the provider-specific auth flow
+            # Run the provider-specific auth flow.
+            # extra carries pre-supplied credentials for non-OAuth providers (e.g. Nextcloud
+            # server_url/username/app_password) so no TTY prompt is needed.
+            # For OAuth providers (gdrive, dropbox…) extra is ignored.
             # If no TTY is available (HTTP API / Docker), _AuthUrlReady is raised
-            # with the auth URL — return it so the HTTP client can show it
+            # with the auth URL — return it so the HTTP client can show it.
             try:
-                creds = auth_provider.run_auth_flow(headless=headless)
+                creds = auth_provider.run_auth_flow(headless=headless, extra=extra)
             except Exception as auth_exc:
                 if type(auth_exc).__name__ == "_AuthUrlReady":
                     return {"status": "auth_url", "auth_url": str(auth_exc), "provider": provider}

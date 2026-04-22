@@ -138,8 +138,8 @@ export async function setIgnorePatterns(
   await put(`pairs/${pairId}/ignore-patterns`, { patterns });
 }
 
-export async function addAccount(provider?: string): Promise<unknown> {
-  return post("accounts", { provider: provider || "gdrive", headless: true });
+export async function addAccount(provider?: string, extra?: Record<string, string>): Promise<unknown> {
+  return post("accounts", { provider: provider || "gdrive", headless: true, ...extra });
 }
 
 export async function exchangeAuthCode(provider: string, code: string): Promise<unknown> {

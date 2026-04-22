@@ -26,27 +26,43 @@ class NextcloudAuth(AuthProvider):
     def __init__(self, server_url: str = "") -> None:
         self._server_url = server_url.rstrip("/") if server_url else ""
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
-        """Prompt for Nextcloud server URL, username, and app password.
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
+        """Authenticate with a Nextcloud server using an app password.
+
+        Credentials can be supplied via *extra* (from the HTTP API / UI form) or,
+        as a fallback, interactively via stdin when a TTY is present.
 
         Returns a dict with ``server_url``, ``username``, and ``app_password``.
         To create an app password in Nextcloud: Settings -> Security -> Devices & sessions.
         """
-        import getpass
+        creds = extra or {}
 
-        server_url = self._server_url
-        if not server_url:
-            server_url = input("Nextcloud server URL (e.g. https://cloud.example.com): ").strip().rstrip("/")
+        server_url = creds.get("server_url") or self._server_url
+        username = creds.get("username", "")
+        app_password = creds.get("app_password", "")
+
+        # Fall back to interactive prompts only when we have a real TTY
+        if not server_url or not username or not app_password:
+            import sys
+            if not sys.stdin.isatty():
+                missing = [k for k, v in [("server_url", server_url), ("username", username), ("app_password", app_password)] if not v]
+                raise ValueError(
+                    f"Nextcloud credentials required: {', '.join(missing)}. "
+                    "Provide them via the account setup form."
+                )
+            import getpass
             if not server_url:
-                raise ValueError("Server URL is required")
-
-        username = input("Nextcloud username: ").strip()
-        if not username:
-            raise ValueError("Username is required")
-
-        app_password = getpass.getpass("Nextcloud app password: ").strip()
-        if not app_password:
-            raise ValueError("App password is required")
+                server_url = input("Nextcloud server URL (e.g. https://cloud.example.com): ").strip().rstrip("/")
+                if not server_url:
+                    raise ValueError("Server URL is required")
+            if not username:
+                username = input("Nextcloud username: ").strip()
+                if not username:
+                    raise ValueError("Username is required")
+            if not app_password:
+                app_password = getpass.getpass("Nextcloud app password: ").strip()
+                if not app_password:
+                    raise ValueError("App password is required")
 
         # Validate credentials by attempting a connection
         try:

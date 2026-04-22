@@ -23,7 +23,7 @@ class GoogleDriveAuth(AuthProvider):
     # Pending auth flow for two-step HTTP auth
     _pending_flow = None
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
         from cloud_drive_sync.auth.oauth import run_oauth_flow
 
         if headless:

@@ -558,14 +558,18 @@ class RequestHandler:
         return {"status": "ok", "ignore_patterns": patterns}
 
     async def _add_account(self, params: dict) -> dict:
-        """Trigger OAuth flow to add a new account."""
+        """Trigger auth flow to add a new account."""
         params = params or {}
         provider = params.get("provider", "gdrive")
         headless = params.get("headless", False)
+        # Collect any provider-specific credentials passed directly (e.g. Nextcloud
+        # server_url / username / app_password) so non-OAuth providers don't need a TTY.
+        extra_keys = {"server_url", "username", "app_password", "server", "token"}
+        extra = {k: v for k, v in params.items() if k in extra_keys and v}
         if self._auth_callback:
             import asyncio
             try:
-                result = await asyncio.to_thread(self._auth_callback, provider, headless)
+                result = await asyncio.to_thread(self._auth_callback, provider, headless, extra or None)
                 if isinstance(result, dict):
                     return result
                 return {"status": "ok"}

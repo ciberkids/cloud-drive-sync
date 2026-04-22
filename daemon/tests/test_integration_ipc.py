@@ -279,8 +279,8 @@ async def ipc_server_with_auth(short_tmp, config, db):
     """IPC server with a mock auth callback that records calls."""
     auth_calls = []
 
-    def mock_auth(provider="gdrive", headless=False):
-        auth_calls.append({"provider": provider, "headless": headless})
+    def mock_auth(provider="gdrive", headless=False, extra=None):
+        auth_calls.append({"provider": provider, "headless": headless, "extra": extra})
         return {"status": "ok", "email": f"test-{provider}@example.com"}
 
     handler = RequestHandler(engine=None, config=config)
@@ -364,7 +364,7 @@ async def test_add_account_default_provider(auth_client):
 
 async def test_add_account_auth_failure(short_tmp, config, db):
     """add_account returns error when auth callback raises."""
-    def failing_auth(provider="gdrive", headless=False):
+    def failing_auth(provider="gdrive", headless=False, extra=None):
         raise RuntimeError("Auth flow timed out")
 
     handler = RequestHandler(engine=None, config=config)

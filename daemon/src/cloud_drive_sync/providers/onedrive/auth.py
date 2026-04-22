@@ -32,7 +32,7 @@ class OneDriveAuth(AuthProvider):
     def __init__(self, client_id: str = "") -> None:
         self._client_id = client_id or DEFAULT_CLIENT_ID
 
-    def run_auth_flow(self, headless: bool = False) -> Any:
+    def run_auth_flow(self, headless: bool = False, extra: dict | None = None) -> Any:
         """Run Azure AD OAuth2 flow.
 
         Uses device code flow for headless environments, authorization code flow otherwise.
