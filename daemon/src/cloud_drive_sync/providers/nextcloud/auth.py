@@ -69,8 +69,8 @@ class NextcloudAuth(AuthProvider):
             from nc_py_api import Nextcloud
 
             nc = Nextcloud(nextcloud_url=server_url, nc_auth_user=username, nc_auth_pass=app_password)
-            user = nc.users.get_current()
-            display = user.display_name if hasattr(user, "display_name") else str(user)
+            user_info = nc.users.get_user()  # no arg = current user
+            display = getattr(user_info, "display_name", None) or nc.user
             log.info("Authenticated as: %s", display)
         except ImportError:
             raise ImportError(

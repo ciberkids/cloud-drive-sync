@@ -304,12 +304,12 @@ class NextcloudClient(CloudClient):
     @async_retry(max_retries=3, base_delay=1.0)
     async def get_about(self) -> dict[str, Any]:
         def _about():
-            user = self._nc.users.get_current()
-            quota = user.quota if hasattr(user, "quota") else {}
+            user = self._nc.users.get_user()  # no arg = current user
+            quota = getattr(user, "quota", {}) or {}
             return {
                 "user": {
-                    "displayName": user.display_name if hasattr(user, "display_name") else str(user),
-                    "emailAddress": user.email if hasattr(user, "email") else "",
+                    "displayName": getattr(user, "display_name", None) or self._nc.user,
+                    "emailAddress": getattr(user, "email", "") or "",
                 },
                 "storageQuota": {
                     "limit": str(quota.get("total", 0)) if isinstance(quota, dict) else "0",

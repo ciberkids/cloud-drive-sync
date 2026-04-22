@@ -46,6 +46,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: integration tests using demo mode (no real Google credentials)",
+    "nextcloud: integration tests that spin up a real Nextcloud container (requires docker/podman)",
 ]
 
 [tool.ruff]

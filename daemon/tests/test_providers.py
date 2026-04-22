@@ -77,7 +77,7 @@ class TestNextcloudAuthFlow:
         }
         mock_user = MagicMock(display_name="Alice")
         mock_nc_instance = MagicMock()
-        mock_nc_instance.users.get_current.return_value = mock_user
+        mock_nc_instance.users.get_user.return_value = mock_user
         mock_nc_cls = MagicMock(return_value=mock_nc_instance)
         mock_nc_py_api = MagicMock()
         mock_nc_py_api.Nextcloud = mock_nc_cls
@@ -125,7 +125,7 @@ class TestNextcloudAuthFlow:
 
         auth = self._auth()
         mock_nc_instance = MagicMock()
-        mock_nc_instance.users.get_current.return_value = MagicMock(display_name="Alice")
+        mock_nc_instance.users.get_user.return_value = MagicMock(display_name="Alice")
         mock_nc_cls = MagicMock(return_value=mock_nc_instance)
         mock_nc_py_api = MagicMock()
         mock_nc_py_api.Nextcloud = mock_nc_cls
