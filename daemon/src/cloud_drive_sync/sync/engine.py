@@ -130,8 +130,17 @@ class SyncEngine:
                 log.error("Cannot create local sync directory %s for %s: %s", local_root, pair_id, exc)
                 return
 
-        # Resolve the client for this pair
-        client = self._clients.get(pair.account_id) if pair.account_id else self._client
+        # Resolve the client for this pair — use provider-namespaced key
+        # with backward-compat fallback to bare email.
+        account = next((a for a in self._config.accounts if a.email == pair.account_id), None)
+        provider_name = account.provider if account else "gdrive"
+        if pair.account_id:
+            client = (
+                self._clients.get(f"{provider_name}:{pair.account_id}")
+                or self._clients.get(pair.account_id)
+            )
+        else:
+            client = self._client
         if client is None:
             log.error("No client for account %s, skipping pair %s", pair.account_id, pair_id)
             return
@@ -145,7 +154,6 @@ class SyncEngine:
             ops = FileOperations(client, upload_throttle=upload_throttle, download_throttle=download_throttle)
         poller = self._poller or ChangePoller(client)
 
-        account = next((a for a in self._config.accounts if a.email == pair.account_id), None)
         per_account = account.max_concurrent_transfers if account else 0
         max_concurrent = per_account if per_account > 0 else self._config.sync.max_concurrent_transfers
 
@@ -205,8 +213,20 @@ class SyncEngine:
             merged_patterns = DEFAULT_IGNORE_PATTERNS + list(ps.pair.ignore_patterns) + ignore_file_patterns
             local_files = await scan_directory(local_root, ignore_patterns=merged_patterns, ignore_hidden=ps.pair.ignore_hidden)
 
-            # Scan remote — use the pair's client
-            pair_client = self._clients.get(ps.pair.account_id) if ps.pair.account_id else self._client
+            # Scan remote — use the pair's client (provider-namespaced key,
+            # fall back to bare email for backward compat).
+            if ps.pair.account_id:
+                pair_account = next(
+                    (a for a in self._config.accounts if a.email == ps.pair.account_id),
+                    None,
+                )
+                pair_provider = pair_account.provider if pair_account else "gdrive"
+                pair_client = (
+                    self._clients.get(f"{pair_provider}:{ps.pair.account_id}")
+                    or self._clients.get(ps.pair.account_id)
+                )
+            else:
+                pair_client = self._client
             remote_files = await pair_client.list_all_recursive(ps.pair.remote_folder_id)
 
             # Plan — pass provider-specific settings

@@ -584,6 +584,11 @@ class RequestHandler:
         if not email:
             raise TypeError("email is required")
 
+        # Capture provider before removing the account from config so we can
+        # compute the provider-namespaced client key.
+        acct_to_remove = next((a for a in self._config.accounts if a.email == email), None)
+        provider_name = acct_to_remove.provider if acct_to_remove else "gdrive"
+
         # Remove from config
         self._config.accounts = [a for a in self._config.accounts if a.email != email]
 
@@ -600,9 +605,14 @@ class RequestHandler:
         if cred_path.exists():
             cred_path.unlink()
 
-        # Remove client from engine
-        if self._engine and email in self._engine._clients:
-            del self._engine._clients[email]
+        # Remove client from engine (namespaced key, with backward-compat
+        # fallback to bare email for legacy entries).
+        if self._engine:
+            namespaced = f"{provider_name}:{email}"
+            if namespaced in self._engine._clients:
+                del self._engine._clients[namespaced]
+            elif email in self._engine._clients:
+                del self._engine._clients[email]
 
         return {"status": "ok", "email": email}
 
@@ -611,7 +621,8 @@ class RequestHandler:
         accounts = []
         for acct in self._config.accounts:
             has_client = (
-                self._engine is not None and acct.email in self._engine._clients
+                self._engine is not None
+                and f"{acct.provider or 'gdrive'}:{acct.email}" in self._engine._clients
             )
             accounts.append({
                 "email": acct.email,

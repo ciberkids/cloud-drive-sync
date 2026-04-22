@@ -124,7 +124,7 @@ class Daemon:
                     if provider_name == "gdrive":
                         acct_creds = load_account_credentials(account.email)
                         if acct_creds and acct_creds.valid:
-                            clients[account.email] = DriveClient(acct_creds, proxy=self._config.proxy)
+                            clients[f"gdrive:{account.email}"] = DriveClient(acct_creds, proxy=self._config.proxy)
                             log.info("Loaded credentials for %s (gdrive)", account.email)
                         else:
                             log.warning("No valid credentials for %s", account.email)
@@ -143,7 +143,7 @@ class Daemon:
                             creds = auth.load_credentials(account.email)
                             if creds:
                                 provider_client = await auth.create_client(creds)
-                                clients[account.email] = provider_client
+                                clients[f"{provider_name}:{account.email}"] = provider_client
                                 log.info("Loaded credentials for %s (%s)", account.email, provider_name)
                             else:
                                 log.warning("No valid credentials for %s (%s)", account.email, provider_name)
@@ -316,7 +316,7 @@ class Daemon:
             auth_provider.save_credentials(creds, email)
 
             # Add account to config if not exists
-            if not any(a.email == email for a in self._config.accounts):
+            if not any(a.email == email and a.provider == provider for a in self._config.accounts):
                 self._config.accounts.append(
                     Account(email=email, display_name=email, provider=provider)
                 )
@@ -326,7 +326,7 @@ class Daemon:
 
             # Initialize or update engine with the new client
             if self._engine is None and self._db is not None:
-                clients = {email: client}
+                clients = {f"{provider}:{email}": client}
                 self._engine = SyncEngine(
                     self._config,
                     self._db,
@@ -345,7 +345,7 @@ class Daemon:
                 log.info("Sync engine initialized after authentication")
 
             elif self._engine is not None:
-                self._engine._clients[email] = client
+                self._engine._clients[f"{provider}:{email}"] = client
                 if not self._engine._client:
                     self._engine._client = client
 
@@ -390,7 +390,7 @@ class Daemon:
 
             auth_provider.save_credentials(creds, email)
 
-            if not any(a.email == email for a in self._config.accounts):
+            if not any(a.email == email and a.provider == provider for a in self._config.accounts):
                 self._config.accounts.append(
                     Account(email=email, display_name=email, provider=provider)
                 )
@@ -399,7 +399,7 @@ class Daemon:
             self._log_auth_event("auth", f"Authentication successful ({email})", "success")
 
             if self._engine is None and self._db is not None:
-                clients = {email: client}
+                clients = {f"{provider}:{email}": client}
                 self._engine = SyncEngine(self._config, self._db, client, clients=clients)
                 self._handler.set_engine(self._engine)
                 self._handler.set_drive_client(client)
@@ -407,7 +407,7 @@ class Daemon:
                     self._engine.set_notify_callback(self._ipc_server.notify_all)
                 loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._engine.start()))
             elif self._engine is not None:
-                self._engine._clients[email] = client
+                self._engine._clients[f"{provider}:{email}"] = client
                 self._handler.set_drive_client(client)
                 loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._restart_engine()))
 

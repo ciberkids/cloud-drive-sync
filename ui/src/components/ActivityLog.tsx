@@ -4,13 +4,13 @@ import { providerColor, providerLabel } from "./AccountManager";
 import type { LogEntry } from "../lib/types";
 
 const EVENT_ICONS: Record<string, string> = {
-  upload: "\u2191",
-  download: "\u2193",
-  delete: "\u2716",
-  conflict: "\u26A0",
-  error: "\u2718",
-  auth: "\u2699",
-  sync: "\u21BB",
+  upload: "↑",
+  download: "↓",
+  delete: "✖",
+  conflict: "⚠",
+  error: "✘",
+  auth: "⚙",
+  sync: "↻",
 };
 
 type FilterType = "all" | LogEntry["event_type"];
@@ -19,6 +19,16 @@ export function ActivityLog() {
   const { entries, loading, loadMore } = useActivityLog(50);
   const { pairs } = useSyncPairs();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Build a lookup: pair_id -> { account, provider }
   const pairAccountMap = useMemo(() => {
@@ -65,14 +75,27 @@ export function ActivityLog() {
           const color = acctInfo ? providerColor(acctInfo.provider) : undefined;
           const label = acctInfo ? providerLabel(acctInfo.provider) : undefined;
           const isSystem = entry.pair_id === "_system";
+          const isExpanded = expandedIds.has(entry.id);
 
           return (
             <div
               key={entry.id}
-              className={`log-item log-${entry.event_type}`}
+              className={`log-item log-${entry.event_type}${isExpanded ? " log-item-expanded" : ""}`}
+              onClick={() => toggleExpanded(entry.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleExpanded(entry.id);
+                }
+              }}
             >
               <span className="log-icon">
-                {EVENT_ICONS[entry.event_type] || "\u2022"}
+                {EVENT_ICONS[entry.event_type] || "•"}
+              </span>
+              <span className="log-expand-indicator" aria-hidden="true">
+                {isExpanded ? "▼" : "▶"}
               </span>
               <div className="log-content">
                 <span className="log-path">{entry.path || entry.details}</span>

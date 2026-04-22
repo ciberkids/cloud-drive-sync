@@ -178,7 +178,7 @@ export function AccountManager() {
 
             return (
               <div
-                key={acct.email}
+                key={`${acct.provider || 'gdrive'}-${acct.email}`}
                 className="account-card"
                 style={{ borderLeftColor: color }}
               >

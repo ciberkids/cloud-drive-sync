@@ -1124,6 +1124,22 @@ body {
   border-radius: var(--radius);
   background: var(--bg-secondary);
   font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.log-item:hover {
+  background: var(--bg-hover, var(--bg-secondary));
+  filter: brightness(1.05);
+}
+
+.log-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.log-item-expanded {
+  align-items: flex-start;
 }
 
 .log-icon {
@@ -1131,6 +1147,16 @@ body {
   flex-shrink: 0;
   width: 20px;
   text-align: center;
+}
+
+.log-expand-indicator {
+  font-size: 9px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  width: 10px;
+  text-align: center;
+  opacity: 0.6;
+  user-select: none;
 }
 
 .log-content {
@@ -1146,10 +1172,35 @@ body {
   text-overflow: ellipsis;
 }
 
+.log-item-expanded .log-path {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
+
 .log-details {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+.log-item-expanded .log-details {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .log-meta {
