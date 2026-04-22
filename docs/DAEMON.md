@@ -240,20 +240,16 @@ Enter the authorization code: _
 
 ### Nextcloud
 
+**Via the UI (recommended):** Select "Nextcloud" in the Account Manager, fill in your server URL, username, and app password, then click Connect. No browser or terminal prompts needed.
+
+**Via CLI:**
 ```bash
 cloud-drive-sync account add --provider nextcloud --headless
 ```
 
-What happens:
-1. The daemon prompts for your Nextcloud server URL, username, and app password
-2. No browser needed — you create an app password beforehand in Nextcloud Settings > Security > Devices & sessions
+The CLI prompts interactively for server URL, username, and app password (requires a TTY).
 
-Output looks like:
-```
-Nextcloud server URL: https://cloud.example.com
-Username: alice
-App password: _
-```
+**Creating an app password:** In Nextcloud, go to Settings → Security → Devices & sessions → create a new app-specific password. Use that password — not your regular login password.
 
 ### Box
 
@@ -269,8 +265,11 @@ What happens:
 
 ### Docker Usage
 
-In Docker, always use `-it` (interactive + TTY) when adding accounts so you can interact with the auth prompts:
+The recommended way to add accounts in Docker is via the HTTP web UI at `http://localhost:8080`:
+- **Google Drive / Dropbox / OneDrive / Box**: Click "Add Account", complete the OAuth browser flow using the provided URL, then paste the redirect URL back.
+- **Nextcloud**: Select Nextcloud, fill in the server URL + username + app password form, click Connect. No TTY needed.
 
+For Google Drive via CLI (requires `-it` for the OAuth URL prompt):
 ```bash
 # Start the daemon
 docker run -d --name cloud-drive-sync \
@@ -280,7 +279,7 @@ docker run -d --name cloud-drive-sync \
   -v ~/Documents:/data/Documents \
   ghcr.io/ciberkids/cloud-drive-sync:latest
 
-# Add account interactively (note: -it is required)
+# Add Google account via CLI (prints auth URL, paste redirect URL back)
 docker exec -it cloud-drive-sync \
   python -m cloud_drive_sync account add --provider gdrive --headless
 

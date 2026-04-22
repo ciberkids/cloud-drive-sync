@@ -10,7 +10,7 @@ The UI is a native cross-platform desktop application (Linux, macOS, Windows) th
 - Sync folder pair management
 - Conflict resolution interface
 - Activity log viewer
-- Google account management
+- Multi-provider account management (Google Drive, Nextcloud, Dropbox, OneDrive, Box)
 - System tray icon with status indicators
 
 ## Prerequisites
@@ -62,7 +62,7 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 | **Settings** | `src/components/Settings.tsx` | Sync pair management (add/remove), sync mode selector, conflict strategy selector |
 | **ConflictDialog** | `src/components/ConflictDialog.tsx` | Lists unresolved conflicts with per-file and batch resolution buttons |
 | **ActivityLog** | `src/components/ActivityLog.tsx` | Paginated, filterable activity feed with event type icons |
-| **AccountManager** | `src/components/AccountManager.tsx` | Google account login/logout |
+| **AccountManager** | `src/components/AccountManager.tsx` | Multi-provider account management: OAuth browser flow (Google Drive, Dropbox, OneDrive, Box) and credential form for Nextcloud (server URL + app password) |
 | **About** | `src/components/About.tsx` | App info: version, no-ads/no-tracking pledge, Buy Me a Coffee link, GitHub links |
 | **FolderPicker** | `src/components/FolderPicker.tsx` | Local folder selection: native dialog (Tauri) or server-side browser with New Folder creation (HTTP/headless) |
 | **RemoteFolderBrowser** | `src/components/RemoteFolderBrowser.tsx` | Hierarchical Google Drive folder browser for selecting remote sync targets |

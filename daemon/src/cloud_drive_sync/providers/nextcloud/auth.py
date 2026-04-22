@@ -37,7 +37,7 @@ class NextcloudAuth(AuthProvider):
         """
         creds = extra or {}
 
-        server_url = creds.get("server_url") or self._server_url
+        server_url = (creds.get("server_url") or self._server_url).rstrip("/")
         username = creds.get("username", "")
         app_password = creds.get("app_password", "")
 
