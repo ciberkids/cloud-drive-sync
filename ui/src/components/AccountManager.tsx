@@ -9,11 +9,11 @@ const PROVIDER_META: Record<
   string,
   { label: string; color: string; icon: string }
 > = {
-  gdrive: { label: "Google Drive", color: "#4285f4", icon: "\u2601" },
-  dropbox: { label: "Dropbox", color: "#0061fe", icon: "\u25BC" },
-  onedrive: { label: "OneDrive", color: "#0078d4", icon: "\u2601" },
-  nextcloud: { label: "Nextcloud", color: "#0082c9", icon: "\u2601" },
-  box: { label: "Box", color: "#0061d5", icon: "\u25A0" },
+  gdrive:    { label: "Google Drive",  color: "#4285f4", icon: "\u2601" },
+  dropbox:   { label: "Dropbox",       color: "#007ee5", icon: "\u25BC" },
+  onedrive:  { label: "OneDrive",      color: "#0078d4", icon: "\u2601" },
+  nextcloud: { label: "Nextcloud",     color: "#00c2a8", icon: "\u2601" },
+  box:       { label: "Box",           color: "#e8a400", icon: "\u25A0" },
   proton: { label: "Proton Drive", color: "#6d4aff", icon: "\u25C6" },
 };
 
