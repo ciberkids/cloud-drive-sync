@@ -461,43 +461,70 @@ class RequestHandler:
         return {"status": "no_auth_callback"}
 
     async def _list_remote_folders(self, params: dict) -> dict:
-        """List folders in a given parent folder on Google Drive."""
+        """List folders in a given parent folder on the remote provider."""
         if self._engine is None and self._drive_client is None:
             return {"folders": [], "shared_drives": [], "error": "Not authenticated"}
 
         params = params or {}
         account_id = params.get("account_id", "")
-        if account_id and self._engine and account_id in self._engine._clients:
-            client = self._engine._clients[account_id]
-        elif self._drive_client:
-            client = self._drive_client
-        elif self._engine:
-            client = self._engine._client
-        else:
+        client = None
+        if account_id and self._engine:
+            # Try compound key first (e.g. "nextcloud:user@gmail.com")
+            client = self._engine._clients.get(account_id)
+            if client is None:
+                # Backward compat: bare email passed — find by email suffix
+                for key, c in self._engine._clients.items():
+                    if ":" in key and key.split(":", 1)[1] == account_id:
+                        client = c
+                        break
+        if client is None:
+            client = self._drive_client or (self._engine._client if self._engine else None)
+        if client is None:
             return {"folders": [], "shared_drives": [], "error": "Not authenticated"}
+
         parent_id = params.get("parent_id", "root")
 
         try:
-            query = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-            result = await client.list_files(query=query, page_size=100)
-            folders = [
-                {"id": f["id"], "name": f["name"]}
-                for f in result.get("files", [])
-            ]
-            folders.sort(key=lambda f: f["name"].lower())
+            folder_mime = getattr(client, "folder_mime_type", None)
 
-            # Include shared drives when browsing root
-            shared_drives = []
-            if parent_id == "root":
-                try:
-                    drives = await client.list_shared_drives()
-                    shared_drives = [
-                        {"id": d["id"], "name": d["name"]}
-                        for d in drives
-                    ]
-                    shared_drives.sort(key=lambda d: d["name"].lower())
-                except Exception as exc:
-                    log.warning("Failed to list shared drives: %s", exc)
+            if folder_mime is not None:
+                # GDrive-style: use Drive query syntax
+                query = (
+                    f"'{parent_id}' in parents"
+                    f" and mimeType = '{folder_mime}'"
+                    " and trashed = false"
+                )
+                result = await client.list_files(query=query, page_size=100)
+                folders = [
+                    {"id": f["id"], "name": f["name"]}
+                    for f in result.get("files", [])
+                ]
+                folders.sort(key=lambda f: f["name"].lower())
+
+                shared_drives: list[dict] = []
+                if parent_id == "root":
+                    try:
+                        drives = await client.list_shared_drives()
+                        shared_drives = [
+                            {"id": d["id"], "name": d["name"]} for d in drives
+                        ]
+                        shared_drives.sort(key=lambda d: d["name"].lower())
+                    except Exception as exc:
+                        log.warning("Failed to list shared drives: %s", exc)
+            else:
+                # Path-based provider (Nextcloud, etc.)
+                result = await client.list_files(folder_id=parent_id, page_size=500)
+                nc_parent = "/" if parent_id == "root" else parent_id
+                folders = []
+                for f in result.get("files", []):
+                    if f.get("mimeType") == "httpd/unix-directory":
+                        folder_path = (
+                            f"/{f['name']}" if nc_parent == "/"
+                            else f"{nc_parent}/{f['name']}"
+                        )
+                        folders.append({"id": folder_path, "name": f["name"]})
+                folders.sort(key=lambda f: f["name"].lower())
+                shared_drives = []
 
             return {"folders": folders, "shared_drives": shared_drives, "parent_id": parent_id}
         except Exception as exc:

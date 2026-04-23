@@ -7,6 +7,12 @@ interface BreadcrumbEntry {
   name: string;
 }
 
+function rootLabel(accountId?: string): string {
+  const provider = accountId?.includes(':') ? accountId.split(':')[0] : 'gdrive';
+  if (provider === 'gdrive') return 'My Drive';
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
 interface RemoteFolderBrowserProps {
   authenticated: boolean;
   onAddPair: (remoteFolderId: string, localPath: string) => void;
@@ -27,7 +33,7 @@ export function RemoteFolderBrowser({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([
-    { id: "root", name: "My Drive" },
+    { id: "root", name: rootLabel(accountId) },
   ]);
 
   // Inline sync form state
@@ -57,7 +63,7 @@ export function RemoteFolderBrowser({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accountId]);
 
   // Auto-load root folders when authenticated
   useEffect(() => {
@@ -67,7 +73,7 @@ export function RemoteFolderBrowser({
   }, [authenticated, loadFolders]);
 
   const handleNavigateSharedDrive = async (drive: { id: string; name: string }) => {
-    setBreadcrumbs([{ id: "root", name: "My Drive" }, { id: drive.id, name: drive.name }]);
+    setBreadcrumbs([{ id: "root", name: rootLabel(accountId) }, { id: drive.id, name: drive.name }]);
     setSyncTarget(null);
     await loadFolders(drive.id);
   };

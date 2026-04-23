@@ -37,6 +37,10 @@ class MockDriveClient:
         # Scan existing files in remote_root to populate initial state
         self._scan_existing()
 
+    @property
+    def folder_mime_type(self) -> str | None:
+        return "application/vnd.google-apps.folder"
+
     def _scan_existing(self) -> None:
         """Populate metadata from files already on disk."""
         for path in self._remote_root.rglob("*"):

@@ -548,7 +548,7 @@ export function Settings() {
                             handleAddPair(remoteId, localPath, email)
                           }
                           existingRemoteIds={existingRemoteIds}
-                          accountId={email}
+                          accountId={group.accountId}
                         />
                       </div>
                     )}
