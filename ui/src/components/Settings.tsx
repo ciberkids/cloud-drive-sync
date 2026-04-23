@@ -28,9 +28,9 @@ export function Settings() {
 
   const [addingForAccount, setAddingForAccount] = useState<string | null>(null);
 
-  const handleAddPair = async (remoteFolderId: string, localPath: string, accountId?: string) => {
+  const handleAddPair = async (remoteFolderId: string, localPath: string, accountId?: string, provider?: string, syncMode?: string) => {
     try {
-      await add(localPath, remoteFolderId, accountId);
+      await add(localPath, remoteFolderId, accountId, provider, syncMode);
       setAddingForAccount(null);
     } catch (e) {
       console.error("Failed to add sync pair:", e);
@@ -544,8 +544,8 @@ export function Settings() {
                       <div className="sync-group-add-browser">
                         <RemoteFolderBrowser
                           authenticated={status.connected}
-                          onAddPair={(remoteId, localPath) =>
-                            handleAddPair(remoteId, localPath, email)
+                          onAddPair={(remoteId, localPath, syncMode) =>
+                            handleAddPair(remoteId, localPath, email, group.provider, syncMode)
                           }
                           existingRemoteIds={existingRemoteIds}
                           accountId={group.accountId}

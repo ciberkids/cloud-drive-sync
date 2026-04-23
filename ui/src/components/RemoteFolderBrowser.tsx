@@ -15,7 +15,7 @@ function rootLabel(accountId?: string): string {
 
 interface RemoteFolderBrowserProps {
   authenticated: boolean;
-  onAddPair: (remoteFolderId: string, localPath: string) => void;
+  onAddPair: (remoteFolderId: string, localPath: string, syncMode: string) => void;
   existingRemoteIds: Set<string>;
   accountId?: string;
 }
@@ -42,6 +42,7 @@ export function RemoteFolderBrowser({
     name: string;
   } | null>(null);
   const [localPath, setLocalPath] = useState("");
+  const [syncMode, setSyncMode] = useState("two_way");
 
   // New folder form state
   const [newFolderMode, setNewFolderMode] = useState(false);
@@ -100,24 +101,28 @@ export function RemoteFolderBrowser({
   const handleSyncClick = (folder: { id: string; name: string }) => {
     setSyncTarget(folder);
     setLocalPath("");
+    setSyncMode("two_way");
   };
 
   const handleSyncCurrentFolder = () => {
     const current = breadcrumbs[breadcrumbs.length - 1];
     setSyncTarget(current);
     setLocalPath("");
+    setSyncMode("two_way");
   };
 
   const handleAdd = () => {
     if (!syncTarget || !localPath) return;
-    onAddPair(syncTarget.id, localPath);
+    onAddPair(syncTarget.id, localPath, syncMode);
     setSyncTarget(null);
     setLocalPath("");
+    setSyncMode("two_way");
   };
 
   const handleCancel = () => {
     setSyncTarget(null);
     setLocalPath("");
+    setSyncMode("two_way");
   };
 
   const handleRefresh = () => {
@@ -303,6 +308,20 @@ export function RemoteFolderBrowser({
             onChange={setLocalPath}
             label="Local destination"
           />
+          <div className="remote-browser-sync-mode">
+            <label className="field-label-inline">
+              Mode
+              <select
+                className="select select-sm"
+                value={syncMode}
+                onChange={(e) => setSyncMode(e.target.value)}
+              >
+                <option value="two_way">Two-way</option>
+                <option value="upload_only">Upload only</option>
+                <option value="download_only">Download only</option>
+              </select>
+            </label>
+          </div>
           <div className="remote-browser-sync-actions">
             <button
               className="btn btn-primary btn-sm"

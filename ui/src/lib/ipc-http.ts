@@ -57,13 +57,17 @@ export async function addSyncPair(
   localPath: string,
   remoteFolderId: string,
   ignoreHidden?: boolean,
-  accountId?: string
+  accountId?: string,
+  provider?: string,
+  syncMode?: string
 ): Promise<SyncPair> {
   return post<SyncPair>("pairs", {
     local_path: localPath,
     remote_folder_id: remoteFolderId,
     ignore_hidden: ignoreHidden,
     account_id: accountId,
+    provider: provider,
+    sync_mode: syncMode,
   });
 }
 

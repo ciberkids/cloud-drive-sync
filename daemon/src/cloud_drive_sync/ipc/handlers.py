@@ -252,6 +252,7 @@ class RequestHandler:
         remote_folder_id = params.get("remote_folder_id", "root")
         ignore_hidden = params.get("ignore_hidden", True)
         provider = params.get("provider", "gdrive")
+        sync_mode = params.get("sync_mode", "two_way")
         if not local_path:
             raise TypeError("local_path is required")
 
@@ -271,6 +272,7 @@ class RequestHandler:
             local_path=local_path,
             remote_folder_id=remote_folder_id,
             enabled=True,
+            sync_mode=sync_mode,
             ignore_hidden=ignore_hidden,
             ignore_patterns=params.get("ignore_patterns", []),
             account_id=params.get("account_id", ""),

@@ -110,6 +110,8 @@ pub async fn add_sync_pair(
     remote_folder_id: String,
     ignore_hidden: Option<bool>,
     account_id: Option<String>,
+    provider: Option<String>,
+    sync_mode: Option<String>,
 ) -> Result<SyncPair, String> {
     let bridge = bridge.0.lock().await;
     let mut params = json!({
@@ -121,6 +123,12 @@ pub async fn add_sync_pair(
     }
     if let Some(ref aid) = account_id {
         params["account_id"] = json!(aid);
+    }
+    if let Some(ref p) = provider {
+        params["provider"] = json!(p);
+    }
+    if let Some(ref sm) = sync_mode {
+        params["sync_mode"] = json!(sm);
     }
     let result = bridge.call("add_sync_pair", Some(params)).await?;
     serde_json::from_value(result).map_err(|e| e.to_string())
