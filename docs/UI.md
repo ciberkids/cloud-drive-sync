@@ -61,11 +61,11 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 | **SyncStatus** | `src/components/SyncStatus.tsx` | Status dashboard: connection state, file counts, sync/pause controls, daemon info (PID, uptime, version, start time) |
 | **Settings** | `src/components/Settings.tsx` | Sync pair management (add/remove), sync mode selector, conflict strategy selector |
 | **ConflictDialog** | `src/components/ConflictDialog.tsx` | Lists unresolved conflicts with per-file and batch resolution buttons |
-| **ActivityLog** | `src/components/ActivityLog.tsx` | Paginated, filterable activity feed with event type icons |
-| **AccountManager** | `src/components/AccountManager.tsx` | Multi-provider account management: OAuth browser flow (Google Drive, Dropbox, OneDrive, Box) and credential form for Nextcloud (server URL + app password) |
+| **ActivityLog** | `src/components/ActivityLog.tsx` | Paginated, filterable activity feed with event type icons. Clicking an entry expands it to show full path, details, account, and timestamp — with a **Copy to clipboard** button. |
+| **AccountManager** | `src/components/AccountManager.tsx` | Multi-provider account management: OAuth browser flow (Google Drive, Dropbox, OneDrive, Box) and credential form for Nextcloud (server URL + app password). Each provider has a distinct accent color: Google Drive (blue), Nextcloud (teal), OneDrive (Microsoft blue), Dropbox (light blue), Box (amber), Proton (purple). |
 | **About** | `src/components/About.tsx` | App info: version, no-ads/no-tracking pledge, Buy Me a Coffee link, GitHub links |
 | **FolderPicker** | `src/components/FolderPicker.tsx` | Local folder selection: native dialog (Tauri) or server-side browser with New Folder creation (HTTP/headless) |
-| **RemoteFolderBrowser** | `src/components/RemoteFolderBrowser.tsx` | Hierarchical Google Drive folder browser for selecting remote sync targets |
+| **RemoteFolderBrowser** | `src/components/RemoteFolderBrowser.tsx` | Hierarchical remote folder browser (works with all providers). Includes breadcrumb navigation, New Folder creation, and an inline sync form where you pick the local destination and **sync mode** (Two-way / Upload only / Download only) before confirming. |
 | **RemoteFolderPicker** | `src/components/RemoteFolderPicker.tsx` | Wrapper component that combines the folder browser with selection UI |
 
 ### Lib Modules

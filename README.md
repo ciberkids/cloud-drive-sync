@@ -253,23 +253,29 @@ curl -fsSL https://raw.githubusercontent.com/ciberkids/cloud-drive-sync/main/ins
 
 | Provider | Status | Auth Method | Hash Algorithm | Notes |
 |----------|--------|-------------|----------------|-------|
-| Google Drive | Available | OAuth 2.0 (browser) | MD5 | Shared Drives, Google Docs conversion |
-| Dropbox | Optional dep | OAuth 2.0 PKCE | Content hash (SHA-256 blocks) | Path-based API, cursor-based changes |
-| OneDrive | Optional dep | Azure AD (device code / browser) | QuickXorHash | Microsoft Graph API, delta sync |
-| Nextcloud | Optional dep | App password | MD5 | Self-hosted, WebDAV, ETag polling |
-| Box | Optional dep | OAuth 2.0 | SHA-1 | Chunked upload >50MB, Events API |
-| Proton Drive | Planned Q2 2026+ | N/A | N/A | No public API yet |
+| Google Drive | ✅ Tested | OAuth 2.0 (browser) | MD5 | Shared Drives, Google Docs conversion |
+| Nextcloud | ✅ Tested | App password | MD5 | Self-hosted, WebDAV, ETag polling |
+| Dropbox | 🧪 Needs testing | OAuth 2.0 PKCE | Content hash (SHA-256 blocks) | Code complete — community testing welcome |
+| OneDrive | 🧪 Needs testing | Azure AD (device code / browser) | QuickXorHash | Code complete — community testing welcome |
+| Box | 🧪 Needs testing | OAuth 2.0 | SHA-1 | Code complete — community testing welcome |
+| Proton Drive | 🔜 Planned Q2 2026+ | N/A | N/A | No public API yet |
 
-### Installing provider dependencies
+> **Tested** means we actively run it in production and bugs are caught quickly.
+> **Needs testing** means the provider implementation is complete but has not been validated end-to-end by the maintainers.
+> If you use Dropbox, OneDrive, or Box — please try it and [open an issue](https://github.com/ciberkids/cloud-drive-sync/issues) if anything breaks. Your reports directly improve coverage for everyone.
 
-Google Drive support is included by default. For other providers, install their optional dependencies:
+### Provider availability
+
+**Pre-built packages (DEB, RPM, AppImage, Flatpak, DMG, MSI) and the Docker image include all providers out of the box** — no extra steps needed. Just install and go.
+
+If you install from PyPI (source / development), providers other than Google Drive require their optional Python dependencies:
 
 ```bash
 # Individual providers
-pip install cloud-drive-sync[dropbox]
-pip install cloud-drive-sync[onedrive]
-pip install cloud-drive-sync[nextcloud]
-pip install cloud-drive-sync[box]
+pip install cloud-drive-sync[nextcloud]   # includes nc-py-api
+pip install cloud-drive-sync[dropbox]     # includes dropbox SDK
+pip install cloud-drive-sync[onedrive]    # includes msgraph-sdk + azure-identity
+pip install cloud-drive-sync[box]         # includes box-sdk-gen
 
 # All providers at once
 pip install cloud-drive-sync[all-providers]
@@ -423,14 +429,14 @@ cloud-drive-sync account add --provider box
 
 Cloud Drive Sync can be used to sync files **between different cloud providers** by setting up two sync pairs that point to the same local directory — one in download-only mode and another in upload-only mode.
 
-### Example: Google Drive -> Dropbox
+### ✅ Confirmed working: Google Drive → Nextcloud
 
-Sync files from Google Drive to Dropbox automatically:
+This is an actively used production scenario — files download from Google Drive and upload to Nextcloud automatically:
 
 ```bash
 # 1. Add both accounts
 cloud-drive-sync account add --provider gdrive
-cloud-drive-sync account add --provider dropbox
+cloud-drive-sync account add --provider nextcloud --server https://your.nextcloud.com
 
 # 2. Create a shared local directory
 mkdir -p ~/cloud-bridge
@@ -440,22 +446,19 @@ cloud-drive-sync pair add \
   --local ~/cloud-bridge \
   --remote root \
   --account user@gmail.com \
-  --provider gdrive
+  --provider gdrive \
+  --mode download_only
 
-# Set it to download-only (Google Drive -> local)
-# Use the UI Settings or edit config.toml:
-#   sync_mode = "download_only"
-
-# 4. Add an upload-only pair to Dropbox
+# 4. Add an upload-only pair to Nextcloud
 cloud-drive-sync pair add \
   --local ~/cloud-bridge \
-  --remote "" \
-  --account user@dropbox.com \
-  --provider dropbox
-
-# Set it to upload-only (local -> Dropbox)
-#   sync_mode = "upload_only"
+  --remote /Documents/cloud-bridge \
+  --account user@gmail.com \
+  --provider nextcloud \
+  --mode upload_only
 ```
+
+> **Same email on both accounts?** That works — the system identifies accounts by `provider:email`, so `gdrive:user@gmail.com` and `nextcloud:user@gmail.com` are treated as separate accounts.
 
 Or via `config.toml`:
 
@@ -469,30 +472,44 @@ provider = "gdrive"
 
 [[sync.pairs]]
 local_path = "/home/user/cloud-bridge"
-remote_folder_id = ""
-sync_mode = "upload_only"        # local -> Dropbox
-account_id = "user@dropbox.com"
-provider = "dropbox"
+remote_folder_id = "/Documents/cloud-bridge"
+sync_mode = "upload_only"        # local -> Nextcloud
+account_id = "user@gmail.com"
+provider = "nextcloud"
 
 [[accounts]]
 email = "user@gmail.com"
 provider = "gdrive"
 
 [[accounts]]
-email = "user@dropbox.com"
-provider = "dropbox"
+email = "user@gmail.com"
+provider = "nextcloud"
+server_url = "https://your.nextcloud.com"
 ```
 
-### Other cross-cloud scenarios
+### Example: Google Drive → Dropbox
 
-The same pattern works for any combination:
+```bash
+cloud-drive-sync account add --provider gdrive
+cloud-drive-sync account add --provider dropbox
+mkdir -p ~/cloud-bridge
+cloud-drive-sync pair add --local ~/cloud-bridge --remote root \
+  --account user@gmail.com --provider gdrive --mode download_only
+cloud-drive-sync pair add --local ~/cloud-bridge --remote "" \
+  --account user@dropbox.com --provider dropbox --mode upload_only
+```
 
-| Source | Destination | Source sync_mode | Dest sync_mode |
-|--------|------------|-----------------|---------------|
-| Google Drive | Dropbox | `download_only` | `upload_only` |
-| OneDrive | Nextcloud | `download_only` | `upload_only` |
-| Box | Google Drive | `download_only` | `upload_only` |
-| Any | Any | `download_only` | `upload_only` |
+> ⚠️ **Dropbox, OneDrive, and Box are code-complete but not yet validated end-to-end by the maintainers.** If you try a combination and it works (or breaks), please [open an issue](https://github.com/ciberkids/cloud-drive-sync/issues) — your report helps everyone.
+
+### Cross-cloud combinations
+
+| Source | Destination | Confirmed? |
+|--------|------------|------------|
+| Google Drive | Nextcloud | ✅ Yes |
+| Google Drive | Dropbox | 🧪 Untested — please report |
+| Google Drive | OneDrive | 🧪 Untested — please report |
+| Nextcloud | Google Drive | 🧪 Untested — please report |
+| Any | Any | 🧪 Follow the pattern above |
 
 For **bidirectional** cross-cloud sync (changes on either side are reflected on both), use `two_way` for both pairs. Be aware this may cause sync loops if both providers modify the same file simultaneously — the conflict resolver will handle these cases.
 

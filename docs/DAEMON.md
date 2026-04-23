@@ -324,19 +324,69 @@ The daemon can expose an HTTP REST API with a built-in web UI for headless and D
 
 #### Endpoints
 
+**Status**
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/status` | Daemon and sync status |
+
+**Accounts**
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/accounts` | List all accounts |
-| POST | `/api/accounts` | Add a new account |
+| POST | `/api/accounts` | Add a new account (OAuth or Nextcloud credentials) |
+| POST | `/api/accounts/auth-code` | Exchange OAuth authorization code |
+| GET | `/api/accounts/oauth-callback` | OAuth redirect callback handler |
+| DELETE | `/api/accounts/{email}` | Remove an account |
+| PUT | `/api/accounts/{email}/max-transfers` | Set per-account max concurrent transfers |
+
+**Sync Pairs**
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/pairs` | List sync pairs |
-| POST | `/api/pairs` | Add a sync pair |
-| DELETE | `/api/pairs/:id` | Remove a sync pair |
-| POST | `/api/sync` | Trigger an immediate sync |
-| GET | `/api/activity` | Recent sync activity log |
+| POST | `/api/pairs` | Add a sync pair (`local_path`, `remote_folder_id`, `provider`, `account_id`, `sync_mode`) |
+| DELETE | `/api/pairs/{pair_id}` | Remove a sync pair |
+| PUT | `/api/pairs/{pair_id}/mode` | Set sync mode (`two_way` / `upload_only` / `download_only`) |
+| PUT | `/api/pairs/{pair_id}/ignore-hidden` | Toggle dotfile exclusion |
+| PUT | `/api/pairs/{pair_id}/ignore-patterns` | Set glob ignore patterns |
+| GET | `/api/pairs/{pair_id}/rules` | Get advanced sync rules (size limit, regex filters) |
+| PUT | `/api/pairs/{pair_id}/rules` | Set advanced sync rules |
+
+**Sync Control**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/sync` | Trigger an immediate sync (optional `pair_id`) |
+| POST | `/api/sync/pause` | Pause sync (optional `pair_id`) |
+| POST | `/api/sync/resume` | Resume sync (optional `pair_id`) |
+
+**Conflicts & Activity**
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/conflicts` | List unresolved conflicts |
-| GET | `/api/settings/:key` | Read a setting |
-| PUT | `/api/settings/:key` | Update a setting |
+| POST | `/api/conflicts/{conflict_id}/resolve` | Resolve a conflict |
+| GET | `/api/activity` | Recent sync activity log (`?limit=N&offset=N`) |
+
+**Settings**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/PUT | `/api/settings/notifications` | Notification preferences |
+| GET/PUT | `/api/settings/bandwidth` | Upload/download bandwidth limits (kbps, 0 = unlimited) |
+| GET/PUT | `/api/settings/proxy` | HTTP/HTTPS proxy settings |
+| PUT | `/api/settings/conflict-strategy` | Conflict strategy (`keep_both` / `newest_wins` / `ask_user`) |
+
+**File Browser (headless)**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/remote-folders` | List remote folders (`?parent_id=&account_id=`) |
+| POST | `/api/remote-folders` | Create a remote folder |
+| GET | `/api/local-dirs` | List local directories (`?path=`) |
+| POST | `/api/local-dirs` | Create a local directory |
 
 #### Adding accounts via Web UI
 
