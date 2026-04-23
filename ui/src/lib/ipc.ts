@@ -220,6 +220,14 @@ export async function listRemoteFolders(
   return invoke("list_remote_folders", { parentId, accountId });
 }
 
+export async function createRemoteFolder(
+  parentId: string,
+  name: string,
+  accountId?: string
+): Promise<{ id: string; name: string; error?: string }> {
+  return invoke("create_remote_folder", { parentId, name, accountId });
+}
+
 export async function setAccountMaxTransfers(
   email: string,
   maxConcurrentTransfers: number

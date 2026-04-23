@@ -1747,6 +1747,20 @@ body {
   gap: 6px;
 }
 
+.new-folder-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.new-folder-error {
+  color: var(--error, #e74c3c);
+  font-size: 12px;
+}
+
 /* About page */
 .about-page {
   max-width: 480px;

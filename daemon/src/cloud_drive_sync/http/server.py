@@ -73,6 +73,7 @@ class HttpServer:
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         # Remote folders
         r.add_get("/api/remote-folders", self._list_remote_folders)
+        r.add_post("/api/remote-folders", self._create_remote_folder)
         # Local filesystem browser (for headless/web UI)
         r.add_get("/api/local-dirs", self._list_local_dirs)
         r.add_post("/api/local-dirs", self._mkdir_local)
@@ -191,6 +192,9 @@ class HttpServer:
         if "account_id" in req.query:
             params["account_id"] = req.query["account_id"]
         return self._json(await self._rpc("list_remote_folders", params))
+    async def _create_remote_folder(self, req):
+        body = await req.json()
+        return self._json(await self._rpc("create_remote_folder", body))
     async def _list_local_dirs(self, req):
         params = {"path": req.query.get("path", "")}
         return self._json(await self._rpc("list_local_dirs", params))

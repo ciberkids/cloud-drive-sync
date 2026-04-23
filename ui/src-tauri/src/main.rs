@@ -53,6 +53,7 @@ fn main() {
             commands::set_ignore_hidden,
             commands::set_ignore_patterns,
             commands::list_remote_folders,
+            commands::create_remote_folder,
             commands::add_account,
             commands::remove_account,
             commands::list_accounts,

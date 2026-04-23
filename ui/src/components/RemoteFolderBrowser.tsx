@@ -43,6 +43,12 @@ export function RemoteFolderBrowser({
   } | null>(null);
   const [localPath, setLocalPath] = useState("");
 
+  // New folder form state
+  const [newFolderMode, setNewFolderMode] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderError, setNewFolderError] = useState<string | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
   const loadFolders = useCallback(async (parentId: string) => {
     setLoading(true);
     setError(null);
@@ -122,6 +128,27 @@ export function RemoteFolderBrowser({
   const currentFolderId = breadcrumbs[breadcrumbs.length - 1].id;
   const currentFolderSynced = existingRemoteIds.has(currentFolderId);
 
+  const handleCreateFolder = async () => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    setCreatingFolder(true);
+    setNewFolderError(null);
+    try {
+      const result = await ipc.createRemoteFolder(currentFolderId, trimmed, accountId);
+      if (result.error) {
+        setNewFolderError(result.error);
+      } else {
+        setNewFolderMode(false);
+        setNewFolderName("");
+        await loadFolders(currentFolderId);
+      }
+    } catch (e) {
+      setNewFolderError(String(e));
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
   return (
     <div
       className={`remote-browser ${!authenticated ? "remote-browser-disabled" : ""}`}
@@ -158,6 +185,15 @@ export function RemoteFolderBrowser({
             Refresh
           </button>
           <button
+            className="btn btn-sm"
+            onClick={() => { setNewFolderMode((v) => !v); setNewFolderName(""); setNewFolderError(null); }}
+            disabled={loading}
+            type="button"
+            title="Create a new folder here"
+          >
+            {newFolderMode ? "Cancel" : "+ New Folder"}
+          </button>
+          <button
             className="btn btn-primary btn-sm"
             onClick={handleSyncCurrentFolder}
             disabled={currentFolderSynced}
@@ -167,6 +203,29 @@ export function RemoteFolderBrowser({
           </button>
         </div>
       </div>
+
+      {newFolderMode && (
+        <div className="new-folder-form">
+          <input
+            type="text"
+            className="input input-sm"
+            placeholder="Folder name"
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreateFolder(); if (e.key === "Escape") { setNewFolderMode(false); setNewFolderName(""); } }}
+            autoFocus
+          />
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleCreateFolder}
+            disabled={creatingFolder || !newFolderName.trim()}
+            type="button"
+          >
+            {creatingFolder ? "Creating..." : "Create"}
+          </button>
+          {newFolderError && <span className="new-folder-error">{newFolderError}</span>}
+        </div>
+      )}
 
       <div className="remote-browser-list">
         {loading && (

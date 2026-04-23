@@ -329,6 +329,23 @@ pub async fn list_remote_folders(
 }
 
 #[tauri::command]
+pub async fn create_remote_folder(
+    bridge: State<'_, BridgeState>,
+    parent_id: String,
+    name: String,
+    account_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let bridge = bridge.0.lock().await;
+    let mut params = json!({ "parent_id": parent_id, "name": name });
+    if let Some(ref aid) = account_id {
+        params["account_id"] = json!(aid);
+    }
+    bridge
+        .call("create_remote_folder", Some(params))
+        .await
+}
+
+#[tauri::command]
 pub async fn add_account(bridge: State<'_, BridgeState>) -> Result<Value, String> {
     let bridge = bridge.0.lock().await;
     bridge.call("add_account", None).await

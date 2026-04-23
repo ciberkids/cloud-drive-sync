@@ -49,6 +49,7 @@ class RequestHandler:
             "start_auth": self._start_auth,
             "logout": self._logout,
             "list_remote_folders": self._list_remote_folders,
+            "create_remote_folder": self._create_remote_folder,
             "set_sync_mode": self._set_sync_mode,
             "set_ignore_hidden": self._set_ignore_hidden,
             "set_ignore_patterns": self._set_ignore_patterns,
@@ -530,6 +531,43 @@ class RequestHandler:
         except Exception as exc:
             log.error("Failed to list remote folders: %s", exc)
             return {"folders": [], "shared_drives": [], "error": str(exc)}
+
+    async def _create_remote_folder(self, params: dict) -> dict:
+        """Create a new folder on the remote provider."""
+        if self._engine is None and self._drive_client is None:
+            return {"error": "Not authenticated"}
+
+        params = params or {}
+        account_id = params.get("account_id", "")
+        name = (params.get("name") or "").strip()
+        parent_id = params.get("parent_id", "root")
+
+        if not name:
+            return {"error": "Folder name is required"}
+
+        client = None
+        if account_id and self._engine:
+            client = self._engine._clients.get(account_id)
+            if client is None:
+                for key, c in self._engine._clients.items():
+                    if ":" in key and key.split(":", 1)[1] == account_id:
+                        client = c
+                        break
+        if client is None:
+            client = self._drive_client or (self._engine._client if self._engine else None)
+        if client is None:
+            return {"error": "Not authenticated"}
+
+        try:
+            result = await client.create_file(
+                name=name,
+                parent_id=parent_id,
+                is_folder=True,
+            )
+            return {"id": result.get("id", ""), "name": result.get("name", name)}
+        except Exception as exc:
+            log.error("Failed to create remote folder: %s", exc)
+            return {"error": str(exc)}
 
     async def _set_sync_mode(self, params: dict) -> dict:
         """Change the sync mode for a given pair."""

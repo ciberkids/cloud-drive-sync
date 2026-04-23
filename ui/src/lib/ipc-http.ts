@@ -251,6 +251,14 @@ export async function listRemoteFolders(
   return get(url);
 }
 
+export async function createRemoteFolder(
+  parentId: string,
+  name: string,
+  accountId?: string
+): Promise<{ id: string; name: string; error?: string }> {
+  return post("remote-folders", { parent_id: parentId, name, account_id: accountId });
+}
+
 export async function listLocalDirs(
   path?: string
 ): Promise<{
