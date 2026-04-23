@@ -294,7 +294,7 @@ class RequestHandler:
             "local_path": local_path,
             "remote_folder_id": remote_folder_id,
             "enabled": True,
-            "sync_mode": "two_way",
+            "sync_mode": sync_mode,
             "ignore_hidden": ignore_hidden,
             "ignore_patterns": pair.ignore_patterns,
             "account_id": pair.account_id,
