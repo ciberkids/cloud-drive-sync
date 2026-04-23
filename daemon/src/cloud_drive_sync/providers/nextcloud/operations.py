@@ -55,16 +55,9 @@ class NextcloudFileOps(CloudFileOps):
         log.info("Uploading %s (%d bytes) as '%s'", local_path, file_size, name)
 
         if existing_id:
-            # Update existing file — resolve its current path from fileid
-            def _get_path():
-                node = self._client._nc.files.by_id(int(existing_id))
-                if node is None:
-                    raise FileNotFoundError(f"Nextcloud file not found: fileid={existing_id}")
-                return node.user_path
-
-            remote_path = await asyncio.to_thread(_get_path)
+            remote_path = self._client._resolve_path(existing_id)
         else:
-            parent = "/" if remote_parent == "root" else self._client._normalise_path(remote_parent)
+            parent = "/" if remote_parent == "root" else self._client._resolve_path(remote_parent)
             remote_path = f"{parent}/{name}" if parent != "/" else f"/{name}"
 
         start_time = time.monotonic()
@@ -115,11 +108,7 @@ class NextcloudFileOps(CloudFileOps):
         start_time = time.monotonic()
 
         def _download():
-            node = self._client._nc.files.by_id(int(remote_id))
-            if node is None:
-                raise FileNotFoundError(f"Nextcloud file not found: fileid={remote_id}")
-
-            remote_path = node.user_path
+            remote_path = self._client._resolve_path(remote_id)
 
             fd, tmp_path = tempfile.mkstemp(
                 dir=str(local_path.parent),
