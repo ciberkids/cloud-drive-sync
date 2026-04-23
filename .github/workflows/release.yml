@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-daemon:
@@ -28,7 +29,7 @@ jobs:
             artifact: daemon-macos
             ext: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set version from git tag
         run: |
@@ -83,7 +84,7 @@ jobs:
             triple: aarch64-apple-darwin
             ext: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set version from git tag
         run: |
@@ -193,7 +194,7 @@ jobs:
     needs: build-ui
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download daemon binary
         uses: actions/download-artifact@v4
@@ -265,10 +266,10 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -282,7 +283,7 @@ jobs:
         run: sed -i "s/^version = .*/version = \"${{ steps.version.outputs.VERSION }}\"/" daemon/pyproject.toml
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -296,7 +297,7 @@ jobs:
     needs: [build-daemon, build-ui, build-flatpak, build-docker]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
