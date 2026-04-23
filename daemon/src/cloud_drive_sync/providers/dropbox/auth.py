@@ -12,8 +12,9 @@ from cloud_drive_sync.util.logging import get_logger
 
 log = get_logger("providers.dropbox.auth")
 
-# Default Dropbox app key — users can override via config
-_DEFAULT_APP_KEY = ""
+# Embedded Dropbox app credentials (PKCE flow — app secret not used for token exchange)
+_DEFAULT_APP_KEY = "ch4h2lb0g6k9g42"
+_DEFAULT_APP_SECRET = "ek34ux6wi07xntq"
 
 
 class _AuthUrlReady(Exception):
