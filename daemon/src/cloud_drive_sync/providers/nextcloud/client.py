@@ -69,13 +69,36 @@ class NextcloudClient(CloudClient):
             path = "/" + path
         return path.rstrip("/")
 
+    def _resolve_path(self, file_id: str) -> str:
+        """Return the WebDAV path for a file_id.
+
+        New IDs are WebDAV paths (start with /). Legacy IDs from older sync
+        databases are compound Nextcloud fileids like ``00000162ocmvvvbtlon4``
+        — extract the numeric prefix and call by_id as a fallback.
+        """
+        if file_id == "root" or file_id == "/":
+            return "/"
+        if file_id.startswith("/"):
+            return self._normalise_path(file_id)
+        # Legacy compound fileid: strip non-digit suffix and look up by integer ID
+        numeric = "".join(c for c in file_id if c.isdigit())
+        if not numeric:
+            raise ValueError(f"Cannot resolve Nextcloud file_id: {file_id!r}")
+        node = self._nc.files.by_id(int(numeric))
+        if node is None:
+            raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
+        return node.user_path
+
     def _file_to_dict(self, fs_node: Any, relative_path: str = "") -> dict[str, Any]:
         """Convert an nc-py-api FsNode to the normalised metadata dict."""
         info = fs_node.info  # FsNodeInfo typed object — use attribute access, not .get()
         is_dir = bool(fs_node.is_dir)
 
-        # FsNode.file_id is a str; FsNodeInfo.fileid is an int — prefer FsNode
-        file_id = fs_node.file_id or str(getattr(info, "fileid", ""))
+        # Use the WebDAV user_path as the stable ID — it is the key accepted by
+        # all nc-py-api path-based operations (upload, download, mkdir, delete, move).
+        # The compound fileid (e.g. "00000162ocmvvvbtlon4") is NOT a valid path
+        # segment in /dav/files/ and must never be used as one.
+        file_id = fs_node.user_path or fs_node.file_id or str(getattr(info, "fileid", ""))
 
         # Determine MIME type
         if is_dir:
@@ -149,14 +172,19 @@ class NextcloudClient(CloudClient):
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def get_file(self, file_id: str) -> dict[str, Any]:
-        """Get metadata for a single file by its fileid."""
+        """Get metadata for a single file by its ID (path or legacy fileid)."""
 
         def _get():
-            return self._nc.files.by_id(int(file_id))
+            path = self._resolve_path(file_id)
+            parent = path.rsplit("/", 1)[0] or "/"
+            nodes = self._nc.files.listdir(parent)
+            name = path.rsplit("/", 1)[-1]
+            node = next((n for n in nodes if n.name == name), None)
+            if node is None:
+                raise FileNotFoundError(f"Nextcloud file not found: {file_id}")
+            return node
 
         node = await asyncio.to_thread(_get)
-        if node is None:
-            raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
         return self._file_to_dict(node)
 
     @async_retry(max_retries=3, base_delay=1.0)
@@ -215,11 +243,7 @@ class NextcloudClient(CloudClient):
         new_name: str | None = None,
     ) -> dict[str, Any]:
         def _update():
-            node = self._nc.files.by_id(int(file_id))
-            if node is None:
-                raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
-
-            remote_path = node.user_path
+            remote_path = self._resolve_path(file_id)
 
             if content_path:
                 self._nc.files.upload(remote_path, content_path)
@@ -230,9 +254,14 @@ class NextcloudClient(CloudClient):
                 self._nc.files.move(remote_path, new_path)
                 remote_path = new_path
 
-            # Re-fetch to get updated metadata
-            updated = self._nc.files.by_id(int(file_id))
-            return updated
+            # Re-fetch metadata via parent listing
+            parent_dir = remote_path.rsplit("/", 1)[0] or "/"
+            nodes = self._nc.files.listdir(parent_dir)
+            target_name = remote_path.rsplit("/", 1)[-1]
+            node = next((n for n in nodes if n.name == target_name), None)
+            if node is None:
+                raise RuntimeError(f"Updated file not found: {remote_path}")
+            return node
 
         result_node = await asyncio.to_thread(_update)
         return self._file_to_dict(result_node)
@@ -245,20 +274,19 @@ class NextcloudClient(CloudClient):
         new_name: str | None = None,
     ) -> dict[str, Any]:
         def _move():
-            node = self._nc.files.by_id(int(file_id))
-            if node is None:
-                raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
-
-            src_path = node.user_path
-            dest_parent = "/" if new_parent_id == "root" else self._normalise_path(new_parent_id)
-            name = new_name or node.name
+            src_path = self._resolve_path(file_id)
+            dest_parent = "/" if new_parent_id == "root" else self._resolve_path(new_parent_id)
+            name = new_name or src_path.rsplit("/", 1)[-1]
             dest_path = f"{dest_parent}/{name}" if dest_parent != "/" else f"/{name}"
 
             self._nc.files.move(src_path, dest_path)
 
-            # Re-fetch updated metadata
-            updated = self._nc.files.by_id(int(file_id))
-            return updated
+            # Re-fetch metadata via parent listing
+            nodes = self._nc.files.listdir(dest_parent)
+            node = next((n for n in nodes if n.name == name), None)
+            if node is None:
+                raise RuntimeError(f"Moved file not found: {dest_path}")
+            return node
 
         result_node = await asyncio.to_thread(_move)
         return self._file_to_dict(result_node)
@@ -266,21 +294,23 @@ class NextcloudClient(CloudClient):
     @async_retry(max_retries=3, base_delay=1.0)
     async def delete_file(self, file_id: str) -> None:
         def _delete():
-            node = self._nc.files.by_id(int(file_id))
-            if node is None:
-                raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
-            self._nc.files.delete(node.user_path)
+            self._nc.files.delete(self._resolve_path(file_id))
 
         await asyncio.to_thread(_delete)
 
     @async_retry(max_retries=3, base_delay=1.0)
     async def trash_file(self, file_id: str) -> dict[str, Any]:
         def _trash():
-            node = self._nc.files.by_id(int(file_id))
+            path = self._resolve_path(file_id)
+            # Get metadata before trashing
+            parent_dir = path.rsplit("/", 1)[0] or "/"
+            nodes = self._nc.files.listdir(parent_dir)
+            name = path.rsplit("/", 1)[-1]
+            node = next((n for n in nodes if n.name == name), None)
             if node is None:
-                raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
+                raise FileNotFoundError(f"Nextcloud file not found: {file_id}")
             meta = self._file_to_dict(node)
-            self._nc.files.trashbin.delete(node.user_path)
+            self._nc.files.trashbin.delete(path)
             return meta
 
         return await asyncio.to_thread(_trash)
@@ -304,20 +334,18 @@ class NextcloudClient(CloudClient):
         return await asyncio.to_thread(_about)
 
     async def find_child_folder(self, parent_id: str, name: str) -> str | None:
-        """Check if a child folder exists under parent_path/name.
+        """Check if a child folder exists under parent_id/name.
 
-        ``parent_id`` is a WebDAV path. Returns the child folder path if found.
+        Returns the child folder's ID (WebDAV path) if found, else None.
         """
-        parent_path = "/" if parent_id == "root" else self._normalise_path(parent_id)
-        child_path = f"{parent_path}/{name}" if parent_path != "/" else f"/{name}"
-
         def _check():
             try:
+                parent_path = self._resolve_path(parent_id)
                 nodes = self._nc.files.listdir(parent_path)
                 for node in nodes:
-                    is_dir = node.is_dir if hasattr(node, "is_dir") else node.info.get("is_dir", False)
+                    is_dir = node.is_dir if hasattr(node, "is_dir") else False
                     if node.name == name and is_dir:
-                        return child_path
+                        return node.user_path
                 return None
             except Exception:
                 return None
@@ -335,14 +363,8 @@ class NextcloudClient(CloudClient):
             item["relativePath"] = rel
             if item.get("mimeType") == "httpd/unix-directory":
                 result.append(item)
-                # For subfolders, use the WebDAV path
-                folder_path = "/" if folder_id == "root" else self._normalise_path(folder_id)
-                child_path = (
-                    f"{folder_path}/{item['name']}"
-                    if folder_path != "/"
-                    else f"/{item['name']}"
-                )
-                children = await self.list_all_recursive(child_path, rel)
+                # item['id'] is the WebDAV user_path of the subfolder
+                children = await self.list_all_recursive(item["id"], rel)
                 result.extend(children)
             else:
                 result.append(item)
