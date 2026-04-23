@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 
-
-from cloud_drive_sync.config import Account, Config, SyncPair
+from cloud_drive_sync.config import Account, Config, SyncConfig, SyncPair
+from cloud_drive_sync.db.database import Database
+from cloud_drive_sync.drive.mock_client import MockChangePoller, MockDriveClient, MockFileOperations
+from cloud_drive_sync.sync.engine import SyncEngine
 
 
 class TestAccountDataclass:
@@ -93,3 +96,99 @@ class TestConfigWithAccounts:
 
         loaded = Config.load(config_file)
         assert loaded.sync.pairs[0].account_id == ""
+
+
+class TestSameEmailDifferentProvider:
+    """Regression tests for issue #12: same email, two providers."""
+
+    @pytest.mark.asyncio
+    async def test_nextcloud_pair_uses_nextcloud_client(self, tmp_path):
+        """A pair with provider='nextcloud' must resolve to the Nextcloud client,
+        not the GDrive client, even when both share the same email."""
+        email = "shared@example.com"
+
+        cfg = Config()
+        cfg.accounts = [
+            Account(email=email, provider="gdrive"),
+            Account(email=email, provider="nextcloud"),
+        ]
+        cfg.sync = SyncConfig(pairs=[
+            SyncPair(
+                local_path=str(tmp_path / "local"),
+                remote_folder_id="root",
+                account_id=email,
+                provider="nextcloud",
+            )
+        ])
+
+        db = Database(tmp_path / "test.db")
+        await db.open()
+
+        gdrive_client = MockDriveClient(tmp_path / "remote_gdrive")
+        nextcloud_client = MockDriveClient(tmp_path / "remote_nextcloud")
+        clients = {
+            f"gdrive:{email}": gdrive_client,
+            f"nextcloud:{email}": nextcloud_client,
+        }
+
+        ops = MockFileOperations(nextcloud_client)
+        poller = MockChangePoller(nextcloud_client)
+        engine = SyncEngine(cfg, db, clients=clients, file_ops=ops, change_poller=poller)
+
+        pair = cfg.sync.pairs[0]
+        (tmp_path / "local").mkdir(parents=True, exist_ok=True)
+        await engine._start_pair(pair, "pair_0")
+
+        assert "pair_0" in engine.pairs
+        resolved_client = engine.pairs["pair_0"].executor._drive_client
+        assert resolved_client is nextcloud_client, (
+            "Expected Nextcloud client but got GDrive client — "
+            "provider disambiguation by (email, provider) is broken"
+        )
+
+        await engine.stop()
+        await db.close()
+
+    @pytest.mark.asyncio
+    async def test_gdrive_pair_uses_gdrive_client(self, tmp_path):
+        """A pair with provider='gdrive' must resolve to the GDrive client."""
+        email = "shared@example.com"
+
+        cfg = Config()
+        cfg.accounts = [
+            Account(email=email, provider="gdrive"),
+            Account(email=email, provider="nextcloud"),
+        ]
+        cfg.sync = SyncConfig(pairs=[
+            SyncPair(
+                local_path=str(tmp_path / "local"),
+                remote_folder_id="root",
+                account_id=email,
+                provider="gdrive",
+            )
+        ])
+
+        db = Database(tmp_path / "test.db")
+        await db.open()
+
+        gdrive_client = MockDriveClient(tmp_path / "remote_gdrive")
+        nextcloud_client = MockDriveClient(tmp_path / "remote_nextcloud")
+        clients = {
+            f"gdrive:{email}": gdrive_client,
+            f"nextcloud:{email}": nextcloud_client,
+        }
+
+        ops = MockFileOperations(gdrive_client)
+        poller = MockChangePoller(gdrive_client)
+        engine = SyncEngine(cfg, db, clients=clients, file_ops=ops, change_poller=poller)
+
+        pair = cfg.sync.pairs[0]
+        (tmp_path / "local").mkdir(parents=True, exist_ok=True)
+        await engine._start_pair(pair, "pair_0")
+
+        assert "pair_0" in engine.pairs
+        resolved_client = engine.pairs["pair_0"].executor._drive_client
+        assert resolved_client is gdrive_client
+
+        await engine.stop()
+        await db.close()

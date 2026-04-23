@@ -130,10 +130,15 @@ class SyncEngine:
                 log.error("Cannot create local sync directory %s for %s: %s", local_root, pair_id, exc)
                 return
 
-        # Resolve the client for this pair — use provider-namespaced key
-        # with backward-compat fallback to bare email.
-        account = next((a for a in self._config.accounts if a.email == pair.account_id), None)
-        provider_name = account.provider if account else "gdrive"
+        # Resolve the client for this pair.  Use pair.provider to distinguish
+        # accounts that share the same email across providers (e.g. gdrive + nextcloud
+        # both registered under the same address — #12).
+        provider_name = pair.provider or "gdrive"
+        account = next(
+            (a for a in self._config.accounts
+             if a.email == pair.account_id and a.provider == provider_name),
+            None,
+        ) or next((a for a in self._config.accounts if a.email == pair.account_id), None)
         if pair.account_id:
             client = (
                 self._clients.get(f"{provider_name}:{pair.account_id}")
