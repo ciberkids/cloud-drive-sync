@@ -236,11 +236,7 @@ class SyncEngine:
             # Scan remote — use the pair's client (provider-namespaced key,
             # fall back to bare email for backward compat).
             if ps.pair.account_id:
-                pair_account = next(
-                    (a for a in self._config.accounts if a.email == ps.pair.account_id),
-                    None,
-                )
-                pair_provider = pair_account.provider if pair_account else "gdrive"
+                pair_provider = ps.pair.provider or "gdrive"
                 pair_client = (
                     self._clients.get(f"{pair_provider}:{ps.pair.account_id}")
                     or self._clients.get(ps.pair.account_id)

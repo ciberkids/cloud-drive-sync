@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,18 @@ _CONFIG_DIR = Path.home() / ".config" / "cloud-drive-sync"
 _BOX_CREDENTIALS_DIR = _CONFIG_DIR / "box"
 
 
+class _AuthUrlReady(Exception):
+    """Raised when auth URL is ready but code input is needed via HTTP."""
+    def __init__(self, url: str):
+        self.url = url
+        super().__init__(url)
+
+
 class BoxAuth(AuthProvider):
     """Handles Box OAuth2 authentication using box-sdk-gen."""
+
+    # Pending auth flow for two-step HTTP auth: stores (oauth, client_id, client_secret)
+    _pending_flow = None
 
     def __init__(
         self,
@@ -59,14 +70,31 @@ class BoxAuth(AuthProvider):
 
         if headless:
             print(f"Visit this URL to authorize:\n{auth_url}")
-            auth_code = input("Enter the authorization code: ").strip()
         else:
             import webbrowser
-
             webbrowser.open(auth_url)
             print(f"Opened browser for authorization. URL: {auth_url}")
-            auth_code = input("Enter the authorization code: ").strip()
 
+        # No TTY — HTTP API context; return URL for two-step exchange
+        if not sys.stdin.isatty():
+            log.info("No TTY detected, returning auth URL for two-step flow")
+            BoxAuth._pending_flow = (oauth, client_id, client_secret)
+            raise _AuthUrlReady(auth_url)
+
+        auth_code = input("Enter the authorization code: ").strip()
+        return self._finish(oauth, auth_code, client_id, client_secret)
+
+    @classmethod
+    def exchange_code(cls, code: str) -> Any:
+        """Complete a pending two-step auth flow by exchanging the code."""
+        if cls._pending_flow is None:
+            raise ValueError("No pending Box auth flow. Call add_account first.")
+        oauth, client_id, client_secret = cls._pending_flow
+        cls._pending_flow = None
+        return cls._finish(oauth, code.strip(), client_id, client_secret)
+
+    @staticmethod
+    def _finish(oauth: Any, auth_code: str, client_id: str, client_secret: str) -> dict:
         token = oauth.get_tokens_authorization_code_grant(auth_code)
         log.info("Box OAuth2 authorization successful")
         return {

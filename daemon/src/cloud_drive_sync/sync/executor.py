@@ -327,7 +327,7 @@ class SyncExecutor:
         # Check if this is a native doc export
         remote_mime = None
         if action.remote_info:
-            remote_mime = action.remote_info.get("mimeType", "")
+            remote_mime = action.remote_info.get("mimeType") or ""
 
         local_path = self._sanitize_path(action.path)
         remote_native_mime = None
@@ -340,6 +340,12 @@ class SyncExecutor:
         ):
             from cloud_drive_sync.providers.gdrive.conversion import get_export_info
             export_info = get_export_info(remote_mime)
+            if not export_info and remote_mime.startswith("application/vnd.google-apps."):
+                log.warning(
+                    "Skipping non-exportable Google native type %r: %s",
+                    remote_mime, action.path,
+                )
+                return
             if export_info:
                 export_mime, ext = export_info
                 # Download via export

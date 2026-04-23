@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,18 @@ log = get_logger("providers.dropbox.auth")
 _DEFAULT_APP_KEY = ""
 
 
+class _AuthUrlReady(Exception):
+    """Raised when auth URL is ready but code input is needed via HTTP."""
+    def __init__(self, url: str):
+        self.url = url
+        super().__init__(url)
+
+
 class DropboxAuth(AuthProvider):
     """Handles Dropbox OAuth2 PKCE authentication."""
+
+    # Pending auth flow for two-step HTTP auth
+    _pending_flow = None
 
     def __init__(self, app_key: str = "") -> None:
         self._app_key = app_key or _DEFAULT_APP_KEY
@@ -46,15 +57,32 @@ class DropboxAuth(AuthProvider):
         print("2. Click 'Allow' (you might have to log in first)")
         print("3. Copy the authorization code.\n")
 
+        # No TTY — HTTP API context; return URL for two-step exchange
+        if not sys.stdin.isatty():
+            log.info("No TTY detected, returning auth URL for two-step flow")
+            DropboxAuth._pending_flow = (auth_flow, self._app_key)
+            raise _AuthUrlReady(authorize_url)
+
         auth_code = input("Enter the authorization code: ").strip()
+        return self._finish(auth_flow, auth_code, self._app_key)
 
-        oauth_result = auth_flow.finish(auth_code)
+    @classmethod
+    def exchange_code(cls, code: str) -> Any:
+        """Complete a pending two-step auth flow by exchanging the code."""
+        if cls._pending_flow is None:
+            raise ValueError("No pending Dropbox auth flow. Call add_account first.")
+        auth_flow, app_key = cls._pending_flow
+        cls._pending_flow = None
+        return cls._finish(auth_flow, code, app_key)
+
+    @staticmethod
+    def _finish(auth_flow: Any, auth_code: str, app_key: str) -> dict:
+        oauth_result = auth_flow.finish(auth_code.strip())
         log.info("Dropbox OAuth2 authorization successful")
-
         return {
             "access_token": oauth_result.access_token,
             "refresh_token": oauth_result.refresh_token,
-            "app_key": self._app_key,
+            "app_key": app_key,
             "expires_at": oauth_result.expires_at.isoformat() if oauth_result.expires_at else None,
         }
 
