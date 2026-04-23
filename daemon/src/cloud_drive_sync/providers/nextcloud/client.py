@@ -71,27 +71,22 @@ class NextcloudClient(CloudClient):
 
     def _file_to_dict(self, fs_node: Any, relative_path: str = "") -> dict[str, Any]:
         """Convert an nc-py-api FsNode to the normalised metadata dict."""
-        info = fs_node.info
-        is_dir = fs_node.is_dir if hasattr(fs_node, "is_dir") else info.get("is_dir", False)
+        info = fs_node.info  # FsNodeInfo typed object — use attribute access, not .get()
+        is_dir = bool(fs_node.is_dir)
 
-        # Nextcloud exposes fileid as an integer
-        file_id = str(info.get("fileid", "") or fs_node.file_id if hasattr(fs_node, "file_id") else "")
+        # FsNode.file_id is a str; FsNodeInfo.fileid is an int — prefer FsNode
+        file_id = fs_node.file_id or str(getattr(info, "fileid", ""))
 
         # Determine MIME type
         if is_dir:
             mime_type = "httpd/unix-directory"
         else:
-            mime_type = info.get("mimetype", "") or (
+            mime_type = getattr(info, "mimetype", "") or (
                 mimetypes.guess_type(fs_node.name)[0] or "application/octet-stream"
             )
 
-        # Modified time — prefer last_modified, fall back to info fields
-        mod_time = None
-        if hasattr(fs_node, "last_modified") and fs_node.last_modified:
-            mod_time = fs_node.last_modified
-        elif info.get("last_modified"):
-            mod_time = info["last_modified"]
-
+        # Modified time via FsNodeInfo.last_modified (datetime property)
+        mod_time = getattr(info, "last_modified", None)
         if isinstance(mod_time, datetime):
             mod_time_str = mod_time.astimezone(timezone.utc).isoformat()
         elif mod_time is not None:
@@ -99,21 +94,10 @@ class NextcloudClient(CloudClient):
         else:
             mod_time_str = datetime.now(timezone.utc).isoformat()
 
-        size = info.get("size", 0)
-        if size is None:
-            size = 0
+        size = getattr(info, "size", 0) or 0
 
-        # Checksum — nc-py-api may expose checksums in info
-        md5 = info.get("checksum", "") or ""
-        # Nextcloud stores checksums as "MD5:abc123" or "SHA1:..." etc.
-        if md5 and ":" in md5:
-            parts = md5.split(":")
-            for i, part in enumerate(parts):
-                if part.upper() == "MD5" and i + 1 < len(parts):
-                    md5 = parts[i + 1].strip()
-                    break
-            else:
-                md5 = ""
+        # nc-py-api v0.30 FsNodeInfo does not expose raw checksums
+        md5 = ""
 
         result: dict[str, Any] = {
             "id": file_id,
