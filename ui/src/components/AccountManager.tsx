@@ -147,9 +147,9 @@ export function AccountManager() {
     }
   };
 
-  const handleRemoveAccount = async (email: string) => {
+  const handleRemoveAccount = async (email: string, provider?: string) => {
     try {
-      await ipc.removeAccount(email);
+      await ipc.removeAccount(email, provider);
       setAuthMessage(`Removed ${email}`);
       await refreshAccounts();
     } catch (e) {
@@ -248,7 +248,7 @@ export function AccountManager() {
 
                 <div className="account-card-actions">
                   <button
-                    onClick={() => handleRemoveAccount(acct.email)}
+                    onClick={() => handleRemoveAccount(acct.email, acct.provider)}
                     className="btn btn-danger btn-sm"
                   >
                     Remove Account

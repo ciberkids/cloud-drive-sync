@@ -150,8 +150,9 @@ export async function exchangeAuthCode(provider: string, code: string): Promise<
   return post("accounts/auth-code", { provider, code });
 }
 
-export async function removeAccount(email: string): Promise<void> {
-  await del(`accounts/${encodeURIComponent(email)}`);
+export async function removeAccount(email: string, provider?: string): Promise<void> {
+  const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  await del(`accounts/${encodeURIComponent(email)}${qs}`);
 }
 
 export async function listAccounts(): Promise<Account[]> {

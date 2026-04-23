@@ -113,8 +113,8 @@ export async function exchangeAuthCode(provider: string, code: string): Promise<
   return invoke("exchange_auth_code", { provider, code });
 }
 
-export async function removeAccount(email: string): Promise<void> {
-  return invoke("remove_account", { email });
+export async function removeAccount(email: string, provider?: string): Promise<void> {
+  return invoke("remove_account", { email, provider });
 }
 
 export async function listAccounts(): Promise<Account[]> {

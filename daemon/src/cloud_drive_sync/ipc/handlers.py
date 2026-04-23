@@ -650,19 +650,33 @@ class RequestHandler:
         email = params.get("email")
         if not email:
             raise TypeError("email is required")
+        provider = params.get("provider")
 
-        # Capture provider before removing the account from config so we can
-        # compute the provider-namespaced client key.
-        acct_to_remove = next((a for a in self._config.accounts if a.email == email), None)
-        provider_name = acct_to_remove.provider if acct_to_remove else "gdrive"
+        # Determine provider for namespaced client key.
+        # Use the explicit provider param when given to correctly handle the
+        # case where two providers share the same email address.
+        if provider:
+            provider_name = provider
+        else:
+            acct_to_remove = next((a for a in self._config.accounts if a.email == email), None)
+            provider_name = acct_to_remove.provider if acct_to_remove else "gdrive"
 
-        # Remove from config
-        self._config.accounts = [a for a in self._config.accounts if a.email != email]
-
-        # Remove sync pairs belonging to this account
-        self._config.sync.pairs = [
-            p for p in self._config.sync.pairs if p.account_id != email
-        ]
+        # Remove from config — if provider is given, remove only that account;
+        # otherwise remove all accounts with this email (backward compat).
+        if provider:
+            self._config.accounts = [
+                a for a in self._config.accounts
+                if not (a.email == email and a.provider == provider)
+            ]
+            self._config.sync.pairs = [
+                p for p in self._config.sync.pairs
+                if not (p.account_id == email and p.provider == provider)
+            ]
+        else:
+            self._config.accounts = [a for a in self._config.accounts if a.email != email]
+            self._config.sync.pairs = [
+                p for p in self._config.sync.pairs if p.account_id != email
+            ]
 
         self._config.save()
 

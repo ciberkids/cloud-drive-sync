@@ -144,7 +144,11 @@ class HttpServer:
         """Return the OAuth callback URL for this HTTP server."""
         return f"http://localhost:{self._port}/api/accounts/oauth-callback"
 
-    async def _remove_account(self, req): return self._json(await self._rpc("remove_account", {"email": req.match_info["email"]}))
+    async def _remove_account(self, req):
+        params = {"email": req.match_info["email"]}
+        if provider := req.rel_url.query.get("provider"):
+            params["provider"] = provider
+        return self._json(await self._rpc("remove_account", params))
     async def _set_account_max_transfers(self, req):
         body = await self._body(req)
         body["email"] = req.match_info["email"]

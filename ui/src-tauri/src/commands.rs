@@ -363,11 +363,14 @@ pub async fn add_account(bridge: State<'_, BridgeState>) -> Result<Value, String
 pub async fn remove_account(
     bridge: State<'_, BridgeState>,
     email: String,
+    provider: Option<String>,
 ) -> Result<(), String> {
     let bridge = bridge.0.lock().await;
-    bridge
-        .call("remove_account", Some(json!({ "email": email })))
-        .await?;
+    let mut params = json!({ "email": email });
+    if let Some(p) = provider {
+        params["provider"] = json!(p);
+    }
+    bridge.call("remove_account", Some(params)).await?;
     Ok(())
 }
 
