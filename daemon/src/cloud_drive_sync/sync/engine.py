@@ -150,14 +150,29 @@ class SyncEngine:
             log.error("No client for account %s, skipping pair %s", pair.account_id, pair_id)
             return
 
-        # Per-pair operations and poller (use injected ones if available, e.g. in tests)
-        if self._ops:
-            ops = self._ops
+        # Per-pair operations and poller — use injected ones if available (e.g. in tests),
+        # otherwise instantiate from the provider registry so non-GDrive providers
+        # use their own ops/poller instead of the GDrive-specific classes.
+        if not self._ops or not self._poller:
+            if provider_name == "gdrive":
+                upload_throttle = BandwidthThrottle(self._config.sync.max_upload_kbps)
+                download_throttle = BandwidthThrottle(self._config.sync.max_download_kbps)
+                _provider_ops = FileOperations(client, upload_throttle=upload_throttle, download_throttle=download_throttle)
+                _provider_poller = ChangePoller(client)
+            else:
+                from cloud_drive_sync.providers.registry import get as _get_provider
+                try:
+                    _entry = _get_provider(provider_name)
+                except KeyError:
+                    log.error("Unknown provider %s for pair %s, skipping", provider_name, pair_id)
+                    return
+                _provider_ops = _entry.ops_cls(client)
+                _provider_poller = _entry.poller_cls(client)
+            ops = self._ops or _provider_ops
+            poller = self._poller or _provider_poller
         else:
-            upload_throttle = BandwidthThrottle(self._config.sync.max_upload_kbps)
-            download_throttle = BandwidthThrottle(self._config.sync.max_download_kbps)
-            ops = FileOperations(client, upload_throttle=upload_throttle, download_throttle=download_throttle)
-        poller = self._poller or ChangePoller(client)
+            ops = self._ops
+            poller = self._poller
 
         per_account = account.max_concurrent_transfers if account else 0
         max_concurrent = per_account if per_account > 0 else self._config.sync.max_concurrent_transfers

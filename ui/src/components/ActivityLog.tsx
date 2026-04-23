@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useActivityLog, useSyncPairs } from "../lib/hooks";
 import { providerColor, providerLabel } from "./AccountManager";
 import type { LogEntry } from "../lib/types";
@@ -21,6 +21,8 @@ export function ActivityLog() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
   const toggleExpanded = (id: number) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -29,6 +31,21 @@ export function ActivityLog() {
       return next;
     });
   };
+
+  const copyEntry = useCallback((e: React.MouseEvent, entry: LogEntry, acctInfo: { email: string; provider: string } | null) => {
+    e.stopPropagation();
+    const lines = [
+      `[${new Date(entry.timestamp).toLocaleString()}] ${entry.event_type.toUpperCase()}`,
+      entry.path ? `Path:    ${entry.path}` : null,
+      entry.details ? `Details: ${entry.details}` : null,
+      acctInfo ? `Account: ${acctInfo.email} (${providerLabel(acctInfo.provider)})` : null,
+      `Status:  ${entry.status}`,
+    ].filter(Boolean).join("\n");
+    navigator.clipboard.writeText(lines).then(() => {
+      setCopiedId(entry.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  }, []);
 
   // Build a lookup: pair_id -> { account, provider }
   const pairAccountMap = useMemo(() => {
@@ -118,6 +135,23 @@ export function ActivityLog() {
                   {entry.status}
                 </span>
               </div>
+              {isExpanded && (
+                <div className="log-expanded" onClick={(e) => e.stopPropagation()}>
+                  <div className="log-expanded-rows">
+                    {entry.path && <div className="log-expanded-row"><span className="log-expanded-label">Path</span><span className="log-expanded-value">{entry.path}</span></div>}
+                    {entry.details && <div className="log-expanded-row"><span className="log-expanded-label">Details</span><span className="log-expanded-value">{entry.details}</span></div>}
+                    {acctInfo && !isSystem && <div className="log-expanded-row"><span className="log-expanded-label">Account</span><span className="log-expanded-value">{acctInfo.email} ({providerLabel(acctInfo.provider)})</span></div>}
+                    <div className="log-expanded-row"><span className="log-expanded-label">Time</span><span className="log-expanded-value">{new Date(entry.timestamp).toLocaleString()}</span></div>
+                  </div>
+                  <button
+                    className="btn btn-sm log-copy-btn"
+                    onClick={(e) => copyEntry(e, entry, acctInfo)}
+                    type="button"
+                  >
+                    {copiedId === entry.id ? "Copied!" : "Copy to clipboard"}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

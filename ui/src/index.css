@@ -1203,6 +1203,51 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.log-expanded {
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-expanded-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.log-expanded-row {
+  display: flex;
+  gap: 8px;
+}
+
+.log-expanded-label {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  width: 56px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 1px;
+}
+
+.log-expanded-value {
+  color: var(--text-primary, inherit);
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.log-copy-btn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
 .log-meta {
   display: flex;
   flex-direction: column;
