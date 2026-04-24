@@ -72,18 +72,35 @@ class NextcloudClient(CloudClient):
     def _resolve_path(self, file_id: str) -> str:
         """Return the WebDAV path for a file_id.
 
-        New IDs are WebDAV paths (start with /). Legacy IDs from older sync
-        databases are compound Nextcloud fileids like ``00000162ocmvvvbtlon4``
-        — extract the numeric prefix and call by_id as a fallback.
+        File IDs fall into three shapes:
+
+        * ``"root"`` / ``"/"`` → the user root.
+        * Absolute WebDAV path (``"/Documents"``) → normalised and returned.
+        * Relative ``FsNode.user_path`` as returned by nc-py-api
+          (``"Documents"``, ``"Documents/ManuAndI"``). nc-py-api strips the
+          leading slash; treat these as relative paths and prepend ``/``.
+        * Legacy Nextcloud compound fileid
+          (``"00000162ocmvvvbtlon4"`` — ≥ 8 zero-padded hex digits + a random
+          suffix) left over from pre-path sync databases. Look up via
+          ``by_id`` as a fallback.
+
+        Previously anything not starting with ``/`` ran straight into the
+        legacy lookup, so a perfectly valid ``user_path`` like ``"Documents"``
+        (no digits to strip) raised ``ValueError``; callers that swallowed
+        the exception then silently refused to find existing child folders,
+        causing ``MKCOL`` races on nested-directory creation (#19).
         """
         if file_id == "root" or file_id == "/":
             return "/"
         if file_id.startswith("/"):
             return self._normalise_path(file_id)
-        # Legacy compound fileid: strip non-digit suffix and look up by integer ID
+        # Path-like values (slash, dot, or too short to be a real fileid)
+        # must be treated as a relative WebDAV user_path.
         numeric = "".join(c for c in file_id if c.isdigit())
-        if not numeric:
-            raise ValueError(f"Cannot resolve Nextcloud file_id: {file_id!r}")
+        looks_like_fileid = len(numeric) >= 8 and len(file_id) >= 10
+        if "/" in file_id or "." in file_id or not looks_like_fileid:
+            return self._normalise_path("/" + file_id)
+        # Legacy compound fileid: strip non-digit suffix and look up by integer ID
         node = self._nc.files.by_id(int(numeric))
         if node is None:
             raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
