@@ -1,4 +1,4 @@
-"""Unit tests for NextcloudClient.list_all_recursive — 404 resilience (issue #22)."""
+"""Unit tests for NextcloudClient.list_all_recursive and find_child_folder — issues #22 and #23."""
 
 from __future__ import annotations
 
@@ -108,3 +108,43 @@ async def test_multiple_404_subfolders_all_skipped():
     # All three dirs appear (added before recursing), no error raised
     assert len(result) == 3
     assert {r["name"] for r in result} == {"a", "b", "c"}
+
+
+# ---------------------------------------------------------------------------
+# find_child_folder — issue #23
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_find_child_folder_returns_normalised_path():
+    """find_child_folder must return a path with a leading slash (issue #23)."""
+    client = _make_client()
+
+    dir_node = MagicMock()
+    dir_node.name = "Scanned"
+    dir_node.is_dir = True
+    dir_node.user_path = "Documents/ManuAndI/Scanned"  # raw — no leading slash
+
+    client._nc.files.listdir.return_value = [dir_node]
+
+    result = await client.find_child_folder("/Documents/ManuAndI", "Scanned")
+    assert result == "/Documents/ManuAndI/Scanned", (
+        "find_child_folder must normalise user_path to have a leading /"
+    )
+
+
+@pytest.mark.asyncio
+async def test_find_child_folder_returns_none_when_not_found():
+    """find_child_folder returns None when the named subfolder is absent."""
+    client = _make_client()
+    client._nc.files.listdir.return_value = []
+    result = await client.find_child_folder("/Documents", "Missing")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_child_folder_returns_none_on_404():
+    """find_child_folder returns None when parent listing returns 404."""
+    client = _make_client()
+    client._nc.files.listdir.side_effect = _NC404("parent not found")
+    result = await client.find_child_folder("/gone", "child")
+    assert result is None

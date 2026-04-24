@@ -349,7 +349,7 @@ class NextcloudClient(CloudClient):
                 for node in nodes:
                     is_dir = node.is_dir if hasattr(node, "is_dir") else False
                     if node.name == name and is_dir:
-                        return node.user_path
+                        return self._normalise_path(node.user_path)
                 return None
             except Exception as e:
                 status = getattr(e, "status_code", None)
