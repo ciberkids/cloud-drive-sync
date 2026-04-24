@@ -42,6 +42,8 @@ class NextcloudFileOps(CloudFileOps):
     def __init__(self, client: NextcloudClient) -> None:
         self._client = client
 
+    _UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024  # 2 MB chunks
+
     @async_retry(max_retries=3, base_delay=2.0, max_delay=30.0)
     async def upload_file(
         self,
@@ -64,10 +66,41 @@ class NextcloudFileOps(CloudFileOps):
             remote_path = f"{parent}/{name}" if parent != "/" else f"/{name}"
 
         start_time = time.monotonic()
+        loop = asyncio.get_running_loop()
 
         def _upload():
-            self._client._nc.files.upload(remote_path, str(local_path))
-            # Re-list to get the uploaded file's metadata
+            # Use a streaming PUT via httpx so progress_callback fires per chunk.
+            # nc_py_api already requires httpx, so no extra dependency.
+            import httpx
+
+            dav_url = (
+                f"{self._client._server_url}/remote.php/dav/files"
+                f"/{self._client._username}{remote_path}"
+            )
+            auth = (self._client._username, self._client._app_password)
+
+            uploaded = 0
+            t0 = time.monotonic()
+
+            def _gen():
+                nonlocal uploaded
+                with open(str(local_path), "rb") as f:
+                    while True:
+                        chunk = f.read(NextcloudFileOps._UPLOAD_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        uploaded += len(chunk)
+                        elapsed = time.monotonic() - t0
+                        speed = uploaded / elapsed if elapsed > 0 else 0
+                        if progress_callback:
+                            loop.call_soon_threadsafe(progress_callback, uploaded, file_size, speed)
+                        yield chunk
+
+            with httpx.Client(timeout=300) as client:
+                resp = client.put(dav_url, content=_gen(), auth=auth)
+                resp.raise_for_status()
+
+            # Re-list to get uploaded file metadata
             parent_dir = remote_path.rsplit("/", 1)[0] or "/"
             nodes = self._client._nc.files.listdir(parent_dir)
             target_name = remote_path.rsplit("/", 1)[-1]
@@ -110,6 +143,8 @@ class NextcloudFileOps(CloudFileOps):
 
         start_time = time.monotonic()
 
+        loop = asyncio.get_running_loop()
+
         def _download():
             remote_path = self._client._resolve_path(remote_id)
 
@@ -120,12 +155,24 @@ class NextcloudFileOps(CloudFileOps):
             )
             try:
                 data = self._client._nc.files.download(remote_path)
+                received = 0
+                t0 = time.monotonic()
                 with os.fdopen(fd, "wb") as tmp_file:
                     if isinstance(data, bytes):
                         tmp_file.write(data)
+                        received = len(data)
+                        elapsed = time.monotonic() - t0
+                        speed = received / elapsed if elapsed > 0 else 0
+                        if progress_callback:
+                            loop.call_soon_threadsafe(progress_callback, received, 0, speed)
                     else:
                         for chunk in data:
                             tmp_file.write(chunk)
+                            received += len(chunk)
+                            elapsed = time.monotonic() - t0
+                            speed = received / elapsed if elapsed > 0 else 0
+                            if progress_callback:
+                                loop.call_soon_threadsafe(progress_callback, received, 0, speed)
                 os.replace(tmp_path, str(local_path))
                 return os.path.getsize(str(local_path))
             except BaseException:

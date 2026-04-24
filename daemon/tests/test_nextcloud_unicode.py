@@ -124,18 +124,28 @@ async def test_upload_file_finds_node_with_nfd_filename():
     result_node = _file_node(file_name_nfc)
     result_node.is_dir = False
 
-    from unittest.mock import patch as _patch
+    from unittest.mock import patch as _patch, MagicMock as MM
 
     async def fake_to_thread(fn, *args, **kwargs):
         return fn()
 
-    with _patch("asyncio.to_thread", side_effect=fake_to_thread):
-        client._nc.files.upload.return_value = None
-        client._nc.files.listdir.return_value = [result_node]
+    # Mock httpx.Client so no real HTTP request is made
+    mock_response = MM()
+    mock_response.raise_for_status.return_value = None
+    mock_http_client = MM()
+    mock_http_client.__enter__ = MM(return_value=mock_http_client)
+    mock_http_client.__exit__ = MM(return_value=False)
+    mock_http_client.put.return_value = mock_response
 
-        from unittest.mock import MagicMock as MM
+    with (
+        _patch("asyncio.to_thread", side_effect=fake_to_thread),
+        _patch("httpx.Client", return_value=mock_http_client),
+    ):
+        client._nc.files.listdir.return_value = [result_node]
         client._file_to_dict = MM(return_value={"id": "/Documents/" + file_name_nfc, "name": file_name_nfc})
         client._resolve_path = MM(return_value="/Documents")  # type: ignore
+        client._username = "testuser"
+        client._app_password = "testpass"
 
         from pathlib import Path
         import tempfile
