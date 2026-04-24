@@ -283,29 +283,52 @@ def filter_actions_by_mode(
     actions: list[SyncAction],
     sync_mode: str,
 ) -> list[SyncAction]:
-    """Remove actions not allowed by the sync mode.
+    """Remove or redirect actions based on the sync mode.
 
     Modes:
     - ``two_way`` – keep everything (default)
-    - ``upload_only`` – drop DOWNLOAD and DELETE_LOCAL
-    - ``download_only`` – drop UPLOAD and DELETE_REMOTE
+    - ``upload_only`` – drop DOWNLOAD and DELETE_LOCAL; CONFLICT → UPLOAD
+    - ``download_only`` – drop UPLOAD and DELETE_REMOTE; CONFLICT → DOWNLOAD
+
+    In one-directional modes the authoritative side is unambiguous, so
+    conflicts are resolved deterministically rather than deferred.
     """
     if sync_mode == "two_way":
         return actions
 
-    blocked: set[ActionType]
     if sync_mode == "upload_only":
         blocked = {ActionType.DOWNLOAD, ActionType.DELETE_LOCAL}
+        conflict_resolution = ActionType.UPLOAD
     elif sync_mode == "download_only":
         blocked = {ActionType.UPLOAD, ActionType.DELETE_REMOTE}
+        conflict_resolution = ActionType.DOWNLOAD
     else:
         return actions
 
-    filtered = [a for a in actions if a.action not in blocked]
-    dropped = len(actions) - len(filtered)
+    result: list[SyncAction] = []
+    dropped = 0
+    resolved = 0
+    for action in actions:
+        if action.action == ActionType.CONFLICT:
+            result.append(SyncAction(
+                action=conflict_resolution,
+                path=action.path,
+                remote_info=action.remote_info,
+                local_info=action.local_info,
+                stored_entry=action.stored_entry,
+                reason=f"{sync_mode}: conflict resolved as {conflict_resolution.value}",
+            ))
+            resolved += 1
+        elif action.action in blocked:
+            dropped += 1
+        else:
+            result.append(action)
+
     if dropped:
         log.info("Sync mode %s: dropped %d actions", sync_mode, dropped)
-    return filtered
+    if resolved:
+        log.info("Sync mode %s: resolved %d conflicts as %s", sync_mode, resolved, conflict_resolution.value)
+    return result
 
 
 def plan_continuous_sync(

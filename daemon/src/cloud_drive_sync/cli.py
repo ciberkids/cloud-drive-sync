@@ -371,6 +371,37 @@ def resolve(conflict_id: str, resolution: str):
         sys.exit(1)
 
 
+@cli.command("repair")
+@click.argument("pair_id", required=False)
+@click.option("--dry-run", is_flag=True, help="Report stubs without deleting them")
+def repair(pair_id: str | None, dry_run: bool):
+    """Delete zero-byte remote stubs left by failed uploads.
+
+    Scans each sync pair for remote files that are 0 bytes while the local
+    copy has content, removes them from the remote and clears the stored
+    sync state. The next sync cycle will then re-upload the correct files.
+    """
+    try:
+        params: dict = {"dry_run": dry_run}
+        if pair_id:
+            params["pair_id"] = pair_id
+        result = _run_client_call("repair", params)
+        repaired = result.get("repaired", 0)
+        pairs_scanned = result.get("pairs_scanned", 0)
+        stubs = result.get("stubs", [])
+        prefix = "[dry-run] " if dry_run else ""
+        click.echo(f"{prefix}Scanned {pairs_scanned} pair(s), found {repaired} stub(s).")
+        if stubs:
+            for path in stubs:
+                action = "would delete" if dry_run else "deleted"
+                click.echo(f"  {action}: {path}")
+        elif not repaired:
+            click.echo("No stubs found — everything looks healthy.")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command("install-nautilus")
 def install_nautilus():
     """Install the Nautilus file manager overlay extension."""

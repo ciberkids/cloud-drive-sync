@@ -31,8 +31,17 @@ class TestFilterActionsByMode:
         assert ActionType.DELETE_LOCAL not in types
         assert ActionType.UPLOAD in types
         assert ActionType.DELETE_REMOTE in types
-        assert ActionType.CONFLICT in types
+        # CONFLICT is redirected to UPLOAD (local is authoritative) — not preserved as CONFLICT
+        assert ActionType.CONFLICT not in types
         assert ActionType.NOOP in types
+
+    def test_upload_only_conflict_becomes_upload(self):
+        """upload_only: conflict entry is redirected to UPLOAD with the original path."""
+        actions = [SyncAction(ActionType.CONFLICT, "both_changed.txt")]
+        result = filter_actions_by_mode(actions, "upload_only")
+        assert len(result) == 1
+        assert result[0].action == ActionType.UPLOAD
+        assert result[0].path == "both_changed.txt"
 
     def test_download_only_drops_uploads_and_delete_remote(self):
         actions = _make_actions()
@@ -42,8 +51,17 @@ class TestFilterActionsByMode:
         assert ActionType.DELETE_REMOTE not in types
         assert ActionType.DOWNLOAD in types
         assert ActionType.DELETE_LOCAL in types
-        assert ActionType.CONFLICT in types
+        # CONFLICT is redirected to DOWNLOAD (remote is authoritative)
+        assert ActionType.CONFLICT not in types
         assert ActionType.NOOP in types
+
+    def test_download_only_conflict_becomes_download(self):
+        """download_only: conflict entry is redirected to DOWNLOAD with the original path."""
+        actions = [SyncAction(ActionType.CONFLICT, "both_changed.txt")]
+        result = filter_actions_by_mode(actions, "download_only")
+        assert len(result) == 1
+        assert result[0].action == ActionType.DOWNLOAD
+        assert result[0].path == "both_changed.txt"
 
     def test_unknown_mode_keeps_all(self):
         actions = _make_actions()

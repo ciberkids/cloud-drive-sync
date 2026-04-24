@@ -72,6 +72,7 @@ class HttpServer:
         r.add_get("/api/settings/proxy", self._get_proxy)
         r.add_put("/api/settings/proxy", self._set_proxy)
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
+        r.add_post("/api/repair", self._repair)
         # Remote folders
         r.add_get("/api/remote-folders", self._list_remote_folders)
         r.add_post("/api/remote-folders", self._create_remote_folder)
@@ -178,6 +179,7 @@ class HttpServer:
         body = await self._body(req)
         body["pair_id"] = req.match_info["pair_id"]
         return self._json(await self._rpc("set_pair_conflict_strategy", body))
+    async def _repair(self, req): return self._json(await self._rpc("repair", await self._body(req)))
     async def _force_sync(self, req): return self._json(await self._rpc("force_sync", await self._body(req)))
     async def _pause_sync(self, req): return self._json(await self._rpc("pause_sync", await self._body(req)))
     async def _resume_sync(self, req): return self._json(await self._rpc("resume_sync", await self._body(req)))

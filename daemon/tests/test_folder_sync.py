@@ -316,6 +316,47 @@ class TestFilterMkdir:
         assert result[0].action == ActionType.MKDIR
 
 
+class TestFilterConflictResolution:
+    """Issue #27: conflicts should resolve deterministically in one-directional modes."""
+
+    def test_conflict_becomes_upload_in_upload_only(self):
+        """upload_only: CONFLICT → UPLOAD (local is authoritative)."""
+        actions = [SyncAction(ActionType.CONFLICT, "report.txt", reason="both sides changed")]
+        result = filter_actions_by_mode(actions, "upload_only")
+        assert len(result) == 1
+        assert result[0].action == ActionType.UPLOAD
+        assert result[0].path == "report.txt"
+
+    def test_conflict_becomes_download_in_download_only(self):
+        """download_only: CONFLICT → DOWNLOAD (remote is authoritative)."""
+        actions = [SyncAction(ActionType.CONFLICT, "report.txt", reason="both sides changed")]
+        result = filter_actions_by_mode(actions, "download_only")
+        assert len(result) == 1
+        assert result[0].action == ActionType.DOWNLOAD
+
+    def test_conflict_unchanged_in_two_way(self):
+        """two_way mode: CONFLICT stays CONFLICT for the resolver."""
+        actions = [SyncAction(ActionType.CONFLICT, "report.txt")]
+        result = filter_actions_by_mode(actions, "two_way")
+        assert len(result) == 1
+        assert result[0].action == ActionType.CONFLICT
+
+    def test_mixed_actions_upload_only(self):
+        """upload_only: uploads kept, downloads dropped, conflicts become uploads."""
+        actions = [
+            SyncAction(ActionType.UPLOAD, "new.txt"),
+            SyncAction(ActionType.DOWNLOAD, "remote_only.txt"),
+            SyncAction(ActionType.CONFLICT, "both_changed.txt"),
+            SyncAction(ActionType.DELETE_LOCAL, "deleted_remote.txt"),
+        ]
+        result = filter_actions_by_mode(actions, "upload_only")
+        assert len(result) == 2
+        types = {a.action for a in result}
+        assert types == {ActionType.UPLOAD}
+        paths = {a.path for a in result}
+        assert paths == {"new.txt", "both_changed.txt"}
+
+
 # ── Executor: _do_mkdir ─────────────────────────────────────────────
 
 
