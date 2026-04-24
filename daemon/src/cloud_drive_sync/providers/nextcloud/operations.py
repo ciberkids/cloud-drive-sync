@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tempfile
 import time
 import unicodedata
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote as _urlencode
 
 from cloud_drive_sync.providers.base import CloudFileOps
 from cloud_drive_sync.providers.nextcloud.client import NextcloudClient
@@ -16,6 +18,16 @@ from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.retry import async_retry
 
 log = get_logger("providers.nextcloud.operations")
+
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _sanitise_name(name: str) -> str:
+    """Strip ASCII control characters (including \\r, \\n) from a filename."""
+    cleaned = _CONTROL_RE.sub("", name)
+    if cleaned != name:
+        log.warning("Stripped control characters from filename %r → %r", name, cleaned)
+    return cleaned
 
 
 def _format_speed(bytes_per_sec: float) -> str:
@@ -54,8 +66,8 @@ class NextcloudFileOps(CloudFileOps):
         progress_callback: Any = None,
         resume_uri: str | None = None,
     ) -> dict[str, Any]:
-        # Normalise to NFC so Nextcloud storage and our comparison agree
-        name = unicodedata.normalize("NFC", remote_name or local_path.name)
+        # Normalise to NFC and strip control chars (issues #30/#31)
+        name = unicodedata.normalize("NFC", _sanitise_name(remote_name or local_path.name))
         file_size = local_path.stat().st_size
         log.info("Uploading %s (%d bytes) as '%s'", local_path, file_size, name)
 
@@ -73,9 +85,12 @@ class NextcloudFileOps(CloudFileOps):
             # nc_py_api already requires httpx, so no extra dependency.
             import httpx
 
+            # Percent-encode path components so special chars (%, spaces, etc.)
+            # don't get double-encoded or rejected by httpx (issues #30/#31).
+            encoded_path = _urlencode(remote_path, safe="/")
             dav_url = (
                 f"{self._client._server_url}/remote.php/dav/files"
-                f"/{self._client._username}{remote_path}"
+                f"/{_urlencode(self._client._username, safe='')}{encoded_path}"
             )
             auth = (self._client._username, self._client._app_password)
 
