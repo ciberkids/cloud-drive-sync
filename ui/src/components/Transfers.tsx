@@ -1,8 +1,14 @@
-import { useStatus } from "../lib/hooks";
+import { useStatus, useSyncPairs } from "../lib/hooks";
+import { providerColor, providerLabel } from "./AccountManager";
 
 export function Transfers() {
   const status = useStatus(1000);
+  const { pairs } = useSyncPairs();
   const transfers = status.live_transfers ?? [];
+
+  const pairMap = Object.fromEntries(
+    pairs.map((p) => [p.id, p])
+  );
 
   return (
     <div className="transfers-page">
@@ -39,9 +45,20 @@ export function Transfers() {
                 : null;
               const badgeLabel = directionLabel(t.direction);
               const hasProgress = t.direction === "upload" || t.direction === "download";
+              const pair = pairMap[t.pair_id];
+              const pColor = pair ? providerColor(pair.provider) : undefined;
+              const pLabel = pair ? providerLabel(pair.provider) : undefined;
+              const pEmail = pair?.account_id;
+              const pFolder = pair?.local_path
+                ? pair.local_path.split("/").filter(Boolean).pop()
+                : undefined;
 
               return (
-                <div key={`${t.pair_id}-${t.path}`} className="transfer-card">
+                <div
+                  key={`${t.pair_id}-${t.path}`}
+                  className="transfer-card"
+                  style={pColor ? { borderLeft: `3px solid ${pColor}` } : undefined}
+                >
                   <div className="transfer-card-header">
                     <span className={`transfer-badge transfer-badge-${t.direction}`}>
                       {badgeLabel}
@@ -76,6 +93,20 @@ export function Transfers() {
                           <span>{formatBytes(t.bytes)}</span>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {pair && (
+                    <div className="transfer-card-account">
+                      <span className="transfer-account-pill" style={{ background: pColor }}>
+                        {pLabel}
+                      </span>
+                      {pEmail && <span className="transfer-account-email">{pEmail}</span>}
+                      {pFolder && (
+                        <span className="transfer-account-folder" title={pair.local_path}>
+                          📁 {pFolder}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
