@@ -1,0 +1,38 @@
+name: Auto-fix new issues with Claude Code
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  fix:
+    name: Fix issue #${{ github.event.issue.number }}
+    runs-on: self-hosted
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Fix issue with Claude Code
+        working-directory: /home/matteo/Documents/projects/personal/gdrive-sync
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.ISSUE_FIX_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          claude --dangerously-skip-permissions -p "
+          GitHub issue #${ISSUE_NUMBER} was just opened: \"${ISSUE_TITLE}\"
+
+          Fix it following the standard workflow:
+          1. Read the full issue: curl -s -H \"Authorization: Bearer \$GITHUB_TOKEN\" https://api.github.com/repos/ciberkids/cloud-drive-sync/issues/${ISSUE_NUMBER}
+          2. Investigate root cause in the codebase
+          3. Apply the fix
+          4. Write tests for the fix
+          5. Run CI gate: cd daemon && python -m pytest tests/ -x -q && .venv/bin/ruff check src/ tests/ && cd ../ui/src-tauri && cargo check && cd ../ui && npx tsc --noEmit
+          6. Commit with 'Fixes #${ISSUE_NUMBER}', push to main
+          7. Comment on the issue with root cause, fix, and prevention
+          8. Tag the next patch release (check: git tag --sort=-version:refname | head -1), push the tag
+          9. Poll for the pipeline release, then update the release notes
+          "
