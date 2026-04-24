@@ -128,7 +128,7 @@ class NextcloudAuth(AuthProvider):
             nc_auth_user=creds["username"],
             nc_auth_pass=creds["app_password"],
         )
-        return NextcloudClient(nc, creds["server_url"])
+        return NextcloudClient(nc, creds["server_url"], username=creds["username"], app_password=creds["app_password"])
 
     async def get_account_email(self, client: CloudClient) -> str:
         """Get the user's display name or email from Nextcloud."""

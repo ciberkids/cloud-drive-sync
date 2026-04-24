@@ -23,15 +23,19 @@ class NextcloudClient(CloudClient):
     Folder identifiers in ``list_files`` are WebDAV paths (e.g. ``/`` or ``/Documents``).
     """
 
-    def __init__(self, nc: Any, server_url: str) -> None:
+    def __init__(self, nc: Any, server_url: str, username: str = "", app_password: str = "") -> None:
         """Initialise with a connected ``Nextcloud`` (nc-py-api) instance.
 
         Args:
             nc: A ``nextcloud_client.Nextcloud`` object (already authenticated).
             server_url: Base URL of the Nextcloud instance.
+            username: Nextcloud username (stored for direct WebDAV streaming).
+            app_password: Nextcloud app password (stored for direct WebDAV streaming).
         """
         self._nc = nc
         self._server_url = server_url.rstrip("/")
+        self._username = username or (nc.user if hasattr(nc, "user") else "")
+        self._app_password = app_password
 
     # ── CloudClient capability properties ───────────────────────────
 
