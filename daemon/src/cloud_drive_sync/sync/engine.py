@@ -267,7 +267,14 @@ class SyncEngine:
             # Apply advanced sync rules
             actions = apply_sync_rules(actions, ps.pair.sync_rules)
 
-            # Handle conflicts using per-pair strategy (falls back to global)
+            # Apply sync-mode filter BEFORE conflict resolution so that directional
+            # modes (upload_only/download_only) convert CONFLICT→UPLOAD/DOWNLOAD
+            # deterministically, preventing the ConflictResolver from creating
+            # _conflict_TIMESTAMP copies that would cascade on subsequent scans.
+            actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
+
+            # Handle conflicts using per-pair strategy (falls back to global).
+            # After mode filtering, CONFLICT actions only remain in two_way mode.
             effective_strategy = ps.pair.conflict_strategy or self._config.sync.conflict_strategy
             pair_resolver = ConflictResolver(effective_strategy)
             # Forward any pending user resolutions from the global resolver
@@ -294,9 +301,6 @@ class SyncEngine:
                         resolved_actions.append(result)
                 else:
                     resolved_actions.append(action)
-
-            # Filter by sync mode
-            resolved_actions = filter_actions_by_mode(resolved_actions, ps.pair.sync_mode)
 
             # Execute
             uploaded = 0
