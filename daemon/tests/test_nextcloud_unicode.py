@@ -124,12 +124,18 @@ async def test_upload_file_finds_node_with_nfd_filename():
     result_node = _file_node(file_name_nfc)
     result_node.is_dir = False
 
+    import os
+    import sys
+    import tempfile
+    from pathlib import Path
+    from types import ModuleType
     from unittest.mock import patch as _patch, MagicMock as MM
 
     async def fake_to_thread(fn, *args, **kwargs):
         return fn()
 
-    # Mock httpx.Client so no real HTTP request is made
+    # Build a minimal fake httpx module so the test works whether or not
+    # httpx is installed in the test environment.
     mock_response = MM()
     mock_response.raise_for_status.return_value = None
     mock_http_client = MM()
@@ -137,9 +143,12 @@ async def test_upload_file_finds_node_with_nfd_filename():
     mock_http_client.__exit__ = MM(return_value=False)
     mock_http_client.put.return_value = mock_response
 
+    fake_httpx = ModuleType("httpx")
+    fake_httpx.Client = MM(return_value=mock_http_client)  # type: ignore[attr-defined]
+
     with (
         _patch("asyncio.to_thread", side_effect=fake_to_thread),
-        _patch("httpx.Client", return_value=mock_http_client),
+        _patch.dict(sys.modules, {"httpx": fake_httpx}),
     ):
         client._nc.files.listdir.return_value = [result_node]
         client._file_to_dict = MM(return_value={"id": "/Documents/" + file_name_nfc, "name": file_name_nfc})
@@ -147,9 +156,6 @@ async def test_upload_file_finds_node_with_nfd_filename():
         client._username = "testuser"
         client._app_password = "testpass"
 
-        from pathlib import Path
-        import tempfile
-        import os
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
             f.write(b"PDF content")
             tmp = f.name
