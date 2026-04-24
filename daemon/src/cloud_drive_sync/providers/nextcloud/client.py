@@ -98,7 +98,8 @@ class NextcloudClient(CloudClient):
         # all nc-py-api path-based operations (upload, download, mkdir, delete, move).
         # The compound fileid (e.g. "00000162ocmvvvbtlon4") is NOT a valid path
         # segment in /dav/files/ and must never be used as one.
-        file_id = fs_node.user_path or fs_node.file_id or str(getattr(info, "fileid", ""))
+        raw_path = fs_node.user_path or fs_node.file_id or str(getattr(info, "fileid", ""))
+        file_id = self._normalise_path(raw_path) if raw_path else raw_path
 
         # Determine MIME type
         if is_dir:
