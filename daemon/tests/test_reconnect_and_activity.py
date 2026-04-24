@@ -173,9 +173,9 @@ class TestActivityEventTypeMapping:
     """Tests for Bug 2: mkdir must map to 'download', deletes to 'delete', etc."""
 
     @pytest.mark.asyncio
-    async def test_mkdir_maps_to_download(self, handler: RequestHandler, db: Database):
-        """EXPECTED: action='mkdir' should return event_type='download' so it
-        appears under the UI download filter tab."""
+    async def test_mkdir_maps_to_sync(self, handler: RequestHandler, db: Database):
+        """EXPECTED: action='mkdir' should return event_type='sync' (folder
+        creation is part of the sync process, not a download)."""
         await db.add_log_entry(SyncLogEntry(
             action="mkdir", path="new_folder", pair_id="pair_0",
             status="ok", detail="",
@@ -186,8 +186,8 @@ class TestActivityEventTypeMapping:
 
         assert resp.error is None
         assert len(resp.result) == 1
-        assert resp.result[0]["event_type"] == "download", (
-            "Bug 2: mkdir should map to event_type='download' for UI filter"
+        assert resp.result[0]["event_type"] == "sync", (
+            "mkdir should map to event_type='sync', not 'download'"
         )
 
     @pytest.mark.asyncio
@@ -251,9 +251,9 @@ class TestActivityEventTypeMapping:
         )
 
     @pytest.mark.asyncio
-    async def test_error_status_maps_to_error_event_type(self, handler: RequestHandler, db: Database):
-        """EXPECTED: Any entry with status='error' should return event_type='error',
-        regardless of the action."""
+    async def test_failed_upload_keeps_upload_event_type(self, handler: RequestHandler, db: Database):
+        """EXPECTED: A failed upload keeps event_type='upload' so it shows in
+        the Upload filter; the UI Error filter checks status='error' client-side."""
         await db.add_log_entry(SyncLogEntry(
             action="upload", path="fail.txt", pair_id="pair_0",
             status="error", detail="Network timeout",
@@ -263,8 +263,12 @@ class TestActivityEventTypeMapping:
         resp = await handler.handle(req)
 
         assert resp.error is None
-        assert resp.result[0]["event_type"] == "error", (
-            "Bug 2: entries with status='error' should have event_type='error'"
+        entry = resp.result[0]
+        assert entry["event_type"] == "upload", (
+            "Failed upload should keep event_type='upload' for Upload filter"
+        )
+        assert entry["status"] == "error", (
+            "Failed upload should have status='error' for client-side Error filter"
         )
 
     @pytest.mark.asyncio
