@@ -19,6 +19,8 @@ DEFAULT_IGNORE_PATTERNS = [
     ".DS_Store",
     "Thumbs.db",
     ".cloud-drive-sync-*",
+    # keep-both conflict copies created by resolve_keep_both()
+    "*_conflict_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]*",
 ]
 
 
