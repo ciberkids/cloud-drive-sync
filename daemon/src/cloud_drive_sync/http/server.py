@@ -54,6 +54,7 @@ class HttpServer:
         r.add_put("/api/pairs/{pair_id}/ignore-patterns", self._set_ignore_patterns)
         r.add_get("/api/pairs/{pair_id}/rules", self._get_sync_rules)
         r.add_put("/api/pairs/{pair_id}/rules", self._set_sync_rules)
+        r.add_put("/api/pairs/{pair_id}/conflict-strategy", self._set_pair_conflict_strategy)
         # Sync control
         r.add_post("/api/sync", self._force_sync)
         r.add_post("/api/sync/pause", self._pause_sync)
@@ -173,6 +174,10 @@ class HttpServer:
         body = await self._body(req)
         body["pair_id"] = req.match_info["pair_id"]
         return self._json(await self._rpc("set_sync_rules", body))
+    async def _set_pair_conflict_strategy(self, req):
+        body = await self._body(req)
+        body["pair_id"] = req.match_info["pair_id"]
+        return self._json(await self._rpc("set_pair_conflict_strategy", body))
     async def _force_sync(self, req): return self._json(await self._rpc("force_sync", await self._body(req)))
     async def _pause_sync(self, req): return self._json(await self._rpc("pause_sync", await self._body(req)))
     async def _resume_sync(self, req): return self._json(await self._rpc("resume_sync", await self._body(req)))

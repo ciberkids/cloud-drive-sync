@@ -54,6 +54,7 @@ class SyncPair:
     account_id: str = ""
     provider: str = "gdrive"
     sync_rules: SyncRules = field(default_factory=SyncRules)
+    conflict_strategy: str = ""  # "" = inherit global default
 
 
 @dataclass
@@ -140,8 +141,25 @@ class Config:
                     account_id=pair_data.get("account_id", ""),
                     provider=pair_data.get("provider", "gdrive"),
                     sync_rules=sync_rules,
+                    conflict_strategy=pair_data.get("conflict_strategy", ""),
                 )
             )
+
+        # Warn if two pairs share a local_path but have conflicting strategies
+        path_strategies: dict[str, str] = {}
+        for pair in cfg.sync.pairs:
+            effective = pair.conflict_strategy or cfg.sync.conflict_strategy
+            if pair.local_path in path_strategies:
+                if path_strategies[pair.local_path] != effective:
+                    log.warning(
+                        "Pairs sharing local_path '%s' have different conflict strategies "
+                        "('%s' vs '%s') — behaviour may be inconsistent",
+                        pair.local_path,
+                        path_strategies[pair.local_path],
+                        effective,
+                    )
+            else:
+                path_strategies[pair.local_path] = effective
 
         # Accounts
         for acct_data in data.get("accounts", []):
@@ -193,6 +211,7 @@ class Config:
                         "ignore_patterns": p.ignore_patterns,
                         "account_id": p.account_id,
                         "provider": p.provider,
+                        **({"conflict_strategy": p.conflict_strategy} if p.conflict_strategy else {}),
                         "sync_rules": {
                             "max_file_size_mb": p.sync_rules.max_file_size_mb,
                             "include_regex": p.sync_rules.include_regex,

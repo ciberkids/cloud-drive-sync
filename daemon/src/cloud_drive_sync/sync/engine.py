@@ -267,11 +267,15 @@ class SyncEngine:
             # Apply advanced sync rules
             actions = apply_sync_rules(actions, ps.pair.sync_rules)
 
-            # Handle conflicts according to strategy
+            # Handle conflicts using per-pair strategy (falls back to global)
+            effective_strategy = ps.pair.conflict_strategy or self._config.sync.conflict_strategy
+            pair_resolver = ConflictResolver(effective_strategy)
+            # Forward any pending user resolutions from the global resolver
+            pair_resolver._pending_resolutions = self._conflict_resolver._pending_resolutions
             resolved_actions: list[SyncAction] = []
             for action in actions:
                 if action.action == ActionType.CONFLICT:
-                    result = await self._conflict_resolver.resolve(
+                    result = await pair_resolver.resolve(
                         path=action.path,
                         local_path=local_root / action.path,
                         local_mtime=action.local_info.mtime if action.local_info else 0,

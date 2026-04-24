@@ -79,6 +79,10 @@ export async function setConflictStrategy(strategy: string): Promise<void> {
   await put("settings/conflict-strategy", { strategy });
 }
 
+export async function setPairConflictStrategy(pairId: string, strategy: string): Promise<void> {
+  await put(`pairs/${pairId}/conflict-strategy`, { strategy });
+}
+
 export async function resolveConflict(
   conflictId: string,
   resolution: ConflictResolution

@@ -42,6 +42,10 @@ export async function setConflictStrategy(strategy: string): Promise<void> {
   return invoke("set_conflict_strategy", { strategy });
 }
 
+export async function setPairConflictStrategy(pairId: string, strategy: string): Promise<void> {
+  return invoke("set_pair_conflict_strategy", { pairId, strategy });
+}
+
 export async function resolveConflict(
   conflictId: string,
   resolution: ConflictResolution
