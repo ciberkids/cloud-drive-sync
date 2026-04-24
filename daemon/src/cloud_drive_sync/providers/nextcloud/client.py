@@ -72,18 +72,23 @@ class NextcloudClient(CloudClient):
     def _resolve_path(self, file_id: str) -> str:
         """Return the WebDAV path for a file_id.
 
-        New IDs are WebDAV paths (start with /). Legacy IDs from older sync
-        databases are compound Nextcloud fileids like ``00000162ocmvvvbtlon4``
+        New IDs are WebDAV paths (start with /). nc-py-api returns user_path
+        without a leading slash (e.g. "Documents", "Documents/ManuAndI") — these
+        are relative WebDAV paths and must be normalised. Legacy IDs from older
+        sync databases are compound Nextcloud fileids like ``00000162ocmvvvbtlon4``
         — extract the numeric prefix and call by_id as a fallback.
         """
         if file_id == "root" or file_id == "/":
             return "/"
         if file_id.startswith("/"):
             return self._normalise_path(file_id)
-        # Legacy compound fileid: strip non-digit suffix and look up by integer ID
+        # Detect relative WebDAV paths: contain "/" or ".", or too short to be a
+        # compound fileid (genuine fileids are ≥10 chars with ≥8 digit prefix).
         numeric = "".join(c for c in file_id if c.isdigit())
-        if not numeric:
-            raise ValueError(f"Cannot resolve Nextcloud file_id: {file_id!r}")
+        is_relative_path = "/" in file_id or "." in file_id or len(numeric) < 8 or len(file_id) < 10
+        if is_relative_path:
+            return self._normalise_path(file_id)
+        # Legacy compound fileid: strip non-digit suffix and look up by integer ID
         node = self._nc.files.by_id(int(numeric))
         if node is None:
             raise FileNotFoundError(f"Nextcloud file not found: fileid={file_id}")
