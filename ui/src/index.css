@@ -1140,6 +1140,7 @@ body {
 
 .log-item-expanded {
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .log-icon {
