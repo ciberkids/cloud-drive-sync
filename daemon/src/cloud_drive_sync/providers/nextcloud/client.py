@@ -201,16 +201,19 @@ class NextcloudClient(CloudClient):
 
         if is_folder:
             def _mkdir():
-                self._nc.files.mkdir(target)
-                return self._nc.files.listdir(parent_path)
+                try:
+                    self._nc.files.mkdir(target)
+                except Exception as e:
+                    if getattr(e, "status_code", None) != 405:  # 405 = already exists (RFC 4918)
+                        raise
+                nodes = self._nc.files.listdir(parent_path)
+                for node in nodes:
+                    if node.name == name:
+                        return node
+                raise RuntimeError(f"Failed to find created folder: {target}")
 
-            nodes = await asyncio.to_thread(_mkdir)
-            # Find the newly created folder
-            for node in nodes:
-                if node.name == name:
-                    return self._file_to_dict(node)
-            # Fallback: re-list and find by name
-            raise RuntimeError(f"Failed to find created folder: {target}")
+            node = await asyncio.to_thread(_mkdir)
+            return self._file_to_dict(node)
         else:
             if content_path:
                 def _upload():
@@ -347,7 +350,10 @@ class NextcloudClient(CloudClient):
                     if node.name == name and is_dir:
                         return node.user_path
                 return None
-            except Exception:
+            except Exception as e:
+                status = getattr(e, "status_code", None)
+                if not isinstance(e, FileNotFoundError) and status not in (404, 405):
+                    raise
                 return None
 
         return await asyncio.to_thread(_check)
