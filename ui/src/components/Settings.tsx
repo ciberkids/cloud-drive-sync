@@ -66,6 +66,15 @@ export function Settings() {
     }
   };
 
+  const handlePairConflictStrategyChange = async (pairId: string, strategy: string) => {
+    try {
+      await ipc.setPairConflictStrategy(pairId, strategy);
+      refresh();
+    } catch (e) {
+      console.error("Failed to set pair conflict strategy:", e);
+    }
+  };
+
   const [expandedIgnore, setExpandedIgnore] = useState<Set<string>>(new Set());
   const [ignoreText, setIgnoreText] = useState<Record<string, string>>({});
 
@@ -308,6 +317,17 @@ export function Settings() {
           <option value="two_way">Two-way</option>
           <option value="upload_only">Upload only</option>
           <option value="download_only">Download only</option>
+        </select>
+        <select
+          value={pair.conflict_strategy ?? ""}
+          onChange={(e) => handlePairConflictStrategyChange(pair.id, e.target.value)}
+          className="select sync-mode-select"
+          title="Conflict resolution for this pair (empty = use global default)"
+        >
+          <option value="">Conflict: default</option>
+          <option value="keep_both">Conflict: keep both</option>
+          <option value="newest_wins">Conflict: newest wins</option>
+          <option value="ask_user">Conflict: ask me</option>
         </select>
         <label className="toggle-switch">
           <input
@@ -601,9 +621,10 @@ export function Settings() {
       </section>
 
       <section className="settings-section">
-        <h3>Conflict Resolution</h3>
+        <h3>Conflict Resolution (Global Default)</h3>
+        <p className="settings-hint">Applied to any sync pair that does not override it.</p>
         <div className="field">
-          <label className="field-label">Strategy</label>
+          <label className="field-label">Default strategy</label>
           <select
             value={conflictStrategy}
             onChange={(e) =>

@@ -40,6 +40,7 @@ class RequestHandler:
             "add_sync_pair": self._add_sync_pair,
             "remove_sync_pair": self._remove_sync_pair,
             "set_conflict_strategy": self._set_conflict_strategy,
+            "set_pair_conflict_strategy": self._set_pair_conflict_strategy,
             "resolve_conflict": self._resolve_conflict,
             "force_sync": self._force_sync,
             "pause_sync": self._pause_sync,
@@ -243,6 +244,7 @@ class RequestHandler:
                 "ignore_patterns": p.ignore_patterns,
                 "account_id": p.account_id,
                 "provider": p.provider,
+                "conflict_strategy": p.conflict_strategy,
             }
             for i, p in enumerate(self._config.sync.pairs)
         ]
@@ -323,6 +325,22 @@ class RequestHandler:
             self._engine.conflict_resolver.strategy = strategy
         self._config.save()
         return {"status": "ok", "strategy": strategy}
+
+    async def _set_pair_conflict_strategy(self, params: dict) -> dict:
+        pair_id = params.get("pair_id")
+        strategy = params.get("strategy", "")
+        valid = {"keep_both", "newest_wins", "ask_user", ""}
+        if strategy not in valid:
+            raise TypeError("strategy must be one of 'keep_both', 'newest_wins', 'ask_user' or '' to inherit global")
+        try:
+            index = int(pair_id)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id")
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+        self._config.sync.pairs[index].conflict_strategy = strategy
+        self._config.save()
+        return {"status": "ok", "pair_id": pair_id, "conflict_strategy": strategy}
 
     async def _resolve_conflict(self, params: dict) -> dict:
         engine = self._require_engine()

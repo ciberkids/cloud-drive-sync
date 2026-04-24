@@ -45,6 +45,7 @@ export interface SyncPair {
   ignore_patterns?: string[];
   account_id?: string;
   provider?: string;
+  conflict_strategy?: ConflictStrategy | "";
 }
 
 export interface ConflictRecord {
