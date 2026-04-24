@@ -363,16 +363,27 @@ class NextcloudClient(CloudClient):
         self, folder_id: str = "root", prefix: str = ""
     ) -> list[dict[str, Any]]:
         """Recursively list all files and folders."""
-        items = await self.list_all_files(folder_id)
+        try:
+            items = await self.list_all_files(folder_id)
+        except Exception as e:
+            if getattr(e, "status_code", None) == 404:
+                log.warning("Skipping inaccessible Nextcloud folder %r (404)", folder_id)
+                return []
+            raise
         result: list[dict[str, Any]] = []
         for item in items:
             rel = f"{prefix}/{item['name']}" if prefix else item["name"]
             item["relativePath"] = rel
             if item.get("mimeType") == "httpd/unix-directory":
                 result.append(item)
-                # item['id'] is the WebDAV user_path of the subfolder
-                children = await self.list_all_recursive(item["id"], rel)
-                result.extend(children)
+                try:
+                    children = await self.list_all_recursive(item["id"], rel)
+                    result.extend(children)
+                except Exception as e:
+                    if getattr(e, "status_code", None) == 404:
+                        log.warning("Skipping inaccessible Nextcloud subfolder %r (404)", rel)
+                    else:
+                        raise
             else:
                 result.append(item)
         return result
