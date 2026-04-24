@@ -47,17 +47,18 @@ export function ActivityLog() {
     });
   }, []);
 
-  // Build a lookup: pair_id -> { account, provider }
+  // Build a lookup: pair_id -> { account, provider, localPath }
   const pairAccountMap = useMemo(() => {
-    const map: Record<string, { email: string; provider: string }> = {};
+    const map: Record<string, { email: string; provider: string; localPath: string }> = {};
     for (let i = 0; i < pairs.length; i++) {
       const pair = pairs[i];
       const pairId = `pair_${i}`;
       const provider = pair.provider || "gdrive";
       const email = pair.account_id || "";
-      map[pairId] = { email, provider };
+      const localPath = pair.local_path || "";
+      map[pairId] = { email, provider, localPath };
       // Also map by the pair's string id
-      map[pair.id] = { email, provider };
+      map[pair.id] = { email, provider, localPath };
     }
     return map;
   }, [pairs]);
@@ -94,10 +95,15 @@ export function ActivityLog() {
           const isSystem = entry.pair_id === "_system";
           const isExpanded = expandedIds.has(entry.id);
 
+          const folderName = acctInfo?.localPath
+            ? acctInfo.localPath.split("/").filter(Boolean).pop()
+            : undefined;
+
           return (
             <div
               key={entry.id}
               className={`log-item log-${entry.event_type}${isExpanded ? " log-item-expanded" : ""}`}
+              style={color && !isSystem ? { borderLeft: `3px solid ${color}` } : undefined}
               onClick={() => toggleExpanded(entry.id)}
               role="button"
               tabIndex={0}
@@ -120,13 +126,15 @@ export function ActivityLog() {
               </div>
               <div className="log-meta">
                 {acctInfo && !isSystem && (
-                  <span className="log-account" title={`${label} — ${acctInfo.email}`}>
-                    <span
-                      className="log-provider-dot"
-                      style={{ background: color }}
-                    />
-                    {acctInfo.email.split("@")[0]}
-                  </span>
+                  <div className="log-account" title={`${label} — ${acctInfo.email}`}>
+                    <span className="log-provider-pill" style={{ background: color }}>
+                      {label}
+                    </span>
+                    <span className="log-account-text">
+                      {acctInfo.email.split("@")[0]}
+                      {folderName && <> · {folderName}</>}
+                    </span>
+                  </div>
                 )}
                 <span className="log-time">
                   {new Date(entry.timestamp).toLocaleTimeString()}
