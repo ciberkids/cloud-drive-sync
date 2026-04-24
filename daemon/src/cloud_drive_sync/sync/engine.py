@@ -66,8 +66,11 @@ class SyncEngine:
         self._db = db
         self._client = drive_client
         self._clients = clients or {}
-        self._ops = file_ops or (FileOperations(drive_client) if drive_client else None)
-        self._poller = change_poller or (ChangePoller(drive_client) if drive_client else None)
+        # Only store explicitly injected ops/poller (used in tests or single-provider mode).
+        # Per-pair ops are always built in _start_pair from the provider registry so that
+        # non-GDrive pairs use their own ops class rather than the GDrive FileOperations.
+        self._ops = file_ops
+        self._poller = change_poller
         self._conflict_resolver = ConflictResolver(config.sync.conflict_strategy)
         self._pairs: dict[str, PairStatus] = {}
         self._stop_event = asyncio.Event()

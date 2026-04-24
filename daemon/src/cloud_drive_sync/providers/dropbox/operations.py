@@ -53,6 +53,7 @@ class DropboxFileOps(CloudFileOps):
         remote_name: str | None = None,
         existing_id: str | None = None,
         progress_callback: Any = None,
+        resume_uri: str | None = None,
     ) -> dict[str, Any]:
         import dropbox
 
