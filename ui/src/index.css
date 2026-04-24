@@ -915,7 +915,7 @@ body {
 }
 
 .transfer-card-file {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .transfer-card-name {
@@ -934,12 +934,15 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
 .transfer-card-progress {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
 }
 
 .transfer-card-bar {
@@ -953,8 +956,17 @@ body {
   height: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.5s ease;
-  min-width: 2%;
+  transition: width 0.3s ease;
+}
+
+.transfer-card-bar-fill.indeterminate {
+  width: 40% !important;
+  animation: bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes bar-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 .transfer-card-stats {

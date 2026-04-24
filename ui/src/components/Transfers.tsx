@@ -41,7 +41,8 @@ export function Transfers() {
 
           <div className="transfers-list">
             {transfers.map((t) => {
-              const pct = t.total > 0 ? Math.round((t.bytes / t.total) * 100) : 0;
+              const pct = t.total > 0 ? Math.min(100, Math.round((t.bytes / t.total) * 100)) : 0;
+              const indeterminate = t.total === 0 || (t.total > 0 && t.bytes === 0);
               const fileName = t.path.split("/").pop() || t.path;
               const dirPart = t.path.includes("/")
                 ? t.path.slice(0, t.path.lastIndexOf("/"))
@@ -67,9 +68,13 @@ export function Transfers() {
                     <span className={`transfer-badge transfer-badge-${t.direction}`}>
                       {badgeLabel}
                     </span>
-                    {t.speed_formatted && (
+                    {t.speed_formatted ? (
                       <span className="transfer-card-speed">{t.speed_formatted}</span>
-                    )}
+                    ) : hasProgress ? (
+                      <span className="transfer-card-speed" style={{ color: "var(--text-secondary)", fontWeight: 400, fontSize: "12px" }}>
+                        {t.bytes > 0 ? "finishing…" : "starting…"}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="transfer-card-file">
@@ -83,18 +88,22 @@ export function Transfers() {
                     <div className="transfer-card-progress">
                       <div className="transfer-card-bar">
                         <div
-                          className="transfer-card-bar-fill"
-                          style={{ width: t.total > 0 ? `${pct}%` : undefined }}
+                          className={`transfer-card-bar-fill${indeterminate ? " indeterminate" : ""}`}
+                          style={!indeterminate ? { width: `${pct}%` } : undefined}
                         />
                       </div>
                       <div className="transfer-card-stats">
-                        {t.total > 0 ? (
+                        {t.total > 0 && t.bytes > 0 ? (
                           <>
                             <span>{formatBytes(t.bytes)} / {formatBytes(t.total)}</span>
                             <span>{pct}%</span>
                           </>
-                        ) : (
+                        ) : t.total > 0 ? (
+                          <span>— / {formatBytes(t.total)}</span>
+                        ) : t.bytes > 0 ? (
                           <span>{formatBytes(t.bytes)}</span>
+                        ) : (
+                          <span>—</span>
                         )}
                       </div>
                     </div>

@@ -89,12 +89,13 @@ class SyncExecutor:
             size = 0
             if action.action == ActionType.UPLOAD and action.local_info:
                 size = action.local_info.size
-            speed_label = "starting..." if action.action in (ActionType.UPLOAD, ActionType.DOWNLOAD) else ""
+            elif action.action == ActionType.DOWNLOAD and action.remote_info:
+                size = int(action.remote_info.get("size", 0) or 0)
             self._active_transfers[action.path] = {
                 "bytes": 0,
                 "total": size,
                 "speed": 0,
-                "speed_formatted": speed_label,
+                "speed_formatted": "",
                 "direction": direction,
             }
             try:
@@ -191,11 +192,12 @@ class SyncExecutor:
 
     def _progress_callback(self, path: str, direction: str, bytes_done: int, total: int, speed: float):
         """Called from upload/download threads to report progress."""
+        existing_total = self._active_transfers.get(path, {}).get("total", 0)
         self._active_transfers[path] = {
             "bytes": bytes_done,
-            "total": total,
+            "total": total if total > 0 else existing_total,
             "speed": speed,
-            "speed_formatted": _format_speed(speed),
+            "speed_formatted": _format_speed(speed) if speed > 0 else "",
             "direction": direction,
         }
         if self._notify_callback:
