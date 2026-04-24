@@ -228,14 +228,13 @@ class SyncExecutor:
         if action.stored_entry and hasattr(action.stored_entry, 'remote_native_mime'):
             remote_native_mime = action.stored_entry.remote_native_mime
 
-        if existing_id:
-            # Update in place, no need to resolve parent
-            parent_id = self._remote_folder_id
-        else:
-            # New file: ensure intermediate directories exist in Drive
-            parent_id = await self._ensure_remote_dirs(
-                action.path.replace(os.sep, "/")
-            )
+        # Always ensure intermediate directories exist before uploading.
+        # Even for updates (existing_id set), the remote parent may have been
+        # deleted since the DB entry was recorded (e.g. after a Nextcloud wipe
+        # or service restart) — skipping _ensure_remote_dirs would cause a 404.
+        parent_id = await self._ensure_remote_dirs(
+            action.path.replace(os.sep, "/")
+        )
 
         # Check for a partial transfer record to resume
         partial = await self._db.get_partial_transfer(action.path, self._pair_id)

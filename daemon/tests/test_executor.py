@@ -470,3 +470,54 @@ async def test_concurrent_uploads_no_duplicate_folders(mock_ops, db, demo_dirs, 
     assert len(shared_folders) == 1, (
         f"Expected exactly 1 'shared' folder, found {len(shared_folders)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_ensure_remote_dirs_called_even_with_existing_id(
+    executor: SyncExecutor, db: Database, demo_dirs, mock_client
+):
+    """_ensure_remote_dirs must be called unconditionally, even when existing_id is set.
+
+    Regression test for issue #24: if the remote parent directory was deleted
+    after the DB entry was recorded, skipping _ensure_remote_dirs caused a 404.
+    """
+    local, _ = demo_dirs
+
+    # Create local file nested two levels deep
+    nested = local / "docs" / "bills"
+    nested.mkdir(parents=True)
+    src = nested / "invoice.pdf"
+    src.write_text("v1")
+
+    # Upload the file first so mock_client has a real remote_id
+    result = await mock_client.create_file("invoice.pdf", "root", content_path=str(src))
+    real_remote_id = result["id"]
+
+    await db.upsert_sync_entry(SyncEntry(
+        path="docs/bills/invoice.pdf", pair_id="pair_0",
+        state=FileState.SYNCED, remote_id=real_remote_id,
+        local_md5="old",
+    ))
+    stored = await db.get_sync_entry("docs/bills/invoice.pdf", "pair_0")
+
+    src.write_text("v2")
+    action = SyncAction(
+        action=ActionType.UPLOAD,
+        path="docs/bills/invoice.pdf",
+        local_info=LocalFileInfo(md5="new", mtime=2000, size=2),
+        stored_entry=stored,
+    )
+
+    ensure_dirs_calls: list[str] = []
+    original_ensure = executor._ensure_remote_dirs
+
+    async def spy_ensure(rel_path: str) -> str:
+        ensure_dirs_calls.append(rel_path)
+        return await original_ensure(rel_path)
+
+    executor._ensure_remote_dirs = spy_ensure  # type: ignore[method-assign]
+
+    failed = await executor.execute_all([action])
+    assert failed == [], f"Upload failed: {failed}"
+    assert ensure_dirs_calls, "_ensure_remote_dirs was not called despite existing_id being set"
+    assert "docs/bills/invoice.pdf" in ensure_dirs_calls[0]
