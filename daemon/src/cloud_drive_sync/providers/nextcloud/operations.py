@@ -6,6 +6,7 @@ import asyncio
 import os
 import tempfile
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,8 @@ class NextcloudFileOps(CloudFileOps):
         progress_callback: Any = None,
         resume_uri: str | None = None,
     ) -> dict[str, Any]:
-        name = remote_name or local_path.name
+        # Normalise to NFC so Nextcloud storage and our comparison agree
+        name = unicodedata.normalize("NFC", remote_name or local_path.name)
         file_size = local_path.stat().st_size
         log.info("Uploading %s (%d bytes) as '%s'", local_path, file_size, name)
 
@@ -70,7 +72,7 @@ class NextcloudFileOps(CloudFileOps):
             nodes = self._client._nc.files.listdir(parent_dir)
             target_name = remote_path.rsplit("/", 1)[-1]
             for node in nodes:
-                if node.name == target_name:
+                if unicodedata.normalize("NFC", node.name) == unicodedata.normalize("NFC", target_name):
                     return node
             return None
 

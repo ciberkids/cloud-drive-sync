@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 
@@ -202,6 +203,8 @@ class NextcloudClient(CloudClient):
         mime_type: str | None = None,
         is_folder: bool = False,
     ) -> dict[str, Any]:
+        # Normalise to NFC so Nextcloud storage and our comparison agree
+        name = unicodedata.normalize("NFC", name)
         parent_path = "/" if parent_id == "root" else self._normalise_path(parent_id)
         target = f"{parent_path}/{name}" if parent_path != "/" else f"/{name}"
 
@@ -214,7 +217,7 @@ class NextcloudClient(CloudClient):
                         raise
                 nodes = self._nc.files.listdir(parent_path)
                 for node in nodes:
-                    if node.name == name:
+                    if unicodedata.normalize("NFC", node.name) == name:
                         return node
                 raise RuntimeError(f"Failed to find created folder: {target}")
 
@@ -228,7 +231,7 @@ class NextcloudClient(CloudClient):
 
                 nodes = await asyncio.to_thread(_upload)
                 for node in nodes:
-                    if node.name == name:
+                    if unicodedata.normalize("NFC", node.name) == name:
                         return self._file_to_dict(node)
                 raise RuntimeError(f"Failed to find uploaded file: {target}")
             else:
@@ -239,7 +242,7 @@ class NextcloudClient(CloudClient):
 
                 nodes = await asyncio.to_thread(_touch)
                 for node in nodes:
-                    if node.name == name:
+                    if unicodedata.normalize("NFC", node.name) == name:
                         return self._file_to_dict(node)
                 raise RuntimeError(f"Failed to find created file: {target}")
 
@@ -347,13 +350,16 @@ class NextcloudClient(CloudClient):
 
         Returns the child folder's ID (WebDAV path) if found, else None.
         """
+        # Normalise to NFC so Nextcloud storage and our comparison agree
+        name_nfc = unicodedata.normalize("NFC", name)
+
         def _check():
             try:
                 parent_path = self._resolve_path(parent_id)
                 nodes = self._nc.files.listdir(parent_path)
                 for node in nodes:
                     is_dir = node.is_dir if hasattr(node, "is_dir") else False
-                    if node.name == name and is_dir:
+                    if unicodedata.normalize("NFC", node.name) == name_nfc and is_dir:
                         return self._normalise_path(node.user_path)
                 return None
             except Exception as e:
