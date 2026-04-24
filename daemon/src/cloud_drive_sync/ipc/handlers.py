@@ -382,15 +382,18 @@ class RequestHandler:
 
         result = []
         for e in entries:
-            # Normalize event_type for UI filter tabs
-            if e.status == "error":
-                event_type = "error"
-            elif e.action == "mkdir":
-                event_type = "download"
+            # Normalize event_type for UI filter tabs.
+            # event_type is based on the action, not the status — failed uploads
+            # still show in the "Upload" filter, with status="error" visible as
+            # a badge. The "Error" filter is handled client-side via status.
+            if e.action == "mkdir":
+                event_type = "sync"  # folder creation is part of sync, not download
             elif e.action.startswith("delete"):
                 event_type = "delete"
             elif e.action == "sync":
                 event_type = "sync"
+            elif e.action in ("upload", "download", "move", "conflict", "auth"):
+                event_type = e.action
             else:
                 event_type = e.action
 

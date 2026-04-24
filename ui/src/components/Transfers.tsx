@@ -6,9 +6,12 @@ export function Transfers() {
   const { pairs } = useSyncPairs();
   const transfers = status.live_transfers ?? [];
 
-  const pairMap = Object.fromEntries(
-    pairs.map((p) => [p.id, p])
-  );
+  // pairs.id is a numeric string ("0","1"...) but live_transfer.pair_id is
+  // "pair_0","pair_1"... — build a map with both key formats for robust lookup
+  const pairMap = Object.fromEntries([
+    ...pairs.map((p) => [p.id, p]),
+    ...pairs.map((p, i) => [`pair_${i}`, p]),
+  ]);
 
   return (
     <div className="transfers-page">
@@ -52,6 +55,7 @@ export function Transfers() {
               const pFolder = pair?.local_path
                 ? pair.local_path.split("/").filter(Boolean).pop()
                 : undefined;
+              const pMode = pair ? syncModeLabel(pair.sync_mode) : undefined;
 
               return (
                 <div
@@ -107,6 +111,7 @@ export function Transfers() {
                           📁 {pFolder}
                         </span>
                       )}
+                      {pMode && <span className="transfer-account-mode">{pMode}</span>}
                     </div>
                   )}
                 </div>
@@ -117,6 +122,15 @@ export function Transfers() {
       )}
     </div>
   );
+}
+
+function syncModeLabel(mode?: string): string {
+  switch (mode) {
+    case "two_way": return "⇄ Two-way";
+    case "upload_only": return "↑ Upload only";
+    case "download_only": return "↓ Download only";
+    default: return "";
+  }
 }
 
 function directionLabel(direction: string): string {

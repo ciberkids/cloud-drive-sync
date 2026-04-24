@@ -967,6 +967,17 @@ body {
   max-width: 180px;
 }
 
+.transfer-account-mode {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 1px 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 /* Folder picker */
 .folder-picker {
   display: flex;

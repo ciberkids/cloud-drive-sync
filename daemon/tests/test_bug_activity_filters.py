@@ -158,14 +158,24 @@ async def test_error_entries_have_action_as_event_type_not_error(handler: Reques
     assert resp.error is None
     entries = resp.result
 
-    # Check what the UI error filter would see
-    # UI does: entries.filter(e => e.event_type === "error")
-    ui_error_filter = [e for e in entries if e["event_type"] == "error"]
+    # event_type is now action-based, not status-based — failed uploads still
+    # have event_type="upload" so they appear in the Upload filter. The UI
+    # Error filter checks status="error" on the client side.
+    upload_entries = [e for e in entries if e["event_type"] == "upload"]
+    download_entries = [e for e in entries if e["event_type"] == "download"]
+    error_status_entries = [e for e in entries if e["status"] == "error"]
 
-    # After handler fix, error entries should have event_type="error"
-    assert len(ui_error_filter) == 2, (
-        f"UI error filter found {len(ui_error_filter)} entries, expected 2. "
-        "Bug: event_type is set to action name, not 'error', so UI filter misses them."
+    # Failed upload has event_type="upload", status="error"
+    assert len(upload_entries) == 2, (
+        f"Expected 2 upload-type entries (1 failed + 1 ok), got {len(upload_entries)}"
+    )
+    # Failed download has event_type="download", status="error"
+    assert len(download_entries) == 1, (
+        f"Expected 1 download-type entry, got {len(download_entries)}"
+    )
+    # Both failures visible via status field (used by UI Error filter)
+    assert len(error_status_entries) == 2, (
+        f"Expected 2 entries with status=error, got {len(error_status_entries)}"
     )
 
 

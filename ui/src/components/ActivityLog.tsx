@@ -66,7 +66,9 @@ export function ActivityLog() {
   const filtered =
     filter === "all"
       ? entries
-      : entries.filter((e) => e.event_type === filter);
+      : filter === "error"
+        ? entries.filter((e) => e.status === "error" || e.event_type === "error")
+        : entries.filter((e) => e.event_type === filter);
 
   return (
     <div className="activity-log">
