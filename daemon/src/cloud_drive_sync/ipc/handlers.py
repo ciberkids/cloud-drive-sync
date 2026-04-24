@@ -71,6 +71,7 @@ class RequestHandler:
             "shutdown": self._shutdown,
             "list_local_dirs": self._list_local_dirs,
             "mkdir_local": self._mkdir_local,
+            "repair": self._repair,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -1009,3 +1010,94 @@ class RequestHandler:
             return {"ok": False, "error": "Permission denied"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    async def _repair(self, params: dict) -> dict:
+        """Scan for remote stub files (size 0 or mismatched vs local) and delete them.
+
+        On the next sync cycle the planner will re-classify these files as plain
+        uploads and push the correct content.
+
+        Params:
+            pair_id (optional): restrict to a specific pair (e.g. "0"); default = all pairs
+            dry_run (bool): if True, only report what would be deleted, default False
+
+        Returns:
+            {"repaired": N, "pairs_scanned": M, "stubs": [...path...]}
+        """
+        from pathlib import Path as _Path
+
+        params = params or {}
+        dry_run: bool = bool(params.get("dry_run", False))
+        target_pair_id: str | None = params.get("pair_id")
+
+        engine = self._engine
+        db = self._db or (engine._db if engine else None)
+        if db is None:
+            raise RuntimeError("Database not available")
+
+        pairs_to_scan: list[tuple[int, object]] = []
+        for i, pair in enumerate(self._config.sync.pairs):
+            if target_pair_id is not None and str(i) != str(target_pair_id):
+                continue
+            if not pair.enabled:
+                continue
+            pairs_to_scan.append((i, pair))
+
+        stubs: list[str] = []
+        pairs_scanned = 0
+
+        for i, pair in pairs_to_scan:
+            pair_id = f"pair_{i}"
+            local_root = _Path(pair.local_path)
+
+            # Resolve the cloud client for this pair
+            client = None
+            if engine:
+                provider_name = pair.provider or "gdrive"
+                client = (
+                    engine._clients.get(f"{provider_name}:{pair.account_id}")
+                    or engine._clients.get(pair.account_id)
+                    or engine._client
+                )
+            if client is None:
+                continue
+
+            try:
+                remote_files = await client.list_all_recursive(pair.remote_folder_id)
+            except Exception as exc:
+                log.warning("repair: failed to list remote for pair_%d: %s", i, exc)
+                continue
+
+            pairs_scanned += 1
+
+            for remote in remote_files:
+                path = remote.get("path", "")
+                if not path:
+                    continue
+                local_file = local_root / path
+                if not local_file.is_file():
+                    continue
+                local_size = local_file.stat().st_size
+                remote_size = remote.get("size", -1)
+                if remote_size == -1:
+                    # No size info — skip
+                    continue
+                if remote_size == 0 and local_size > 0:
+                    # Zero-byte remote stub
+                    stubs.append(path)
+                    if not dry_run:
+                        try:
+                            remote_id = remote.get("id") or remote.get("fileId")
+                            if remote_id:
+                                await client.delete_file(remote_id)
+                            # Clear the stored sync entry so the planner treats it as new
+                            await db.delete_sync_entry(path, pair_id)
+                        except Exception as exc:
+                            log.warning("repair: failed to delete stub %s: %s", path, exc)
+
+        return {
+            "repaired": len(stubs),
+            "pairs_scanned": pairs_scanned,
+            "dry_run": dry_run,
+            "stubs": stubs,
+        }
