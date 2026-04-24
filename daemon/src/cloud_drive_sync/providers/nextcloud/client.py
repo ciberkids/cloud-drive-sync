@@ -68,7 +68,7 @@ class NextcloudClient(CloudClient):
             return "/"
         if not path.startswith("/"):
             path = "/" + path
-        return path.rstrip("/")
+        return path.rstrip("/").rstrip()
 
     def _resolve_path(self, file_id: str) -> str:
         """Return the WebDAV path for a file_id.

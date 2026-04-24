@@ -29,6 +29,10 @@ def _make_client() -> NextcloudClient:
     ("Documents/ManuAndI/Documents/AI Bills Folder", "/Documents/ManuAndI/Documents/AI Bills Folder"),
     # Trailing slash stripped
     ("/Documents/", "/Documents"),
+    # Issue #26: trailing space before trailing slash — must strip space too
+    ("Documents/Taxes/Tax declaration documents /", "/Documents/Taxes/Tax declaration documents"),
+    ("/Documents/Taxes/Tax declaration documents /", "/Documents/Taxes/Tax declaration documents"),
+    ("Documents/Taxes/Tax declaration documents ", "/Documents/Taxes/Tax declaration documents"),
 ])
 def test_resolve_path_normalises(file_id: str, expected: str) -> None:
     client = _make_client()
