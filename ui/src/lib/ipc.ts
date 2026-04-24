@@ -46,6 +46,10 @@ export async function setPairConflictStrategy(pairId: string, strategy: string):
   return invoke("set_pair_conflict_strategy", { pairId, strategy });
 }
 
+export async function repairPair(pairId: string, dryRun: boolean): Promise<{ repaired: number; stubs: string[]; dry_run: boolean }> {
+  return invoke("repair", { pairId, dryRun });
+}
+
 export async function resolveConflict(
   conflictId: string,
   resolution: ConflictResolution

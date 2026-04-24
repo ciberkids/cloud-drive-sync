@@ -83,6 +83,10 @@ export async function setPairConflictStrategy(pairId: string, strategy: string):
   await put(`pairs/${pairId}/conflict-strategy`, { strategy });
 }
 
+export async function repairPair(pairId: string, dryRun: boolean): Promise<{ repaired: number; stubs: string[]; dry_run: boolean }> {
+  return post("repair", { pair_id: pairId, dry_run: dryRun });
+}
+
 export async function resolveConflict(
   conflictId: string,
   resolution: ConflictResolution

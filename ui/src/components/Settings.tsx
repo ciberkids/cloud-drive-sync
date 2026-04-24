@@ -75,6 +75,41 @@ export function Settings() {
     }
   };
 
+  type RepairState =
+    | { phase: "idle" }
+    | { phase: "scanning" }
+    | { phase: "preview"; count: number; stubs: string[] }
+    | { phase: "repairing" }
+    | { phase: "done"; count: number };
+
+  const [repairStates, setRepairStates] = useState<Record<string, RepairState>>({});
+
+  const setRepair = (pairId: string, state: RepairState) =>
+    setRepairStates((prev) => ({ ...prev, [pairId]: state }));
+
+  const handleRepairScan = async (pairId: string) => {
+    setRepair(pairId, { phase: "scanning" });
+    try {
+      const result = await ipc.repairPair(pairId, true);
+      setRepair(pairId, { phase: "preview", count: result.repaired, stubs: result.stubs });
+    } catch (e) {
+      console.error("Repair scan failed:", e);
+      setRepair(pairId, { phase: "idle" });
+    }
+  };
+
+  const handleRepairConfirm = async (pairId: string) => {
+    setRepair(pairId, { phase: "repairing" });
+    try {
+      const result = await ipc.repairPair(pairId, false);
+      setRepair(pairId, { phase: "done", count: result.repaired });
+      setTimeout(() => setRepair(pairId, { phase: "idle" }), 4000);
+    } catch (e) {
+      console.error("Repair failed:", e);
+      setRepair(pairId, { phase: "idle" });
+    }
+  };
+
   const [expandedIgnore, setExpandedIgnore] = useState<Set<string>>(new Set());
   const [ignoreText, setIgnoreText] = useState<Record<string, string>>({});
 
@@ -454,6 +489,39 @@ export function Settings() {
             </button>
           </div>
         )}
+      </div>
+      <div className="sync-pair-repair">
+        {(() => {
+          const rs = repairStates[pair.id] ?? { phase: "idle" };
+          if (rs.phase === "idle") return (
+            <button className="btn btn-sm btn-repair" onClick={() => handleRepairScan(pair.id)} type="button">
+              Scan for stubs
+            </button>
+          );
+          if (rs.phase === "scanning") return <span className="repair-status">Scanning…</span>;
+          if (rs.phase === "preview") return (
+            <div className="repair-preview">
+              {rs.count === 0
+                ? <span className="repair-status repair-ok">No stubs found</span>
+                : <>
+                    <span className="repair-status repair-warn">{rs.count} stub{rs.count !== 1 ? "s" : ""} found</span>
+                    <button className="btn btn-sm btn-danger" onClick={() => handleRepairConfirm(pair.id)} type="button">
+                      Delete {rs.count} stub{rs.count !== 1 ? "s" : ""}
+                    </button>
+                  </>
+              }
+              <button className="btn btn-sm" onClick={() => setRepair(pair.id, { phase: "idle" })} type="button">
+                Cancel
+              </button>
+            </div>
+          );
+          if (rs.phase === "repairing") return <span className="repair-status">Repairing…</span>;
+          if (rs.phase === "done") return (
+            <span className="repair-status repair-ok">
+              {rs.count === 0 ? "Nothing to repair" : `Repaired ${rs.count} stub${rs.count !== 1 ? "s" : ""}`}
+            </span>
+          );
+        })()}
       </div>
     </div>
   );
