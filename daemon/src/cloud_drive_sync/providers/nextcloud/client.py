@@ -66,13 +66,18 @@ class NextcloudClient(CloudClient):
     # ── Internal helpers ────────────────────────────────────────────
 
     def _normalise_path(self, path: str) -> str:
-        """Ensure path starts with / and has no trailing slash (except root)."""
-        path = path.strip()
+        """Ensure path starts with / and has no trailing slash (except root).
+
+        Only leading whitespace and trailing slashes are stripped — trailing
+        spaces inside path segments are preserved so that legacy Nextcloud
+        folders created with trailing spaces (issue #26) remain addressable.
+        """
+        path = path.lstrip()
         if not path or path == "/":
             return "/"
         if not path.startswith("/"):
             path = "/" + path
-        return path.rstrip("/").rstrip()
+        return path.rstrip("/")
 
     def _resolve_path(self, file_id: str) -> str:
         """Return the WebDAV path for a file_id.
@@ -221,7 +226,7 @@ class NextcloudClient(CloudClient):
                         raise
                 nodes = self._nc.files.listdir(parent_path)
                 for node in nodes:
-                    if unicodedata.normalize("NFC", node.name) == name:
+                    if unicodedata.normalize("NFC", node.name.strip()) == name:
                         return node
                 raise RuntimeError(f"Failed to find created folder: {target}")
 
@@ -235,7 +240,7 @@ class NextcloudClient(CloudClient):
 
                 nodes = await asyncio.to_thread(_upload)
                 for node in nodes:
-                    if unicodedata.normalize("NFC", node.name) == name:
+                    if unicodedata.normalize("NFC", node.name.strip()) == name:
                         return self._file_to_dict(node)
                 raise RuntimeError(f"Failed to find uploaded file: {target}")
             else:
@@ -246,7 +251,7 @@ class NextcloudClient(CloudClient):
 
                 nodes = await asyncio.to_thread(_touch)
                 for node in nodes:
-                    if unicodedata.normalize("NFC", node.name) == name:
+                    if unicodedata.normalize("NFC", node.name.strip()) == name:
                         return self._file_to_dict(node)
                 raise RuntimeError(f"Failed to find created file: {target}")
 
@@ -363,7 +368,9 @@ class NextcloudClient(CloudClient):
                 nodes = self._nc.files.listdir(parent_path)
                 for node in nodes:
                     is_dir = node.is_dir if hasattr(node, "is_dir") else False
-                    if unicodedata.normalize("NFC", node.name) == name_nfc and is_dir:
+                    # Strip trailing whitespace from server name before comparing so
+                    # legacy folders with trailing spaces (issue #26) are still found.
+                    if unicodedata.normalize("NFC", node.name.strip()) == name_nfc and is_dir:
                         return self._normalise_path(node.user_path)
                 return None
             except Exception as e:
