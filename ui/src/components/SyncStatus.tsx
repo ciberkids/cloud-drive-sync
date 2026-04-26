@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useStatus, useDaemonEvent } from "../lib/hooks";
+import { useStatus, useDaemonEvent, useSyncPairs } from "../lib/hooks";
+import { providerLabel, providerColor } from "./AccountManager";
 import * as ipc from "../lib/ipc";
 
 interface SyncResult {
@@ -9,9 +10,16 @@ interface SyncResult {
 
 export function SyncStatus() {
   const status = useStatus(2000);
+  const { pairs } = useSyncPairs();
   const [syncPending, setSyncPending] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const resultTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // pair_id from engine is "pair_0","pair_1"...; pairs[].id is "0","1"...
+  const pairMap = Object.fromEntries([
+    ...pairs.map((p) => [p.id, p]),
+    ...pairs.map((p, i) => [`pair_${i}`, p]),
+  ]);
 
   // Listen for sync_complete to show result
   useDaemonEvent<{
@@ -162,8 +170,13 @@ export function SyncStatus() {
           {status.live_transfers.map((t) => {
             const pct = t.total > 0 ? Math.round((t.bytes / t.total) * 100) : 0;
             const fileName = t.path.split("/").pop() || t.path;
+            const pair = pairMap[t.pair_id];
+            const pColor = pair ? providerColor(pair.provider) : undefined;
+            const pLabel = pair ? providerLabel(pair.provider) : undefined;
+            const pFolder = pair?.local_path?.split("/").filter(Boolean).pop();
+            const pAccount = pair?.account_id;
             return (
-              <div key={t.path} className="transfer-item">
+              <div key={`${t.pair_id}-${t.path}`} className="transfer-item">
                 <div className="transfer-header">
                   <span className="transfer-direction">
                     {t.direction === "upload" ? "\u2191" : "\u2193"}
@@ -171,6 +184,13 @@ export function SyncStatus() {
                   <span className="transfer-name" title={t.path}>{fileName}</span>
                   <span className="transfer-speed">{t.speed_formatted}</span>
                 </div>
+                {pair && (
+                  <div className="transfer-pair-context">
+                    <span className="transfer-pair-pill" style={{ background: pColor }}>{pLabel}</span>
+                    {pAccount && <span className="transfer-pair-account">{pAccount}</span>}
+                    {pFolder && <span className="transfer-pair-folder">\u203a {pFolder}</span>}
+                  </div>
+                )}
                 {t.total > 0 && (
                   <div className="transfer-progress">
                     <div className="transfer-bar">

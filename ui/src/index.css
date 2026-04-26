@@ -407,6 +407,37 @@ body {
   color: var(--accent);
 }
 
+.transfer-pair-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.transfer-pair-pill {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.transfer-pair-account {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  opacity: 0.8;
+}
+
+.transfer-pair-folder {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
 .transfer-progress {
   display: flex;
   align-items: center;
