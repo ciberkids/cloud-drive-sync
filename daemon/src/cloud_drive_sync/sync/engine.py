@@ -22,6 +22,7 @@ from cloud_drive_sync.sync.executor import SyncExecutor
 from cloud_drive_sync.sync.planner import (
     ActionType,
     SyncAction,
+    apply_strategy_overrides,
     apply_sync_rules,
     filter_actions_by_mode,
     plan_continuous_sync,
@@ -267,6 +268,12 @@ class SyncEngine:
             # Apply advanced sync rules
             actions = apply_sync_rules(actions, ps.pair.sync_rules)
 
+            # Apply mirror strategy overrides (local_wins / remote_wins) before
+            # the mode filter so CONFLICT, DOWNLOAD, UPLOAD etc. are already
+            # redirected to their authoritative equivalents.
+            effective_strategy = ps.pair.conflict_strategy or self._config.sync.conflict_strategy
+            actions = apply_strategy_overrides(actions, effective_strategy)
+
             # Apply sync-mode filter BEFORE conflict resolution so that directional
             # modes (upload_only/download_only) convert CONFLICT→UPLOAD/DOWNLOAD
             # deterministically, preventing the ConflictResolver from creating
@@ -458,6 +465,8 @@ class SyncEngine:
 
                 actions = plan_continuous_sync(all_change_dicts, stored_entries)
                 actions = apply_sync_rules(actions, ps.pair.sync_rules)
+                effective_strategy = ps.pair.conflict_strategy or self._config.sync.conflict_strategy
+                actions = apply_strategy_overrides(actions, effective_strategy)
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
                     await ps.executor.execute_all(actions)
@@ -576,6 +585,8 @@ class SyncEngine:
 
         actions = plan_continuous_sync(change_dicts, stored_entries)
         actions = apply_sync_rules(actions, ps.pair.sync_rules)
+        effective_strategy = ps.pair.conflict_strategy or self._config.sync.conflict_strategy
+        actions = apply_strategy_overrides(actions, effective_strategy)
         actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
             await ps.executor.execute_all(actions)

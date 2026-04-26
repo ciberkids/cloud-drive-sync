@@ -493,6 +493,107 @@ def plan_continuous_sync(
     return actions
 
 
+def apply_strategy_overrides(
+    actions: list[SyncAction],
+    strategy: str,
+) -> list[SyncAction]:
+    """Transform actions to enforce a mirror-style conflict strategy.
+
+    Must run AFTER ``apply_sync_rules`` and BEFORE ``filter_actions_by_mode``.
+
+    ``local_wins`` — local is the absolute source of truth:
+      CONFLICT → UPLOAD, DOWNLOAD → DELETE_REMOTE, DELETE_LOCAL → UPLOAD
+
+    ``remote_wins`` — remote is the absolute source of truth:
+      CONFLICT → DOWNLOAD, UPLOAD → DELETE_LOCAL, DELETE_REMOTE → DOWNLOAD,
+      MOVE → [DELETE_LOCAL(dest_path), DOWNLOAD(path)]
+
+    All other strategies return the action list unchanged.
+    """
+    if strategy not in ("local_wins", "remote_wins"):
+        return actions
+
+    result: list[SyncAction] = []
+
+    if strategy == "local_wins":
+        for action in actions:
+            if action.action == ActionType.CONFLICT:
+                result.append(SyncAction(
+                    action=ActionType.UPLOAD,
+                    path=action.path,
+                    local_info=action.local_info,
+                    stored_entry=action.stored_entry,
+                    reason="local_wins: conflict resolved as upload",
+                ))
+            elif action.action == ActionType.DOWNLOAD:
+                result.append(SyncAction(
+                    action=ActionType.DELETE_REMOTE,
+                    path=action.path,
+                    remote_info=action.remote_info,
+                    stored_entry=action.stored_entry,
+                    reason="local_wins: remote-only file deleted",
+                ))
+            elif action.action == ActionType.DELETE_LOCAL:
+                result.append(SyncAction(
+                    action=ActionType.UPLOAD,
+                    path=action.path,
+                    stored_entry=action.stored_entry,
+                    reason="local_wins: re-upload after remote deletion",
+                ))
+            else:
+                result.append(action)
+
+    else:  # remote_wins
+        for action in actions:
+            if action.action == ActionType.CONFLICT:
+                result.append(SyncAction(
+                    action=ActionType.DOWNLOAD,
+                    path=action.path,
+                    remote_info=action.remote_info,
+                    stored_entry=action.stored_entry,
+                    reason="remote_wins: conflict resolved as download",
+                ))
+            elif action.action == ActionType.UPLOAD:
+                result.append(SyncAction(
+                    action=ActionType.DELETE_LOCAL,
+                    path=action.path,
+                    local_info=action.local_info,
+                    stored_entry=action.stored_entry,
+                    reason="remote_wins: local-only file deleted",
+                ))
+            elif action.action == ActionType.DELETE_REMOTE:
+                result.append(SyncAction(
+                    action=ActionType.DOWNLOAD,
+                    path=action.path,
+                    stored_entry=action.stored_entry,
+                    reason="remote_wins: re-download after local deletion",
+                ))
+            elif action.action == ActionType.MOVE:
+                # Undo local rename: delete the renamed copy, re-download the original
+                if action.dest_path:
+                    result.append(SyncAction(
+                        action=ActionType.DELETE_LOCAL,
+                        path=action.dest_path,
+                        local_info=action.local_info,
+                        stored_entry=action.stored_entry,
+                        reason="remote_wins: undo local rename (delete dest)",
+                    ))
+                result.append(SyncAction(
+                    action=ActionType.DOWNLOAD,
+                    path=action.path,
+                    stored_entry=action.stored_entry,
+                    reason="remote_wins: undo local rename (re-download src)",
+                ))
+            else:
+                result.append(action)
+
+    log.info(
+        "Strategy override (%s): %d actions in, %d out",
+        strategy, len(actions), len(result),
+    )
+    return result
+
+
 def apply_sync_rules(actions: list[SyncAction], rules) -> list[SyncAction]:
     """Filter sync actions based on advanced sync rules.
 

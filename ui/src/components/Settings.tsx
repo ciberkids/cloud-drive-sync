@@ -361,8 +361,14 @@ export function Settings() {
         >
           <option value="">Conflict: default</option>
           <option value="keep_both">Conflict: keep both</option>
-          <option value="newest_wins">Conflict: newest wins</option>
-          <option value="ask_user">Conflict: ask me</option>
+          <option value="local_wins">Local wins (⚠ deletes remote)</option>
+          <option value="remote_wins">Remote wins (⚠ deletes local)</option>
+          {pair.sync_mode === "two_way" && (
+            <>
+              <option value="newest_wins">Conflict: newest wins</option>
+              <option value="ask_user">Conflict: ask me</option>
+            </>
+          )}
         </select>
         <label className="toggle-switch">
           <input
@@ -701,9 +707,9 @@ export function Settings() {
             disabled={saving}
             className="select"
           >
-            <option value="keep_both">
-              Keep both (rename conflicting file)
-            </option>
+            <option value="keep_both">Keep both (rename conflicting file)</option>
+            <option value="local_wins">Local wins — local is always source of truth (⚠ deletes remote files)</option>
+            <option value="remote_wins">Remote wins — remote is always source of truth (⚠ deletes local files)</option>
             <option value="newest_wins">Newest wins (overwrite older)</option>
             <option value="ask_user">Ask me (show dialog)</option>
           </select>

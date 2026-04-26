@@ -142,6 +142,10 @@ class ConflictResolver:
             return await self._resolve_ask_user(
                 path, conflict, notify_callback, local_path=local_path
             )
+        elif self._strategy == "local_wins":
+            return SyncAction(action=ActionType.UPLOAD, path=path, reason="local_wins")
+        elif self._strategy == "remote_wins":
+            return SyncAction(action=ActionType.DOWNLOAD, path=path, reason="remote_wins")
         else:
             log.error("Unknown conflict strategy: %s", self._strategy)
             return None

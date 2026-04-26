@@ -169,3 +169,80 @@ class TestContinuousSync:
         assert len(actions) == 1
         assert actions[0].action == ActionType.DELETE_LOCAL
         assert actions[0].path == "tracked.txt"
+
+
+class TestApplyStrategyOverrides:
+    """Tests for apply_strategy_overrides."""
+
+    def _action(self, action_type, path="file.txt", **kwargs):
+        from cloud_drive_sync.sync.planner import SyncAction
+        return SyncAction(action=action_type, path=path, **kwargs)
+
+    def test_passthrough_for_unknown_strategy(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        actions = [self._action(ActionType.UPLOAD), self._action(ActionType.DOWNLOAD)]
+        assert apply_strategy_overrides(actions, "keep_both") is actions
+        assert apply_strategy_overrides(actions, "newest_wins") is actions
+        assert apply_strategy_overrides(actions, "") is actions
+
+    # ── local_wins ───────────────────────────────────────────────────
+
+    def test_local_wins_conflict_becomes_upload(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.CONFLICT)], "local_wins")
+        assert len(result) == 1
+        assert result[0].action == ActionType.UPLOAD
+
+    def test_local_wins_download_becomes_delete_remote(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.DOWNLOAD)], "local_wins")
+        assert result[0].action == ActionType.DELETE_REMOTE
+
+    def test_local_wins_delete_local_becomes_upload(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.DELETE_LOCAL)], "local_wins")
+        assert result[0].action == ActionType.UPLOAD
+
+    def test_local_wins_preserves_upload_and_delete_remote(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        actions = [self._action(ActionType.UPLOAD), self._action(ActionType.DELETE_REMOTE)]
+        result = apply_strategy_overrides(actions, "local_wins")
+        assert result[0].action == ActionType.UPLOAD
+        assert result[1].action == ActionType.DELETE_REMOTE
+
+    # ── remote_wins ──────────────────────────────────────────────────
+
+    def test_remote_wins_conflict_becomes_download(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.CONFLICT)], "remote_wins")
+        assert result[0].action == ActionType.DOWNLOAD
+
+    def test_remote_wins_upload_becomes_delete_local(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.UPLOAD)], "remote_wins")
+        assert result[0].action == ActionType.DELETE_LOCAL
+
+    def test_remote_wins_delete_remote_becomes_download(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        result = apply_strategy_overrides([self._action(ActionType.DELETE_REMOTE)], "remote_wins")
+        assert result[0].action == ActionType.DOWNLOAD
+
+    def test_remote_wins_move_expands_to_delete_local_and_download(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides, SyncAction
+        move = SyncAction(action=ActionType.MOVE, path="old.txt", dest_path="new.txt")
+        result = apply_strategy_overrides([move], "remote_wins")
+        assert len(result) == 2
+        actions_out = {a.action for a in result}
+        assert ActionType.DELETE_LOCAL in actions_out
+        assert ActionType.DOWNLOAD in actions_out
+        delete_action = next(a for a in result if a.action == ActionType.DELETE_LOCAL)
+        download_action = next(a for a in result if a.action == ActionType.DOWNLOAD)
+        assert delete_action.path == "new.txt"
+        assert download_action.path == "old.txt"
+
+    def test_remote_wins_preserves_download_and_delete_local(self):
+        from cloud_drive_sync.sync.planner import apply_strategy_overrides
+        actions = [self._action(ActionType.DOWNLOAD), self._action(ActionType.DELETE_LOCAL)]
+        result = apply_strategy_overrides(actions, "remote_wins")
+        assert result[0].action == ActionType.DOWNLOAD
+        assert result[1].action == ActionType.DELETE_LOCAL

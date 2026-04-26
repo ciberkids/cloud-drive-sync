@@ -318,7 +318,7 @@ class RequestHandler:
 
     async def _set_conflict_strategy(self, params: dict) -> dict:
         strategy = params.get("strategy")
-        valid = {"keep_both", "newest_wins", "ask_user"}
+        valid = {"keep_both", "newest_wins", "ask_user", "local_wins", "remote_wins"}
         if strategy not in valid:
             raise TypeError(f"strategy must be one of {valid}")
         self._config.sync.conflict_strategy = strategy
@@ -330,9 +330,12 @@ class RequestHandler:
     async def _set_pair_conflict_strategy(self, params: dict) -> dict:
         pair_id = params.get("pair_id")
         strategy = params.get("strategy", "")
-        valid = {"keep_both", "newest_wins", "ask_user", ""}
+        valid = {"keep_both", "newest_wins", "ask_user", "local_wins", "remote_wins", ""}
         if strategy not in valid:
-            raise TypeError("strategy must be one of 'keep_both', 'newest_wins', 'ask_user' or '' to inherit global")
+            raise TypeError(
+                "strategy must be one of 'keep_both', 'newest_wins', 'ask_user', "
+                "'local_wins', 'remote_wins' or '' to inherit global"
+            )
         try:
             index = int(pair_id)
         except (TypeError, ValueError):
