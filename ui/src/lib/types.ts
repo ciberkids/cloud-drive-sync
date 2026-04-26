@@ -1,4 +1,4 @@
-export type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user";
+export type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user" | "local_wins" | "remote_wins";
 
 export interface DaemonInfo {
   pid: number | null;
