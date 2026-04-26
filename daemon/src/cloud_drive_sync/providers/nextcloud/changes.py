@@ -24,7 +24,11 @@ log = get_logger("providers.nextcloud.changes")
 
 
 def _build_etag_map(nc: Any, path: str = "/") -> dict[str, dict[str, Any]]:
-    """Recursively build a map of ``{path: {etag, fileid, name, is_dir, ...}}``."""
+    """Recursively build a map of ``{path: {etag, fileid, name, is_dir, ...}}``.
+
+    All FsNodeInfo attribute access is done here so callers never receive a
+    FsNodeInfo object — only plain Python scalars (fixes #33 / #11 pattern).
+    """
     result: dict[str, dict[str, Any]] = {}
     try:
         nodes = nc.files.listdir(path)
@@ -34,17 +38,29 @@ def _build_etag_map(nc: Any, path: str = "/") -> dict[str, dict[str, Any]]:
 
     for node in nodes:
         info = node.info
-        is_dir = node.is_dir if hasattr(node, "is_dir") else info.get("is_dir", False)
-        etag = info.get("etag", "")
-        fileid = str(info.get("fileid", "") or (node.file_id if hasattr(node, "file_id") else ""))
+        is_dir = bool(node.is_dir) if hasattr(node, "is_dir") else False
+        etag = str(getattr(info, "etag", "") or "")
+        fileid = str(getattr(info, "fileid", "") or getattr(node, "file_id", "") or "")
         node_path = node.user_path if hasattr(node, "user_path") else f"{path}/{node.name}".replace("//", "/")
+
+        # Resolve mimetype to a plain string — never store FsNodeInfo
+        if is_dir:
+            mimetype = "httpd/unix-directory"
+        else:
+            mimetype = str(getattr(info, "mimetype", "") or "application/octet-stream")
+
+        last_modified = str(getattr(info, "last_modified", "") or "")
+        # nc-py-api v0.30 does not expose checksums; store empty string
+        checksum = str(getattr(info, "checksum", "") or "")
 
         result[node_path] = {
             "etag": etag,
             "fileid": fileid,
             "name": node.name,
             "is_dir": is_dir,
-            "info": info,
+            "mimetype": mimetype,
+            "last_modified": last_modified,
+            "checksum": checksum,
         }
 
         if is_dir:
@@ -110,11 +126,9 @@ class NextcloudChangePoller(CloudChangePoller):
                     RemoteChange(
                         file_id=data["fileid"],
                         file_name=data["name"],
-                        mime_type="httpd/unix-directory" if data["is_dir"] else (
-                            data["info"].get("mimetype", "application/octet-stream")
-                        ),
-                        md5=self._extract_md5(data["info"]),
-                        modified_time=str(data["info"].get("last_modified", "")),
+                        mime_type=data["mimetype"],
+                        md5=self._extract_md5(data["checksum"]),
+                        modified_time=data["last_modified"],
                         removed=False,
                         trashed=False,
                         parents=[],
@@ -127,9 +141,9 @@ class NextcloudChangePoller(CloudChangePoller):
                     RemoteChange(
                         file_id=data["fileid"],
                         file_name=data["name"],
-                        mime_type=data["info"].get("mimetype", "application/octet-stream"),
-                        md5=self._extract_md5(data["info"]),
-                        modified_time=str(data["info"].get("last_modified", "")),
+                        mime_type=data["mimetype"],
+                        md5=self._extract_md5(data["checksum"]),
+                        modified_time=data["last_modified"],
                         removed=False,
                         trashed=False,
                         parents=[],
@@ -159,9 +173,8 @@ class NextcloudChangePoller(CloudChangePoller):
         return changes, new_token
 
     @staticmethod
-    def _extract_md5(info: dict[str, Any]) -> str:
+    def _extract_md5(checksum: str) -> str:
         """Extract MD5 from Nextcloud checksum field (format: ``MD5:hex``)."""
-        checksum = info.get("checksum", "") or ""
         if checksum and ":" in checksum:
             parts = checksum.split(":")
             for i, part in enumerate(parts):
