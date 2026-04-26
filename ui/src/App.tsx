@@ -8,6 +8,7 @@ import { ActivityLog } from "./components/ActivityLog";
 import { Transfers } from "./components/Transfers";
 import { AccountManager } from "./components/AccountManager";
 import { About } from "./components/About";
+import { CloudBridges } from "./components/CloudBridges";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
 
@@ -73,6 +74,9 @@ function NavBar() {
         </li>
         <li>
           <NavLink to="/activity">Activity</NavLink>
+        </li>
+        <li>
+          <NavLink to="/bridges">Bridges</NavLink>
         </li>
         <li>
           <NavLink to="/account">Account</NavLink>
@@ -196,6 +200,7 @@ export default function App() {
               <Route path="/conflicts" element={<ConflictDialog />} />
               <Route path="/transfers" element={<Transfers />} />
               <Route path="/activity" element={<ActivityLog />} />
+              <Route path="/bridges" element={<CloudBridges />} />
               <Route path="/account" element={<AccountManager />} />
               <Route path="/about" element={<About />} />
             </Routes>

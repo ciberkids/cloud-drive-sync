@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSyncPairs, useStatus } from "../lib/hooks";
 import { RemoteFolderBrowser } from "./RemoteFolderBrowser";
 import { providerLabel, providerColor } from "./AccountManager";
+import { detectBridges } from "./CloudBridges";
 import type { Account, ConflictStrategy, SyncMode } from "../lib/types";
 import * as ipc from "../lib/ipc";
 import { homeDir as getHomeDir } from "@tauri-apps/api/path";
@@ -330,9 +331,15 @@ export function Settings() {
   const configPath = `${homeDir}/.config/cloud-drive-sync/config.toml`;
   const dataPath = `${homeDir}/.local/share/cloud-drive-sync/`;
 
+  const bridges = detectBridges(pairs);
+  const bridgedPairIds = new Set(bridges.flatMap((b) => b.pairs.map((p) => p.id)));
+
   const renderPairCard = (pair: (typeof pairs)[0]) => (
     <div key={pair.id} className="sync-pair-item">
       <div className="sync-pair-info">
+        {bridgedPairIds.has(pair.id) && (
+          <span className="bridge-badge" title="Part of a Cloud Bridge">&#9741; Bridge</span>
+        )}
         <span className="sync-pair-path">{pair.local_path}</span>
         <span className="sync-pair-remote">
           Remote:{" "}
