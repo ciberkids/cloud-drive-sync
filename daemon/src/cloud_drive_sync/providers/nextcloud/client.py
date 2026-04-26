@@ -212,8 +212,9 @@ class NextcloudClient(CloudClient):
         mime_type: str | None = None,
         is_folder: bool = False,
     ) -> dict[str, Any]:
-        # Normalise to NFC so Nextcloud storage and our comparison agree
-        name = unicodedata.normalize("NFC", name)
+        # Normalise to NFC and strip whitespace to avoid creating new folders
+        # with leading/trailing spaces, and so the post-operation search matches.
+        name = unicodedata.normalize("NFC", name.strip())
         parent_path = "/" if parent_id == "root" else self._normalise_path(parent_id)
         target = f"{parent_path}/{name}" if parent_path != "/" else f"/{name}"
 
@@ -359,8 +360,10 @@ class NextcloudClient(CloudClient):
 
         Returns the child folder's ID (WebDAV path) if found, else None.
         """
-        # Normalise to NFC so Nextcloud storage and our comparison agree
-        name_nfc = unicodedata.normalize("NFC", name)
+        # Normalise to NFC and strip whitespace so legacy folders with leading/
+        # trailing spaces (e.g. " additional costs") are still found when the
+        # search name also has surrounding whitespace (fixes #34 / #26 follow-up).
+        name_nfc = unicodedata.normalize("NFC", name.strip())
 
         def _check():
             try:
