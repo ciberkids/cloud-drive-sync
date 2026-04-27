@@ -70,6 +70,21 @@ export function Settings() {
   const handlePairConflictStrategyChange = async (pairId: string, strategy: string) => {
     try {
       await ipc.setPairConflictStrategy(pairId, strategy);
+
+      // Auto-set the opposite strategy on any bridge sibling
+      if (strategy === "local_wins" || strategy === "remote_wins") {
+        const opposite = strategy === "local_wins" ? "remote_wins" : "local_wins";
+        const changedPair = pairs.find((p) => p.id === pairId);
+        if (changedPair) {
+          const siblings = pairs.filter(
+            (p) => p.id !== pairId && p.local_path === changedPair.local_path
+          );
+          for (const sibling of siblings) {
+            await ipc.setPairConflictStrategy(sibling.id, opposite);
+          }
+        }
+      }
+
       refresh();
     } catch (e) {
       console.error("Failed to set pair conflict strategy:", e);
@@ -334,6 +349,21 @@ export function Settings() {
   const bridges = detectBridges(pairs);
   const bridgedPairIds = new Set(bridges.flatMap((b) => b.pairs.map((p) => p.id)));
 
+  // Detect strategy conflicts within bridges (both sides have same directional strategy)
+  const bridgeStrategyErrors = new Map<string, string>();
+  for (const bridge of bridges) {
+    const directional = bridge.pairs
+      .map((p) => p.conflict_strategy || "")
+      .filter((s) => s === "local_wins" || s === "remote_wins");
+    if (directional.length >= 2 && new Set(directional).size === 1) {
+      bridgeStrategyErrors.set(
+        bridge.localPath,
+        `Both bridge pairs have "${directional[0]}" — they will conflict. ` +
+          `One side should be "local_wins" and the other "remote_wins".`
+      );
+    }
+  }
+
   const renderPairCard = (pair: (typeof pairs)[0]) => (
     <div key={pair.id} className="sync-pair-item">
       <div className="sync-pair-info">
@@ -348,6 +378,11 @@ export function Settings() {
             : pair.remote_folder_id || "/"}
         </span>
       </div>
+      {bridgedPairIds.has(pair.id) && bridgeStrategyErrors.has(pair.local_path) && (
+        <div className="bridge-strategy-error">
+          &#9888; {bridgeStrategyErrors.get(pair.local_path)}
+        </div>
+      )}
       <div className="sync-pair-actions">
         <select
           value={pair.sync_mode}

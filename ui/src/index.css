@@ -2068,6 +2068,29 @@ body {
   gap: 20px;
 }
 
+.bridges-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.help-btn {
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.bridge-strategy-error {
+  color: var(--warning, #f57c00);
+  font-size: 12px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--warning, #f57c00) 10%, var(--bg-primary));
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--warning, #f57c00) 30%, transparent);
+  margin-bottom: 4px;
+}
+
 .bridges-header {
   display: flex;
   align-items: flex-start;

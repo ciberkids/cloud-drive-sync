@@ -206,9 +206,10 @@ function BridgeSidePicker({ label, side, accounts, onChange }: BridgeSidePickerP
 interface BridgeCardProps {
   bridge: CloudBridge;
   onRemove: (pairIds: string[]) => void;
+  onPairStrategyChange: (pairId: string, strategy: string) => void;
 }
 
-function BridgeCard({ bridge, onRemove }: BridgeCardProps) {
+function BridgeCard({ bridge, onRemove, onPairStrategyChange }: BridgeCardProps) {
   const [confirming, setConfirming] = useState(false);
 
   const localFolder = bridge.localPath.split("/").filter(Boolean).pop() || bridge.localPath;
@@ -222,6 +223,14 @@ function BridgeCard({ bridge, onRemove }: BridgeCardProps) {
     if (p.sync_mode === "download_only") return "↓";
     return "⇄";
   };
+  const truncate = (s: string, n: number) =>
+    s.length > n ? s.slice(0, n) + "…" : s;
+
+  // Detect strategy conflict (both sides have same directional strategy)
+  const directional = bridge.pairs
+    .map((p) => p.conflict_strategy || "")
+    .filter((s) => s === "local_wins" || s === "remote_wins");
+  const hasConflict = directional.length >= 2 && new Set(directional).size === 1;
 
   return (
     <div className="bridge-card">
@@ -229,20 +238,49 @@ function BridgeCard({ bridge, onRemove }: BridgeCardProps) {
         {bridge.pairs.map((p, i) => {
           const color = providerColor(p.provider);
           const label = providerLabel(p.provider);
-          const folderDisplay = p.remote_folder_id === "root" ? "Root" : (p.remote_folder_id.slice(0, 12) + (p.remote_folder_id.length > 12 ? "…" : ""));
+          const folderDisplay = p.remote_folder_id === "root"
+            ? "Root"
+            : truncate(p.remote_folder_id, 14);
+          const accountDisplay = truncate(p.account_id || "", 22);
           return (
             <div key={p.id} className="bridge-flow-segment">
               {i > 0 && <div className="bridge-flow-divider" />}
               <div className="bridge-cloud-node">
                 <div className="bridge-cloud-pill" style={{ background: color }}>{label}</div>
-                <div className="bridge-cloud-account">{p.account_id || ""}</div>
+                <div className="bridge-cloud-account" title={p.account_id || ""}>{accountDisplay}</div>
                 <div className="bridge-cloud-folder" title={p.remote_folder_id}>{folderDisplay}</div>
                 <div className="bridge-cloud-mode">{modeArrow(p)} {modeLabel(p)}</div>
+                <div className="field" style={{ marginTop: 6 }}>
+                  <select
+                    className="select"
+                    value={p.conflict_strategy ?? ""}
+                    onChange={(e) => onPairStrategyChange(p.id, e.target.value)}
+                    title="Conflict strategy for this side"
+                    style={{ fontSize: 11 }}
+                  >
+                    <option value="">Strategy: default</option>
+                    <option value="keep_both">Keep both</option>
+                    <option value="local_wins">Local wins ⚠</option>
+                    <option value="remote_wins">Remote wins ⚠</option>
+                    {p.sync_mode === "two_way" && (
+                      <>
+                        <option value="newest_wins">Newest wins</option>
+                        <option value="ask_user">Ask me</option>
+                      </>
+                    )}
+                  </select>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+      {hasConflict && (
+        <div className="bridge-strategy-error">
+          &#9888; Both sides have "{directional[0]}" — they will conflict with each other.
+          Set one side to "local_wins" and the other to "remote_wins".
+        </div>
+      )}
       <div className="bridge-local-row">
         <span className="bridge-local-icon">&#128193;</span>
         <span className="bridge-local-path" title={bridge.localPath}>{localFolder}</span>
@@ -463,6 +501,28 @@ export function CloudBridges() {
     refresh();
   };
 
+  const handlePairStrategyChange = async (pairId: string, strategy: string) => {
+    try {
+      await ipc.setPairConflictStrategy(pairId, strategy);
+      // Auto-set the opposite on bridge siblings
+      if (strategy === "local_wins" || strategy === "remote_wins") {
+        const opposite = strategy === "local_wins" ? "remote_wins" : "local_wins";
+        const changedPair = pairs.find((p) => p.id === pairId);
+        if (changedPair) {
+          const siblings = pairs.filter(
+            (p) => p.id !== pairId && p.local_path === changedPair.local_path
+          );
+          for (const sibling of siblings) {
+            await ipc.setPairConflictStrategy(sibling.id, opposite);
+          }
+        }
+      }
+      refresh();
+    } catch (e) {
+      console.error("Failed to change bridge strategy:", e);
+    }
+  };
+
   return (
     <div className="bridges-page">
       <div className="bridges-header">
@@ -473,11 +533,22 @@ export function CloudBridges() {
             keeping them in sync automatically.
           </p>
         </div>
-        {!creating && (
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>
-            New Bridge
-          </button>
-        )}
+        <div className="bridges-header-actions">
+          <a
+            className="btn btn-sm btn-secondary help-btn"
+            href="https://github.com/ciberkids/cloud-drive-sync/wiki/Cloud-Bridge"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="How Cloud Bridges work"
+          >
+            ? Help
+          </a>
+          {!creating && (
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+              New Bridge
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && (
@@ -506,6 +577,7 @@ export function CloudBridges() {
               key={b.localPath}
               bridge={b}
               onRemove={handleRemoveBridge}
+              onPairStrategyChange={handlePairStrategyChange}
             />
           ))}
         </div>
