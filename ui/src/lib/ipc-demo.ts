@@ -19,6 +19,11 @@ const DEMO_STATUS: DaemonStatus = {
   error: null,
   last_sync: new Date().toISOString(),
   files_synced: 247,
+  pair_counts: [
+    { pair_id: "pair_0", files_synced: 148, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Documents" },
+    { pair_id: "pair_1", files_synced: 63, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Photos" },
+    { pair_id: "pair_2", files_synced: 36, account_id: "bob@nextcloud.example.com", provider: "nextcloud", local_path: "/home/user/Work" },
+  ],
   active_transfers: 0,
   live_transfers: [],
   daemon: {
@@ -115,6 +120,12 @@ const DEMO_LOG: LogEntry[] = [
   { id: 6, timestamp: "2026-03-23T09:58:00Z", event_type: "download", path: "Work/presentation.pptx", details: "2.1 MB at 3.4 MB/s", status: "success", pair_id: "pair_2" },
   { id: 7, timestamp: "2026-03-23T09:55:00Z", event_type: "upload", path: "Work/src/main.py", details: "4 KB at 800 KB/s", status: "success", pair_id: "pair_2" },
   { id: 8, timestamp: "2026-03-23T09:50:00Z", event_type: "sync", path: "", details: "Automatic sync started — scanning local and remote files", status: "success", pair_id: "pair_2" },
+  { id: 9, timestamp: "2026-03-23T09:48:00Z", event_type: "delete", path: "Documents/old-draft.txt", details: "Local file deleted: removed from remote", status: "success", pair_id: "pair_0" },
+  { id: 10, timestamp: "2026-03-23T09:45:00Z", event_type: "delete", path: "Photos/thumb_001.jpg", details: "Remote file deleted: removed locally", status: "success", pair_id: "pair_1" },
+  { id: 11, timestamp: "2026-03-23T09:40:00Z", event_type: "upload", path: "Work/data.csv", details: "Network error: connection reset", status: "error", pair_id: "pair_2" },
+  { id: 12, timestamp: "2026-03-23T09:35:00Z", event_type: "auth", path: "", details: "Token refreshed", status: "success", pair_id: "pair_0" },
+  { id: 13, timestamp: "2026-03-23T09:30:00Z", event_type: "move", path: "Documents/project-v1.docx", details: "Renamed → project-final.docx", status: "success", pair_id: "pair_0" },
+  { id: 14, timestamp: "2026-03-23T09:25:00Z", event_type: "move", path: "Work/archive/report.pdf", details: "Moved → Work/current/report.pdf", status: "success", pair_id: "pair_2" },
 ];
 
 export async function getStatus(): Promise<DaemonStatus> { return DEMO_STATUS; }
@@ -126,7 +137,7 @@ export async function resolveConflict() {}
 export async function forceSync() {}
 export async function pauseSync() {}
 export async function resumeSync() {}
-export async function getActivityLog(limit: number): Promise<LogEntry[]> { return DEMO_LOG.slice(0, limit); }
+export async function getActivityLog(limit: number, offset = 0): Promise<LogEntry[]> { return DEMO_LOG.slice(offset, offset + limit); }
 export async function getConflicts(): Promise<ConflictRecord[]> { return DEMO_CONFLICTS; }
 export async function startAuth() { return {}; }
 export async function logout() {}

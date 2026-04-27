@@ -48,6 +48,7 @@ def _make_engine_mock() -> MagicMock:
     """Create a mock engine with async methods."""
     engine = MagicMock(spec=SyncEngine)
     engine.force_sync = AsyncMock(return_value=True)
+    engine.force_sync_all = AsyncMock(return_value=None)
     engine.pause_pair = AsyncMock(return_value=True)
     engine.resume_pair = AsyncMock(return_value=True)
     engine.get_status.return_value = {
@@ -101,13 +102,12 @@ async def test_force_sync_with_empty_params(db: Database, config: Config):
     req = JsonRpcRequest(method="force_sync", params={}, id=2)
     resp = await handler.handle(req)
 
-    # BUG: Returns INVALID_PARAMS error because pair_id is required
-    # After fix, should default to the first/only pair
+    # When no pair_id is given, force_sync_all() is called to sync every pair
     assert resp.error is None, (
         f"force_sync with empty params failed: {resp.error}. "
         "Bug: pair_id is required but UI doesn't send it."
     )
-    engine.force_sync.assert_called_once()
+    engine.force_sync_all.assert_called_once()
 
 
 # ── Bug 3b: pause_sync fails with empty/None params ───────────────

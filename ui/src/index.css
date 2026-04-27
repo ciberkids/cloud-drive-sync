@@ -312,6 +312,151 @@ body {
   color: var(--text-primary);
 }
 
+.sync-result-detail-btn {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.sync-result-detail-btn:hover { opacity: 1; }
+
+.sync-detail-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow: hidden;
+  animation: slideIn 0.15s ease-out;
+}
+
+.sync-detail-group {
+  border-bottom: 1px solid var(--border);
+}
+.sync-detail-group:last-child { border-bottom: none; }
+
+.sync-detail-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--bg-tertiary, var(--bg-secondary)) 60%, transparent);
+}
+
+.sync-detail-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.sync-detail-group-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary, var(--border));
+  border-radius: 10px;
+  padding: 0 7px;
+}
+
+.sync-detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.sync-detail-file {
+  font-size: 12px;
+  padding: 3px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-detail-dir {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.sync-detail-more {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 3px 12px 5px;
+  font-style: italic;
+}
+
+.pair-counts {
+  margin-bottom: 20px;
+}
+
+.pair-counts h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+}
+
+.pair-count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pair-count-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.pair-count-pill {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.pair-count-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pair-count-account {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pair-count-folder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.pair-count-value {
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
 .status-stats {
   display: flex;
   gap: 24px;

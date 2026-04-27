@@ -71,7 +71,16 @@ class SyncExecutor:
                 failed.append(action)
                 await self._log_action(action, "error", str(result))
             else:
-                await self._log_action(action, "ok", "")
+                detail = ""
+                if action.action.value == "move" and action.dest_path:
+                    dest = action.dest_path.replace("\\", "/")
+                    src_name = action.path.split("/")[-1]
+                    dst_name = dest.split("/")[-1]
+                    if src_name != dst_name:
+                        detail = f"Renamed → {dst_name}"
+                    else:
+                        detail = f"Moved → {dest}"
+                await self._log_action(action, "ok", detail)
 
         log.info(
             "Execution complete: %d succeeded, %d failed",

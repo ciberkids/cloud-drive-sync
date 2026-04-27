@@ -20,6 +20,21 @@ export interface LiveTransfer {
   speed_formatted: string;
 }
 
+export interface PairCount {
+  pair_id: string;
+  files_synced: number;
+  account_id: string;
+  provider: string;
+  local_path: string;
+}
+
+export interface SyncCompleteFiles {
+  uploaded: string[];
+  downloaded: string[];
+  deleted: string[];
+  conflicted: string[];
+}
+
 export interface DaemonStatus {
   connected: boolean;       // cloud account authenticated
   daemon_reachable: boolean; // socket connection to daemon works
@@ -28,6 +43,7 @@ export interface DaemonStatus {
   error: string | null;
   last_sync: string | null;
   files_synced: number;
+  pair_counts: PairCount[];
   active_transfers: number;
   live_transfers: LiveTransfer[];
   daemon: DaemonInfo | null;
@@ -61,7 +77,7 @@ export interface ConflictRecord {
 export interface LogEntry {
   id: number;
   timestamp: string;
-  event_type: "upload" | "download" | "delete" | "sync" | "conflict" | "error" | "auth";
+  event_type: "upload" | "download" | "delete" | "sync" | "conflict" | "error" | "auth" | "move";
   path: string;
   details: string;
   status: string;
