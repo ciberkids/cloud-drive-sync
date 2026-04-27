@@ -312,7 +312,12 @@ class SyncEngine:
             # Execute
             uploaded = 0
             downloaded = 0
+            deleted = 0
             errors = 0
+            uploaded_files: list[str] = []
+            downloaded_files: list[str] = []
+            deleted_files: list[str] = []
+            conflicted_files: list[str] = []
             if ps.executor:
                 failed = await ps.executor.execute_all(resolved_actions)
                 errors = len(failed)
@@ -324,8 +329,20 @@ class SyncEngine:
                         continue
                     if a.action == ActionType.UPLOAD:
                         uploaded += 1
+                        if len(uploaded_files) < 200:
+                            uploaded_files.append(a.path)
                     elif a.action in (ActionType.DOWNLOAD, ActionType.MKDIR):
                         downloaded += 1
+                        if a.action == ActionType.DOWNLOAD and len(downloaded_files) < 200:
+                            downloaded_files.append(a.path)
+                    elif a.action in (ActionType.DELETE_LOCAL, ActionType.DELETE_REMOTE):
+                        deleted += 1
+                        if len(deleted_files) < 200:
+                            deleted_files.append(a.path)
+            # Collect unresolved conflicts (ask_user strategy)
+            for a in actions:
+                if a.action == ActionType.CONFLICT and len(conflicted_files) < 200:
+                    conflicted_files.append(a.path)
 
             ps.last_sync = datetime.now(timezone.utc)
             log.info("Initial sync complete for %s", pair_id)
@@ -364,7 +381,14 @@ class SyncEngine:
                     "pair_id": pair_id,
                     "uploaded": uploaded,
                     "downloaded": downloaded,
+                    "deleted": deleted,
                     "errors": errors,
+                    "files": {
+                        "uploaded": uploaded_files,
+                        "downloaded": downloaded_files,
+                        "deleted": deleted_files,
+                        "conflicted": conflicted_files,
+                    },
                 })
                 await self._notify_callback("status_changed", {
                     "pair_id": pair_id,
@@ -615,6 +639,10 @@ class SyncEngine:
             return False
         asyncio.create_task(self._initial_sync(ps, is_manual=True))
         return True
+
+    async def force_sync_all(self) -> None:
+        for ps in self._pairs.values():
+            asyncio.create_task(self._initial_sync(ps, is_manual=True))
 
     def get_status(self) -> dict:
         """Get a summary of all pairs' status."""

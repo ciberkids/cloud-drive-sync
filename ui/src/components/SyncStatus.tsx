@@ -2,10 +2,13 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useStatus, useDaemonEvent, useSyncPairs } from "../lib/hooks";
 import { providerLabel, providerColor } from "./AccountManager";
 import * as ipc from "../lib/ipc";
+import type { SyncCompleteFiles } from "../lib/types";
 
 interface SyncResult {
   type: "success" | "error" | "noop";
   message: string;
+  files?: SyncCompleteFiles;
+  deleted?: number;
 }
 
 export function SyncStatus() {
@@ -21,26 +24,36 @@ export function SyncStatus() {
     ...pairs.map((p, i) => [`pair_${i}`, p]),
   ]);
 
+  const [showSyncDetail, setShowSyncDetail] = useState(false);
+
   // Listen for sync_complete to show result
   useDaemonEvent<{
     pair_id: string;
     uploaded: number;
     downloaded: number;
+    deleted: number;
     errors: number;
+    files?: SyncCompleteFiles;
   }>("daemon:sync_complete", useCallback((payload) => {
     if (!syncPending) return;
     setSyncPending(false);
+    setShowSyncDetail(false);
 
     const total = payload.uploaded + payload.downloaded;
+    const deleted = payload.deleted ?? 0;
     if (payload.errors > 0) {
       setSyncResult({
         type: "error",
         message: `Sync finished with ${payload.errors} error${payload.errors > 1 ? "s" : ""}${total > 0 ? `, ${total} file${total > 1 ? "s" : ""} transferred` : ""}`,
+        files: payload.files,
+        deleted,
       });
-    } else if (total === 0) {
+    } else if (total === 0 && deleted === 0) {
       setSyncResult({
         type: "noop",
         message: "Everything is up to date — nothing to sync",
+        files: payload.files,
+        deleted,
       });
     } else {
       const parts: string[] = [];
@@ -48,9 +61,13 @@ export function SyncStatus() {
         parts.push(`${payload.uploaded} uploaded`);
       if (payload.downloaded > 0)
         parts.push(`${payload.downloaded} downloaded`);
+      if (deleted > 0)
+        parts.push(`${deleted} deleted`);
       setSyncResult({
         type: "success",
         message: `Sync complete: ${parts.join(", ")}`,
+        files: payload.files,
+        deleted,
       });
     }
   }, [syncPending]));
@@ -146,10 +163,55 @@ export function SyncStatus() {
       {syncResult && (
         <div className={`sync-result sync-result-${syncResult.type}`}>
           <span className="sync-result-icon">
-            {syncResult.type === "success" ? "\u2714" : syncResult.type === "error" ? "\u2718" : "\u2714"}
+            {syncResult.type === "error" ? "\u2718" : "\u2714"}
           </span>
           <span className="sync-result-message">{syncResult.message}</span>
-          <button className="sync-result-dismiss" onClick={() => setSyncResult(null)}>&times;</button>
+          {syncResult.files && (
+            (syncResult.files.uploaded.length > 0 || syncResult.files.downloaded.length > 0 ||
+             syncResult.files.deleted.length > 0 || syncResult.files.conflicted.length > 0) && (
+              <button
+                className="sync-result-detail-btn"
+                onClick={() => setShowSyncDetail((v) => !v)}
+              >
+                {showSyncDetail ? "Hide details" : "View details"}
+              </button>
+            )
+          )}
+          <button className="sync-result-dismiss" onClick={() => { setSyncResult(null); setShowSyncDetail(false); }}>&times;</button>
+        </div>
+      )}
+
+      {showSyncDetail && syncResult?.files && (
+        <div className="sync-detail-panel">
+          {(["uploaded", "downloaded", "deleted", "conflicted"] as const).map((cat) => {
+            const list = syncResult.files![cat];
+            if (!list || list.length === 0) return null;
+            const labels: Record<string, string> = {
+              uploaded: "Uploaded",
+              downloaded: "Downloaded",
+              deleted: "Deleted",
+              conflicted: "Conflicted",
+            };
+            return (
+              <div key={cat} className="sync-detail-group">
+                <div className="sync-detail-group-header">
+                  <span className="sync-detail-group-label">{labels[cat]}</span>
+                  <span className="sync-detail-group-count">{list.length}</span>
+                </div>
+                <ul className="sync-detail-list">
+                  {list.slice(0, 50).map((f) => (
+                    <li key={f} className="sync-detail-file" title={f}>
+                      {f.split("/").pop()}
+                      {f.includes("/") && <span className="sync-detail-dir"> \u2014 {f.substring(0, f.lastIndexOf("/"))}</span>}
+                    </li>
+                  ))}
+                  {list.length > 50 && (
+                    <li className="sync-detail-more">+{list.length - 50} more</li>
+                  )}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -163,6 +225,30 @@ export function SyncStatus() {
           <span className="stat-label">Active transfers</span>
         </div>
       </div>
+
+      {status.pair_counts && status.pair_counts.length > 1 && (
+        <div className="pair-counts">
+          <h3>Per Account</h3>
+          <div className="pair-count-list">
+            {status.pair_counts.map((pc) => {
+              const color = providerColor(pc.provider);
+              const label = providerLabel(pc.provider);
+              const folderName = pc.local_path.split("/").filter(Boolean).pop() || pc.local_path;
+              const accountShort = pc.account_id ? pc.account_id.split("@")[0] : "";
+              return (
+                <div key={pc.pair_id} className="pair-count-row">
+                  <span className="pair-count-pill" style={{ background: color }}>{label}</span>
+                  <span className="pair-count-info">
+                    {accountShort && <span className="pair-count-account">{accountShort}</span>}
+                    {folderName && <span className="pair-count-folder">&rsaquo; {folderName}</span>}
+                  </span>
+                  <span className="pair-count-value">{pc.files_synced.toLocaleString()}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {status.live_transfers.length > 0 && (
         <div className="live-transfers">

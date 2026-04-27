@@ -16,6 +16,7 @@ const DEFAULT_STATUS: DaemonStatus = {
   error: null,
   last_sync: null,
   files_synced: 0,
+  pair_counts: [],
   active_transfers: 0,
   live_transfers: [],
   daemon: null,

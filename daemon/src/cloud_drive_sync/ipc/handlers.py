@@ -183,14 +183,23 @@ class RequestHandler:
         last_syncs = [p["last_sync"] for p in pairs.values() if p.get("last_sync")]
         total_transfers = sum(p.get("active_transfers", 0) for p in pairs.values())
 
-        # Bug 6 fix: count actual synced files from DB
+        # Bug 6 fix: count actual synced files from DB, per pair
         total_synced = 0
+        pair_counts = []
         db = self._db or (self._engine._db if self._engine else None)
         if db:
-            for i in range(len(self._config.sync.pairs)):
+            for i, pair_cfg in enumerate(self._config.sync.pairs):
                 pair_id = f"pair_{i}"
                 counts = await db.count_by_state(pair_id)
-                total_synced += counts.get("synced", 0)
+                pair_synced = counts.get("synced", 0)
+                total_synced += pair_synced
+                pair_counts.append({
+                    "pair_id": pair_id,
+                    "files_synced": pair_synced,
+                    "account_id": pair_cfg.account_id or "",
+                    "provider": pair_cfg.provider or "gdrive",
+                    "local_path": pair_cfg.local_path or "",
+                })
 
         # Live transfer info
         live_transfers = self._engine.get_active_transfers()
@@ -202,6 +211,7 @@ class RequestHandler:
             "error": f"{len(all_errors)} sync error{'s' if len(all_errors) != 1 else ''} — check Activity for details" if all_errors else None,
             "last_sync": max(last_syncs) if last_syncs else None,
             "files_synced": total_synced,
+            "pair_counts": pair_counts,
             "active_transfers": len(live_transfers),
             "live_transfers": live_transfers,
             "daemon": daemon_info,
@@ -357,9 +367,14 @@ class RequestHandler:
 
     async def _force_sync(self, params: dict) -> dict:
         engine = self._require_engine()
-        pair_id = self._default_pair_id(params)
-        ok = await engine.force_sync(pair_id)
-        return {"status": "ok" if ok else "not_found"}
+        params = params or {}
+        pair_id = params.get("pair_id")
+        if pair_id:
+            ok = await engine.force_sync(pair_id)
+            return {"status": "ok" if ok else "not_found"}
+        # No pair_id supplied → sync all pairs
+        await engine.force_sync_all()
+        return {"status": "ok"}
 
     async def _pause_sync(self, params: dict) -> dict:
         engine = self._require_engine()
@@ -397,6 +412,7 @@ class RequestHandler:
             "mkdir": "Directory created",
             "delete_local": "Local file deleted",
             "delete_remote": "Remote file deleted",
+            "move": "Renamed/moved",
             "conflict": "Conflict detected",
             "auth": "Authentication",
             "sync": "Sync",

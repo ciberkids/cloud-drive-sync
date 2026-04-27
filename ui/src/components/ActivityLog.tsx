@@ -7,6 +7,7 @@ const EVENT_ICONS: Record<string, string> = {
   upload: "↑",
   download: "↓",
   delete: "✖",
+  move: "→",
   conflict: "⚠",
   error: "✘",
   auth: "⚙",
@@ -75,14 +76,14 @@ export function ActivityLog() {
       <div className="activity-header">
         <h2>Activity</h2>
         <div className="activity-filters">
-          {(["all", "upload", "download", "delete", "sync", "conflict", "error", "auth"] as const).map(
+          {(["all", "upload", "download", "delete", "move", "sync", "conflict", "error", "auth"] as const).map(
             (type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
                 className={`filter-btn ${filter === type ? "active" : ""}`}
               >
-                {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1)}
+                {type === "all" ? "All" : type === "move" ? "Renamed" : type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             )
           )}
