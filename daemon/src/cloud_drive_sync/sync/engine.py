@@ -247,7 +247,18 @@ class SyncEngine:
                 )
             else:
                 pair_client = self._client
-            remote_files = await pair_client.list_all_recursive(ps.pair.remote_folder_id)
+            try:
+                remote_files = await pair_client.list_all_recursive(ps.pair.remote_folder_id)
+            except FileNotFoundError:
+                if hasattr(pair_client, "ensure_root_folder"):
+                    log.info(
+                        "Remote root folder %r not found — creating it",
+                        ps.pair.remote_folder_id,
+                    )
+                    await pair_client.ensure_root_folder(ps.pair.remote_folder_id)
+                    remote_files = await pair_client.list_all_recursive(ps.pair.remote_folder_id)
+                else:
+                    raise
 
             # Plan — pass provider-specific settings
             native_mimes = None

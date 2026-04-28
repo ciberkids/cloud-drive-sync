@@ -75,8 +75,8 @@ async def test_subfolder_non_404_propagates():
 
 
 @pytest.mark.asyncio
-async def test_top_level_404_returns_empty():
-    """A 404 on the root folder returns an empty list instead of raising."""
+async def test_top_level_404_raises_file_not_found():
+    """A 404 on the root folder raises FileNotFoundError (issue #36)."""
     client = _make_client()
 
     async def fake_list_files(folder_id="root", page_token=None, page_size=100, query=None):
@@ -84,8 +84,8 @@ async def test_top_level_404_returns_empty():
 
     client.list_files = fake_list_files  # type: ignore[method-assign]
 
-    result = await client.list_all_recursive("root")
-    assert result == []
+    with pytest.raises(FileNotFoundError):
+        await client.list_all_recursive("root")
 
 
 @pytest.mark.asyncio
