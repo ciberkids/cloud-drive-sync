@@ -513,7 +513,15 @@ class SyncExecutor:
     async def _do_delete_remote(self, action: SyncAction) -> None:
         remote_id = action.stored_entry.remote_id if action.stored_entry else None
         if not remote_id:
-            raise ValueError(f"No remote ID for deletion: {action.path}")
+            # Stale DB entry with no remote_id (e.g. from a broken migration).
+            # Nothing to delete on the remote side — clean up the local record.
+            log.warning(
+                "DELETE_REMOTE for %s has no remote_id — cleaning stale DB entry",
+                action.path,
+            )
+            if action.stored_entry:
+                await self._db.delete_sync_entry(action.path, self._pair_id)
+            return
         await self._ops.delete_remote(remote_id, trash=True)
         await self._db.delete_sync_entry(action.path, self._pair_id)
         # Also clean up any child entries if this was a directory

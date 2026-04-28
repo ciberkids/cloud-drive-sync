@@ -385,13 +385,22 @@ class NextcloudClient(CloudClient):
         return await asyncio.to_thread(_check)
 
     async def list_all_recursive(
-        self, folder_id: str = "root", prefix: str = ""
+        self, folder_id: str = "root", prefix: str = "", _is_root: bool = True
     ) -> list[dict[str, Any]]:
-        """Recursively list all files and folders."""
+        """Recursively list all files and folders.
+
+        Raises ``FileNotFoundError`` when the root folder itself is missing (404)
+        so the engine can create it and retry. 404s on subfolders are silently
+        skipped (existing behaviour).
+        """
         try:
             items = await self.list_all_files(folder_id)
         except Exception as e:
             if getattr(e, "status_code", None) == 404:
+                if _is_root:
+                    raise FileNotFoundError(
+                        f"Remote root folder not found: {folder_id}"
+                    ) from e
                 log.warning("Skipping inaccessible Nextcloud folder %r (404)", folder_id)
                 return []
             raise
@@ -402,7 +411,7 @@ class NextcloudClient(CloudClient):
             if item.get("mimeType") == "httpd/unix-directory":
                 result.append(item)
                 try:
-                    children = await self.list_all_recursive(item["id"], rel)
+                    children = await self.list_all_recursive(item["id"], rel, _is_root=False)
                     result.extend(children)
                 except Exception as e:
                     if getattr(e, "status_code", None) == 404:
@@ -412,3 +421,20 @@ class NextcloudClient(CloudClient):
             else:
                 result.append(item)
         return result
+
+    async def ensure_root_folder(self, folder_path: str) -> None:
+        """Create ``folder_path`` and all missing parent segments.
+
+        Safe to call when folders already exist — each segment that returns
+        405 (already exists per RFC 4918) is silently accepted.  Used by the
+        engine to recover from a missing remote sync root (issue #36).
+        """
+        if folder_path in ("root", "/", ""):
+            return
+        path = self._normalise_path(folder_path)
+        segments = [s for s in path.split("/") if s]
+        current = "/"
+        for segment in segments:
+            await self.create_file(name=segment, parent_id=current, is_folder=True)
+            current = f"/{segment}" if current == "/" else f"{current}/{segment}"
+        log.info("Ensured remote root folder: %s", path)
