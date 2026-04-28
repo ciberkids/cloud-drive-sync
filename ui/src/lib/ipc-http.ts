@@ -108,9 +108,10 @@ export async function resumeSync(pairId?: string): Promise<void> {
 
 export async function getActivityLog(
   limit: number,
-  offset: number
+  offset: number,
+  filter = "all"
 ): Promise<LogEntry[]> {
-  return get<LogEntry[]>(`activity?limit=${limit}&offset=${offset}`);
+  return get<LogEntry[]>(`activity?limit=${limit}&offset=${offset}&filter=${filter}`);
 }
 
 export async function getConflicts(): Promise<ConflictRecord[]> {

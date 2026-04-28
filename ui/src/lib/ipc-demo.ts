@@ -156,7 +156,12 @@ export async function resolveConflict() {}
 export async function forceSync() {}
 export async function pauseSync() {}
 export async function resumeSync() {}
-export async function getActivityLog(limit: number, offset = 0): Promise<LogEntry[]> { return DEMO_LOG.slice(offset, offset + limit); }
+export async function getActivityLog(limit: number, offset = 0, filter = "all"): Promise<LogEntry[]> {
+  const filtered = filter === "all" ? DEMO_LOG
+    : filter === "error" ? DEMO_LOG.filter(e => e.status === "error")
+    : DEMO_LOG.filter(e => e.event_type === filter);
+  return filtered.slice(offset, offset + limit);
+}
 export async function getConflicts(): Promise<ConflictRecord[]> { return DEMO_CONFLICTS; }
 export async function startAuth() { return {}; }
 export async function logout() {}
