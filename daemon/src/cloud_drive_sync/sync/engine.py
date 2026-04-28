@@ -355,6 +355,14 @@ class SyncEngine:
                 if a.action == ActionType.CONFLICT and len(conflicted_files) < 200:
                     conflicted_files.append(a.path)
 
+            # Prune DB entries for paths that no longer exist on local or remote.
+            # Without this, files_synced accumulates across wipe+resync cycles (#39).
+            known_paths: set[str] = set(local_files.keys()) | {
+                rf.get("relativePath", rf.get("name", "")) for rf in remote_files
+            }
+            known_paths.discard("")
+            await self._db.prune_stale_entries(pair_id, known_paths)
+
             ps.last_sync = datetime.now(timezone.utc)
             log.info("Initial sync complete for %s", pair_id)
 

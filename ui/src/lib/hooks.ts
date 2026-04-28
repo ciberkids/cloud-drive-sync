@@ -179,7 +179,7 @@ export function useConflicts() {
   return { conflicts, refresh };
 }
 
-export function useActivityLog(limit = 50) {
+export function useActivityLog(limit = 50, isSyncing = false) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const offsetRef = useRef(0);
@@ -241,6 +241,13 @@ export function useActivityLog(limit = 50) {
       unlisten?.();
     };
   }, [load]);
+
+  // Poll every 3 s while an active sync is in progress (#40)
+  useEffect(() => {
+    if (!isSyncing) return;
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [isSyncing, load]);
 
   return { entries, loading, refresh: load, loadMore };
 }

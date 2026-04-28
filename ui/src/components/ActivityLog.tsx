@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { useActivityLog, useSyncPairs } from "../lib/hooks";
+import { useActivityLog, useSyncPairs, useStatus } from "../lib/hooks";
 import { providerColor, providerLabel } from "./AccountManager";
 import type { LogEntry } from "../lib/types";
 
@@ -17,7 +17,8 @@ const EVENT_ICONS: Record<string, string> = {
 type FilterType = "all" | LogEntry["event_type"];
 
 export function ActivityLog() {
-  const { entries, loading, loadMore } = useActivityLog(50);
+  const status = useStatus(5000);
+  const { entries, loading, loadMore } = useActivityLog(50, status.syncing);
   const { pairs } = useSyncPairs();
   const [filter, setFilter] = useState<FilterType>("all");
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
