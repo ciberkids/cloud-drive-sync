@@ -317,6 +317,18 @@ class SyncEngine:
                     )
                     if result:
                         resolved_actions.append(result)
+                        # Log the auto-resolution so it appears in the Activity tab (#41).
+                        # ask_user strategy leaves result=None (pending) — those are
+                        # logged by _mark_conflict in the executor instead.
+                        if effective_strategy != "ask_user":
+                            kept = "local" if result.action == ActionType.UPLOAD else "remote"
+                            await self._db.add_log_entry(SyncLogEntry(
+                                action="conflict",
+                                path=action.path,
+                                pair_id=pair_id,
+                                status="success",
+                                detail=f"Auto-resolved ({effective_strategy}): kept {kept} copy",
+                            ))
                 else:
                     resolved_actions.append(action)
 
