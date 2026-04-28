@@ -491,9 +491,11 @@ export function CloudBridges() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [creating, setCreating] = useState(false);
 
+  // pair_counts use "pair_0","pair_1"... but SyncPair.id is "0","1"... — map both
   const pairCountMap: Record<string, number> = {};
   for (const pc of status.pair_counts ?? []) {
     pairCountMap[pc.pair_id] = pc.files_synced;
+    pairCountMap[pc.pair_id.replace(/^pair_/, "")] = pc.files_synced;
   }
 
   useEffect(() => {

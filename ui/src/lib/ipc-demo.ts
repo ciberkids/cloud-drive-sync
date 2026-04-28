@@ -40,7 +40,7 @@ const DEMO_STATUS: DaemonStatus = {
 
 const DEMO_PAIRS: SyncPair[] = [
   {
-    id: "pair_0",
+    id: "0",
     local_path: "/home/user/Documents",
     remote_folder_id: "root",
     enabled: true,
@@ -51,7 +51,7 @@ const DEMO_PAIRS: SyncPair[] = [
     provider: "gdrive",
   },
   {
-    id: "pair_1",
+    id: "1",
     local_path: "/home/user/Photos",
     remote_folder_id: "1a2b3c4d5e",
     enabled: true,
@@ -62,7 +62,7 @@ const DEMO_PAIRS: SyncPair[] = [
     provider: "gdrive",
   },
   {
-    id: "pair_2",
+    id: "2",
     local_path: "/home/user/Work",
     remote_folder_id: "root",
     enabled: true,
@@ -73,7 +73,7 @@ const DEMO_PAIRS: SyncPair[] = [
     provider: "dropbox",
   },
   {
-    id: "pair_3",
+    id: "3",
     local_path: "/home/user/Work",
     remote_folder_id: "/Work",
     enabled: true,
