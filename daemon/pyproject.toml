@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dropbox = ["dropbox>=12.0.0"]
 onedrive = ["msgraph-sdk>=1.0.0", "azure-identity>=1.15.0"]
-nextcloud = ["nc-py-api>=0.17.0"]
+nextcloud = ["nc-py-api>=0.17.0", "httpx>=0.25.0"]
 box = ["box-sdk-gen>=1.0.0"]
 all-providers = ["cloud-drive-sync[dropbox,onedrive,nextcloud,box]"]
 dev = [
