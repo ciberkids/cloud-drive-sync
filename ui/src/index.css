@@ -392,33 +392,58 @@ body {
   font-style: italic;
 }
 
-.pair-counts {
+.pair-bridges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 20px;
 }
 
-.pair-counts h3 {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin: 0 0 8px;
+.pair-bridge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-secondary, rgba(255,255,255,0.04));
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 8px;
 }
 
-.pair-count-list {
+.pair-bridge-disabled {
+  opacity: 0.45;
+}
+
+.pair-bridge-local {
+  flex: 1;
+  min-width: 0;
+}
+
+.pair-bridge-folder {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.pair-bridge-dir {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.pair-bridge-remote {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
 }
 
-.pair-count-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.pair-count-pill {
+.pair-bridge-pill {
   font-size: 10px;
   font-weight: 600;
   color: #fff;
@@ -427,34 +452,33 @@ body {
   flex-shrink: 0;
 }
 
-.pair-count-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-secondary);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.pair-count-account {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pair-count-folder {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pair-bridge-account {
   font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.pair-count-value {
-  font-weight: 600;
-  font-size: 13px;
+.pair-bridge-count {
   flex-shrink: 0;
+  text-align: right;
+}
+
+.pair-bridge-count-value {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.pair-bridge-count-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .status-stats {

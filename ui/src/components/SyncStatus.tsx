@@ -215,37 +215,44 @@ export function SyncStatus() {
         </div>
       )}
 
-      <div className="status-stats">
-        <div className="stat">
-          <span className="stat-value">{status.files_synced}</span>
-          <span className="stat-label">Files synced</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{status.active_transfers}</span>
-          <span className="stat-label">Active transfers</span>
-        </div>
-      </div>
-
-      {status.pair_counts && status.pair_counts.length > 1 && (
-        <div className="pair-counts">
-          <h3>Per Account</h3>
-          <div className="pair-count-list">
-            {status.pair_counts.map((pc) => {
-              const color = providerColor(pc.provider);
-              const label = providerLabel(pc.provider);
-              const folderName = pc.local_path.split("/").filter(Boolean).pop() || pc.local_path;
-              const accountShort = pc.account_id ? pc.account_id.split("@")[0] : "";
-              return (
-                <div key={pc.pair_id} className="pair-count-row">
-                  <span className="pair-count-pill" style={{ background: color }}>{label}</span>
-                  <span className="pair-count-info">
-                    {accountShort && <span className="pair-count-account">{accountShort}</span>}
-                    {folderName && <span className="pair-count-folder">&rsaquo; {folderName}</span>}
-                  </span>
-                  <span className="pair-count-value">{pc.files_synced.toLocaleString()}</span>
+      {status.pair_counts && status.pair_counts.length > 0 ? (
+        <div className="pair-bridges">
+          {status.pair_counts.map((pc) => {
+            const pair = pairMap[pc.pair_id];
+            const color = providerColor(pc.provider);
+            const label = providerLabel(pc.provider);
+            const folderName = pc.local_path.split("/").filter(Boolean).pop() || pc.local_path;
+            const accountShort = pc.account_id ? pc.account_id.split("@")[0] : "";
+            const syncMode = pair?.sync_mode ?? "two_way";
+            const dirIcon = syncMode === "upload_only" ? "↑" : syncMode === "download_only" ? "↓" : "↔";
+            const isEnabled = pair?.enabled ?? true;
+            return (
+              <div key={pc.pair_id} className={`pair-bridge-row${!isEnabled ? " pair-bridge-disabled" : ""}`}>
+                <div className="pair-bridge-local">
+                  <span className="pair-bridge-folder" title={pc.local_path}>{folderName}</span>
                 </div>
-              );
-            })}
+                <span className="pair-bridge-dir" title={syncMode}>{dirIcon}</span>
+                <div className="pair-bridge-remote">
+                  <span className="pair-bridge-pill" style={{ background: color }}>{label}</span>
+                  {accountShort && <span className="pair-bridge-account" title={pc.account_id}>{accountShort}</span>}
+                </div>
+                <div className="pair-bridge-count">
+                  <span className="pair-bridge-count-value">{pc.files_synced.toLocaleString()}</span>
+                  <span className="pair-bridge-count-label">files</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="status-stats">
+          <div className="stat">
+            <span className="stat-value">{status.files_synced}</span>
+            <span className="stat-label">Files synced</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{status.active_transfers}</span>
+            <span className="stat-label">Active transfers</span>
           </div>
         </div>
       )}
