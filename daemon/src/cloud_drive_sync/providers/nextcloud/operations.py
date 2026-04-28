@@ -81,9 +81,7 @@ class NextcloudFileOps(CloudFileOps):
         loop = asyncio.get_running_loop()
 
         def _upload():
-            # Use a streaming PUT via httpx so progress_callback fires per chunk.
-            # nc_py_api already requires httpx, so no extra dependency.
-            import httpx
+            import httpx  # declared in nextcloud optional-dependency group
 
             # Percent-encode path components so special chars (%, spaces, etc.)
             # don't get double-encoded or rejected by httpx (issues #30/#31).
