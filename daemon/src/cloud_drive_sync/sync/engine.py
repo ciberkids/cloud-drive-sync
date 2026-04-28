@@ -320,6 +320,35 @@ class SyncEngine:
                 else:
                     resolved_actions.append(action)
 
+            # For upload_only pairs, reconcile remote orphans: files that exist on
+            # remote but no longer locally.  plan_initial_sync generates DOWNLOAD for
+            # these, but upload_only mode drops them silently, leaving the remote
+            # forever out of sync with local.  Only delete files we *previously* synced
+            # (DB entry exists) — brand-new remote-only files are left untouched so a
+            # first-time setup with existing remote content is safe.
+            if ps.pair.sync_mode == "upload_only":
+                stored_entries = {e.path: e for e in await self._db.get_all_entries(pair_id)}
+                remote_paths = {rf.get("relativePath", rf.get("name", "")) for rf in remote_files}
+                remote_paths.discard("")
+                local_paths = set(local_files.keys())
+                orphan_paths = remote_paths - local_paths
+                orphan_actions: list[SyncAction] = []
+                for opath in orphan_paths:
+                    entry = stored_entries.get(opath)
+                    if entry and entry.remote_id:
+                        orphan_actions.append(SyncAction(
+                            ActionType.DELETE_REMOTE,
+                            opath,
+                            stored_entry=entry,
+                            reason="upload_only: locally deleted, removing from remote",
+                        ))
+                if orphan_actions:
+                    log.info(
+                        "upload_only reconcile: %d orphaned remote files to remove for %s",
+                        len(orphan_actions), pair_id,
+                    )
+                    resolved_actions = resolved_actions + orphan_actions
+
             # Execute
             uploaded = 0
             downloaded = 0
