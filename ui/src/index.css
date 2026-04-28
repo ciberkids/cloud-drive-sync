@@ -2370,6 +2370,24 @@ body {
   margin-top: 2px;
 }
 
+.bridge-cloud-count {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.bridge-cloud-count-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.bridge-cloud-count-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .bridge-local-row {
   display: flex;
   align-items: center;
