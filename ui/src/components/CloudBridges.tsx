@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useSyncPairs } from "../lib/hooks";
+import { useSyncPairs, useStatus } from "../lib/hooks";
 import { FolderPicker } from "./FolderPicker";
 import { providerLabel, providerColor } from "./AccountManager";
 import type { Account, SyncPair } from "../lib/types";
@@ -205,11 +205,12 @@ function BridgeSidePicker({ label, side, accounts, onChange }: BridgeSidePickerP
 
 interface BridgeCardProps {
   bridge: CloudBridge;
+  pairCountMap: Record<string, number>;
   onRemove: (pairIds: string[]) => void;
   onPairStrategyChange: (pairId: string, strategy: string) => void;
 }
 
-function BridgeCard({ bridge, onRemove, onPairStrategyChange }: BridgeCardProps) {
+function BridgeCard({ bridge, pairCountMap, onRemove, onPairStrategyChange }: BridgeCardProps) {
   const [confirming, setConfirming] = useState(false);
 
   const localFolder = bridge.localPath.split("/").filter(Boolean).pop() || bridge.localPath;
@@ -250,6 +251,12 @@ function BridgeCard({ bridge, onRemove, onPairStrategyChange }: BridgeCardProps)
                 <div className="bridge-cloud-account" title={p.account_id || ""}>{accountDisplay}</div>
                 <div className="bridge-cloud-folder" title={p.remote_folder_id}>{folderDisplay}</div>
                 <div className="bridge-cloud-mode">{modeArrow(p)} {modeLabel(p)}</div>
+                {pairCountMap[p.id] !== undefined && (
+                  <div className="bridge-cloud-count">
+                    <span className="bridge-cloud-count-value">{pairCountMap[p.id].toLocaleString()}</span>
+                    <span className="bridge-cloud-count-label"> files synced</span>
+                  </div>
+                )}
                 <div className="field" style={{ marginTop: 6 }}>
                   <select
                     className="select"
@@ -480,8 +487,14 @@ function CreateBridgeForm({ accounts, existingLocalPaths, onCreated, onCancel }:
 
 export function CloudBridges() {
   const { pairs, refresh, remove } = useSyncPairs();
+  const status = useStatus(5000);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [creating, setCreating] = useState(false);
+
+  const pairCountMap: Record<string, number> = {};
+  for (const pc of status.pair_counts ?? []) {
+    pairCountMap[pc.pair_id] = pc.files_synced;
+  }
 
   useEffect(() => {
     ipc.listAccounts().then(setAccounts).catch(() => {});
@@ -576,6 +589,7 @@ export function CloudBridges() {
             <BridgeCard
               key={b.localPath}
               bridge={b}
+              pairCountMap={pairCountMap}
               onRemove={handleRemoveBridge}
               onPairStrategyChange={handlePairStrategyChange}
             />

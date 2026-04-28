@@ -22,7 +22,8 @@ const DEMO_STATUS: DaemonStatus = {
   pair_counts: [
     { pair_id: "pair_0", files_synced: 148, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Documents" },
     { pair_id: "pair_1", files_synced: 63, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Photos" },
-    { pair_id: "pair_2", files_synced: 36, account_id: "bob@nextcloud.example.com", provider: "nextcloud", local_path: "/home/user/Work" },
+    { pair_id: "pair_2", files_synced: 36, account_id: "bob@company.com", provider: "dropbox", local_path: "/home/user/Work" },
+    { pair_id: "pair_3", files_synced: 36, account_id: "bob@nextcloud.example.com", provider: "nextcloud", local_path: "/home/user/Work" },
   ],
   active_transfers: 0,
   live_transfers: [],
@@ -71,6 +72,17 @@ const DEMO_PAIRS: SyncPair[] = [
     account_id: "bob@company.com",
     provider: "dropbox",
   },
+  {
+    id: "pair_3",
+    local_path: "/home/user/Work",
+    remote_folder_id: "/Work",
+    enabled: true,
+    sync_mode: "two_way",
+    ignore_hidden: false,
+    ignore_patterns: [".git", "build/"],
+    account_id: "bob@nextcloud.example.com",
+    provider: "nextcloud",
+  },
 ];
 
 const DEMO_ACCOUNTS: Account[] = [
@@ -86,6 +98,13 @@ const DEMO_ACCOUNTS: Account[] = [
     display_name: "Bob",
     status: "connected",
     provider: "dropbox",
+    max_concurrent_transfers: 0,
+  },
+  {
+    email: "bob@nextcloud.example.com",
+    display_name: "Bob (Nextcloud)",
+    status: "connected",
+    provider: "nextcloud",
     max_concurrent_transfers: 0,
   },
 ];
