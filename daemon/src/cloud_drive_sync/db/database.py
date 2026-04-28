@@ -420,6 +420,17 @@ class Database:
         rows = await cursor.fetchall()
         return {row[0]: row[1] for row in rows}
 
+    async def prune_stale_entries(self, pair_id: str, known_paths: set[str]) -> int:
+        """Delete sync_state rows for paths no longer in local or remote."""
+        existing = await self.get_all_entries(pair_id)
+        stale = [e.path for e in existing if e.path not in known_paths]
+        for path in stale:
+            await self.delete_sync_entry(path, pair_id)
+        if stale:
+            await self.db.commit()
+            log.info("Pruned %d stale sync_state entries for %s", len(stale), pair_id)
+        return len(stale)
+
     async def clear_pair(self, pair_id: str) -> None:
         await self.db.execute("DELETE FROM sync_state WHERE pair_id = ?", (pair_id,))
         await self.db.execute("DELETE FROM change_tokens WHERE pair_id = ?", (pair_id,))
