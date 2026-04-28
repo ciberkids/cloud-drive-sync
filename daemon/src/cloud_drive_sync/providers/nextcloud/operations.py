@@ -112,7 +112,15 @@ class NextcloudFileOps(CloudFileOps):
                         yield chunk
 
             with httpx.Client(timeout=300) as client:
-                resp = client.put(dav_url, content=_gen(), auth=auth)
+                # Content-Length must be set explicitly: without it httpx sends
+                # Transfer-Encoding: chunked, which Nextcloud WebDAV silently
+                # accepts but writes 0 bytes to the file (issue #38).
+                resp = client.put(
+                    dav_url,
+                    content=_gen(),
+                    auth=auth,
+                    headers={"Content-Length": str(file_size)},
+                )
                 resp.raise_for_status()
 
             # Re-list to get uploaded file metadata
