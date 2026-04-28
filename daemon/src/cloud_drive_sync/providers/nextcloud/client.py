@@ -324,7 +324,7 @@ class NextcloudClient(CloudClient):
     async def trash_file(self, file_id: str) -> dict[str, Any]:
         def _trash():
             path = self._resolve_path(file_id)
-            # Get metadata before trashing
+            # Get metadata before deleting
             parent_dir = path.rsplit("/", 1)[0] or "/"
             nodes = self._nc.files.listdir(parent_dir)
             name = path.rsplit("/", 1)[-1]
@@ -332,7 +332,9 @@ class NextcloudClient(CloudClient):
             if node is None:
                 raise FileNotFoundError(f"Nextcloud file not found: {file_id}")
             meta = self._file_to_dict(node)
-            self._nc.files.trashbin.delete(path)
+            # files.delete() moves to trash if trash is enabled on the server,
+            # otherwise permanently deletes — nc-py-api ≥0.17 removed trashbin.delete
+            self._nc.files.delete(path)
             return meta
 
         return await asyncio.to_thread(_trash)
