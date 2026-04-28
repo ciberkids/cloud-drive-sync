@@ -189,7 +189,11 @@ class HttpServer:
         body["conflict_id"] = req.match_info["conflict_id"]
         return self._json(await self._rpc("resolve_conflict", body))
     async def _get_activity_log(self, req):
-        params = {"limit": int(req.query.get("limit", 20)), "offset": int(req.query.get("offset", 0))}
+        params = {
+            "limit": int(req.query.get("limit", 20)),
+            "offset": int(req.query.get("offset", 0)),
+            "filter": req.query.get("filter", "all"),
+        }
         return self._json(await self._rpc("get_activity_log", params))
     async def _get_notification_prefs(self, req): return self._json(await self._rpc("get_notification_prefs"))
     async def _set_notification_prefs(self, req): return self._json(await self._rpc("set_notification_prefs", await self._body(req)))

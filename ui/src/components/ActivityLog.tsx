@@ -18,9 +18,9 @@ type FilterType = "all" | LogEntry["event_type"];
 
 export function ActivityLog() {
   const status = useStatus(5000);
-  const { entries, loading, loadMore } = useActivityLog(50, status.syncing);
-  const { pairs } = useSyncPairs();
   const [filter, setFilter] = useState<FilterType>("all");
+  const { entries, loading, loadMore } = useActivityLog(50, status.syncing, filter);
+  const { pairs } = useSyncPairs();
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -65,12 +65,8 @@ export function ActivityLog() {
     return map;
   }, [pairs]);
 
-  const filtered =
-    filter === "all"
-      ? entries
-      : filter === "error"
-        ? entries.filter((e) => e.status === "error" || e.event_type === "error")
-        : entries.filter((e) => e.event_type === filter);
+  // Filtering is server-side — entries already match the active filter
+  const filtered = entries;
 
   return (
     <div className="activity-log">

@@ -179,7 +179,7 @@ export function useConflicts() {
   return { conflicts, refresh };
 }
 
-export function useActivityLog(limit = 50, isSyncing = false) {
+export function useActivityLog(limit = 50, isSyncing = false, filter = "all") {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const offsetRef = useRef(0);
@@ -187,7 +187,7 @@ export function useActivityLog(limit = 50, isSyncing = false) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await ipc.getActivityLog(limit, 0);
+      const result = await ipc.getActivityLog(limit, 0, filter);
       setEntries(result);
       offsetRef.current = result.length;
     } catch {
@@ -195,12 +195,12 @@ export function useActivityLog(limit = 50, isSyncing = false) {
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, filter]);
 
   const loadMore = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await ipc.getActivityLog(limit, offsetRef.current);
+      const result = await ipc.getActivityLog(limit, offsetRef.current, filter);
       setEntries((prev) => [...prev, ...result]);
       offsetRef.current += result.length;
     } catch {
@@ -208,7 +208,7 @@ export function useActivityLog(limit = 50, isSyncing = false) {
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, filter]);
 
   useEffect(() => {
     load();

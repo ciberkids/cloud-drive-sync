@@ -388,6 +388,17 @@ class RequestHandler:
         ok = await engine.resume_pair(pair_id)
         return {"status": "resumed" if ok else "not_found"}
 
+    # Maps UI filter tab names → (status, actions) for server-side filtering.
+    _FILTER_TO_ACTIONS: dict[str, list[str]] = {
+        "upload": ["upload"],
+        "download": ["download"],
+        "delete": ["delete_local", "delete_remote"],
+        "conflict": ["conflict"],
+        "sync": ["sync", "mkdir"],
+        "auth": ["auth"],
+        "move": ["move"],
+    }
+
     async def _get_activity_log(self, params: dict) -> list[dict]:
         db = self._db or (self._engine._db if self._engine else None)
         if db is None:
@@ -395,9 +406,21 @@ class RequestHandler:
         params = params or {}
         limit = params.get("limit", 50)
         pair_id = params.get("pair_id")
-
         offset = params.get("offset", 0)
-        entries = await db.get_recent_log(limit=limit, offset=offset, pair_id=pair_id)
+        ui_filter = params.get("filter", "all")
+
+        # Translate UI filter to SQL predicates
+        db_status: str | None = None
+        db_actions: list[str] | None = None
+        if ui_filter == "error":
+            db_status = "error"
+        elif ui_filter in self._FILTER_TO_ACTIONS:
+            db_actions = self._FILTER_TO_ACTIONS[ui_filter]
+
+        entries = await db.get_recent_log(
+            limit=limit, offset=offset, pair_id=pair_id,
+            status=db_status, actions=db_actions,
+        )
 
         # Bug 4 fix: filter by active pair IDs when no specific pair_id requested
         if not pair_id:

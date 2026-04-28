@@ -323,20 +323,32 @@ class Database:
         await self.db.commit()
 
     async def get_recent_log(
-        self, limit: int = 50, offset: int = 0, pair_id: str | None = None
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        pair_id: str | None = None,
+        status: str | None = None,
+        actions: list[str] | None = None,
     ) -> list[SyncLogEntry]:
+        conditions: list[str] = []
+        params: list = []
         if pair_id:
-            cursor = await self.db.execute(
-                "SELECT id, timestamp, action, path, pair_id, status, detail "
-                "FROM sync_log WHERE pair_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
-                (pair_id, limit, offset),
-            )
-        else:
-            cursor = await self.db.execute(
-                "SELECT id, timestamp, action, path, pair_id, status, detail "
-                "FROM sync_log ORDER BY id DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
+            conditions.append("pair_id = ?")
+            params.append(pair_id)
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        if actions:
+            placeholders = ",".join("?" * len(actions))
+            conditions.append(f"action IN ({placeholders})")
+            params.extend(actions)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.extend([limit, offset])
+        cursor = await self.db.execute(
+            f"SELECT id, timestamp, action, path, pair_id, status, detail "
+            f"FROM sync_log {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            params,
+        )
         rows = await cursor.fetchall()
         return [SyncLogEntry.from_row(tuple(r)) for r in rows]
 
