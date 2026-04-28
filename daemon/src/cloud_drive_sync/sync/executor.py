@@ -533,6 +533,7 @@ class SyncExecutor:
             action.stored_entry.state = FileState.CONFLICT
             await self._db.upsert_sync_entry(action.stored_entry)
         log.warning("Conflict flagged: %s", action.path)
+        await self._log_action(action, "error", "Both sides modified — conflict pending resolution")
 
     async def _log_action(self, action: SyncAction, status: str, detail: str) -> None:
         # Include transfer speed info if available
