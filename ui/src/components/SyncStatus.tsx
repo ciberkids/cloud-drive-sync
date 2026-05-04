@@ -281,7 +281,7 @@ export function SyncStatus() {
                   <div className="transfer-pair-context">
                     <span className="transfer-pair-pill" style={{ background: pColor }}>{pLabel}</span>
                     {pAccount && <span className="transfer-pair-account">{pAccount}</span>}
-                    {pFolder && <span className="transfer-pair-folder">\u203a {pFolder}</span>}
+                    {pFolder && <span className="transfer-pair-folder">{"\u203a"} {pFolder}</span>}
                   </div>
                 )}
                 {t.total > 0 && (
