@@ -3,6 +3,18 @@ import { useActivityLog, useSyncPairs, useStatus } from "../lib/hooks";
 import { providerColor, providerLabel } from "./AccountManager";
 import type { LogEntry } from "../lib/types";
 
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString();
+  if (isToday) return `Today, ${time}`;
+  return `${d.toLocaleDateString()} ${time}`;
+}
+
 const EVENT_ICONS: Record<string, string> = {
   upload: "↑",
   download: "↓",
@@ -137,7 +149,7 @@ export function ActivityLog() {
                   </div>
                 )}
                 <span className="log-time">
-                  {new Date(entry.timestamp).toLocaleTimeString()}
+                  {formatTimestamp(entry.timestamp)}
                 </span>
                 <span className={`log-status log-status-${entry.status}`}>
                   {entry.status}
