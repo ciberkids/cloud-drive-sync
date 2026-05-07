@@ -62,7 +62,7 @@ def test_build_etag_map_file_node():
     """_build_etag_map must not call .get() on FsNodeInfo (issue #33)."""
     file_node = _make_fsnode("report.pdf", "Documents/report.pdf", is_dir=False)
     nc = MagicMock()
-    nc.files.listdir.return_value = [file_node]
+    nc.files._listdir.return_value = [file_node]
 
     result = _build_etag_map(nc, "/Documents")
 
@@ -77,6 +77,23 @@ def test_build_etag_map_file_node():
     assert "info" not in entry
 
 
+def test_build_etag_map_uses_minimal_properties():
+    """_build_etag_map must pass minimal properties to avoid oc:checksums (issue #44)."""
+    from cloud_drive_sync.providers.nextcloud.changes import _ETAG_MAP_PROPERTIES
+    nc = MagicMock()
+    nc.files._listdir.return_value = []
+
+    _build_etag_map(nc, "/Documents")
+
+    call_args = nc.files._listdir.call_args
+    assert call_args is not None
+    # third positional arg is the properties list
+    passed_properties = call_args[0][2]
+    assert "oc:checksums" not in passed_properties
+    assert "oc:share-types" not in passed_properties
+    assert passed_properties == _ETAG_MAP_PROPERTIES
+
+
 def test_build_etag_map_dir_node():
     """Directory nodes get mimetype httpd/unix-directory."""
     dir_node = _make_fsnode("Subfolder", "Documents/Subfolder", is_dir=True)
@@ -84,14 +101,14 @@ def test_build_etag_map_dir_node():
 
     nc = MagicMock()
 
-    def _listdir(path):
+    def _listdir(user, path, props, depth, exclude_self):
         if path == "/Documents":
             return [dir_node]
         if path == "Documents/Subfolder":
             return [child_node]
         return []
 
-    nc.files.listdir.side_effect = _listdir
+    nc.files._listdir.side_effect = _listdir
 
     result = _build_etag_map(nc, "/Documents")
 
@@ -101,14 +118,14 @@ def test_build_etag_map_dir_node():
 
 def test_build_etag_map_empty_dir():
     nc = MagicMock()
-    nc.files.listdir.return_value = []
+    nc.files._listdir.return_value = []
     assert _build_etag_map(nc) == {}
 
 
 def test_build_etag_map_listdir_exception():
     """A failing listdir returns an empty map (no crash)."""
     nc = MagicMock()
-    nc.files.listdir.side_effect = Exception("network error")
+    nc.files._listdir.side_effect = Exception("network error")
     assert _build_etag_map(nc) == {}
 
 
@@ -119,7 +136,7 @@ async def test_get_start_page_token_returns_json():
     """get_start_page_token must return a valid JSON token (not crash)."""
     client = _make_client()
     file_node = _make_fsnode("doc.pdf", "doc.pdf", is_dir=False)
-    client._nc.files.listdir.return_value = [file_node]
+    client._nc.files._listdir.return_value = [file_node]
 
     poller = NextcloudChangePoller(client)
     token = await poller.get_start_page_token()
@@ -132,7 +149,7 @@ async def test_get_start_page_token_returns_json():
 @pytest.mark.asyncio
 async def test_get_start_page_token_empty_tree():
     client = _make_client()
-    client._nc.files.listdir.return_value = []
+    client._nc.files._listdir.return_value = []
 
     poller = NextcloudChangePoller(client)
     token = await poller.get_start_page_token()
@@ -146,7 +163,7 @@ async def test_poll_changes_detects_new_file():
     """A file present in current but absent in old_token is a new-file change."""
     client = _make_client()
     file_node = _make_fsnode("new.pdf", "Documents/new.pdf", is_dir=False)
-    client._nc.files.listdir.return_value = [file_node]
+    client._nc.files._listdir.return_value = [file_node]
 
     poller = NextcloudChangePoller(client)
     old_token = json.dumps({"etags": {}})
@@ -164,7 +181,7 @@ async def test_poll_changes_detects_new_file():
 async def test_poll_changes_detects_removed_file():
     """A file in old_token absent from current is a removal."""
     client = _make_client()
-    client._nc.files.listdir.return_value = []
+    client._nc.files._listdir.return_value = []
 
     poller = NextcloudChangePoller(client)
     old_token = json.dumps({"etags": {"Documents/gone.pdf": "etag1"}})
@@ -180,7 +197,7 @@ async def test_poll_changes_detects_modified_file():
     """A file whose etag changed is reported as a modification."""
     client = _make_client()
     file_node = _make_fsnode("doc.pdf", "Documents/doc.pdf", etag="new_etag")
-    client._nc.files.listdir.return_value = [file_node]
+    client._nc.files._listdir.return_value = [file_node]
 
     poller = NextcloudChangePoller(client)
     old_token = json.dumps({"etags": {"Documents/doc.pdf": "old_etag"}})
@@ -196,7 +213,7 @@ async def test_poll_changes_no_changes():
     """Unchanged etag → no changes reported."""
     client = _make_client()
     file_node = _make_fsnode("doc.pdf", "Documents/doc.pdf", etag="same_etag")
-    client._nc.files.listdir.return_value = [file_node]
+    client._nc.files._listdir.return_value = [file_node]
 
     poller = NextcloudChangePoller(client)
     old_token = json.dumps({"etags": {"Documents/doc.pdf": "same_etag"}})

@@ -22,6 +22,17 @@ from cloud_drive_sync.util.retry import async_retry
 
 log = get_logger("providers.nextcloud.changes")
 
+# Minimal PROPFIND properties needed for ETag-based change detection.
+# Excludes oc:checksums and oc:share-types, which cause Nextcloud's PHP-FPM
+# workers to run at 100% CPU for large directories (issue #44).
+_ETAG_MAP_PROPERTIES = [
+    "d:resourcetype",
+    "d:getetag",
+    "d:getlastmodified",
+    "oc:fileid",
+    "oc:id",
+]
+
 
 def _build_etag_map(nc: Any, path: str = "/") -> dict[str, dict[str, Any]]:
     """Recursively build a map of ``{path: {etag, fileid, name, is_dir, ...}}``.
@@ -31,7 +42,9 @@ def _build_etag_map(nc: Any, path: str = "/") -> dict[str, dict[str, Any]]:
     """
     result: dict[str, dict[str, Any]] = {}
     try:
-        nodes = nc.files.listdir(path)
+        nodes = nc.files._listdir(
+            nc.files._session.user, path, _ETAG_MAP_PROPERTIES, 1, True
+        )
     except Exception:
         log.warning("Failed to list directory: %s", path)
         return result
