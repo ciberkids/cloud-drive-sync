@@ -130,6 +130,7 @@ class SyncLogEntry:
     pair_id: str = ""
     status: str = ""
     detail: str = ""
+    reason: str = ""
 
     def to_row(self) -> tuple:
         return (
@@ -139,6 +140,7 @@ class SyncLogEntry:
             self.pair_id,
             self.status,
             self.detail,
+            self.reason,
         )
 
     @classmethod
@@ -151,6 +153,7 @@ class SyncLogEntry:
             pair_id=row[4],
             status=row[5],
             detail=row[6],
+            reason=row[7] if len(row) > 7 else "",
         )
 
 

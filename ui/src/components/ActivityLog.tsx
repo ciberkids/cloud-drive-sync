@@ -51,6 +51,7 @@ export function ActivityLog() {
     const lines = [
       `[${new Date(entry.timestamp).toLocaleString()}] ${entry.event_type.toUpperCase()}`,
       entry.path ? `Path:    ${entry.path}` : null,
+      entry.reason ? `Reason:  ${entry.reason}` : null,
       entry.details ? `Details: ${entry.details}` : null,
       acctInfo ? `Account: ${acctInfo.email} (${providerLabel(acctInfo.provider)})` : null,
       `Status:  ${entry.status}`,
@@ -159,6 +160,7 @@ export function ActivityLog() {
                 <div className="log-expanded" onClick={(e) => e.stopPropagation()}>
                   <div className="log-expanded-rows">
                     {entry.path && <div className="log-expanded-row"><span className="log-expanded-label">Path</span><span className="log-expanded-value">{entry.path}</span></div>}
+                    {entry.reason && <div className="log-expanded-row"><span className="log-expanded-label">Reason</span><span className="log-expanded-value">{entry.reason}</span></div>}
                     {entry.details && <div className="log-expanded-row"><span className="log-expanded-label">Details</span><span className="log-expanded-value">{entry.details}</span></div>}
                     {acctInfo && !isSystem && <div className="log-expanded-row"><span className="log-expanded-label">Account</span><span className="log-expanded-value">{acctInfo.email} ({providerLabel(acctInfo.provider)})</span></div>}
                     <div className="log-expanded-row"><span className="log-expanded-label">Time</span><span className="log-expanded-value">{new Date(entry.timestamp).toLocaleString()}</span></div>
