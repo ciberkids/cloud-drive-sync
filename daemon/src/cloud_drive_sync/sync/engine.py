@@ -364,6 +364,7 @@ class SyncEngine:
             # Execute
             uploaded = 0
             downloaded = 0
+            mkdirs = 0
             deleted = 0
             errors = 0
             uploaded_files: list[str] = []
@@ -383,10 +384,12 @@ class SyncEngine:
                         uploaded += 1
                         if len(uploaded_files) < 200:
                             uploaded_files.append(a.path)
-                    elif a.action in (ActionType.DOWNLOAD, ActionType.MKDIR):
+                    elif a.action == ActionType.DOWNLOAD:
                         downloaded += 1
-                        if a.action == ActionType.DOWNLOAD and len(downloaded_files) < 200:
+                        if len(downloaded_files) < 200:
                             downloaded_files.append(a.path)
+                    elif a.action == ActionType.MKDIR:
+                        mkdirs += 1
                     elif a.action in (ActionType.DELETE_LOCAL, ActionType.DELETE_REMOTE):
                         deleted += 1
                         if len(deleted_files) < 200:
@@ -419,7 +422,7 @@ class SyncEngine:
                     action="sync", path="", pair_id=pair_id,
                     status="error", detail=detail,
                 ))
-            elif total == 0:
+            elif total == 0 and mkdirs == 0:
                 await self._db.add_log_entry(SyncLogEntry(
                     action="sync", path="", pair_id=pair_id,
                     status="success", detail="Everything is up to date — nothing to sync",
@@ -430,6 +433,8 @@ class SyncEngine:
                     parts.append(f"{uploaded} uploaded")
                 if downloaded > 0:
                     parts.append(f"{downloaded} downloaded")
+                if mkdirs > 0:
+                    parts.append(f"{mkdirs} director{'ies' if mkdirs != 1 else 'y'} created")
                 await self._db.add_log_entry(SyncLogEntry(
                     action="sync", path="", pair_id=pair_id,
                     status="success", detail=f"Sync complete: {', '.join(parts)}",
@@ -441,6 +446,7 @@ class SyncEngine:
                     "pair_id": pair_id,
                     "uploaded": uploaded,
                     "downloaded": downloaded,
+                    "mkdirs": mkdirs,
                     "deleted": deleted,
                     "errors": errors,
                     "files": {
