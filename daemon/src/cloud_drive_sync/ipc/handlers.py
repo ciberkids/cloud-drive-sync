@@ -477,6 +477,7 @@ class RequestHandler:
                 "details": detail,
                 "status": e.status,
                 "pair_id": e.pair_id,
+                "reason": e.reason or "",
             })
 
         return result

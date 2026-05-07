@@ -147,12 +147,12 @@ class TestSyncLogEntry:
         row = entry.to_row()
         # to_row doesn't include id
         assert row == (
-            dt.isoformat(), "upload", "file.txt", "p0", "ok", "uploaded successfully",
+            dt.isoformat(), "upload", "file.txt", "p0", "ok", "uploaded successfully", "",
         )
 
     def test_from_row_roundtrip(self):
         dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=timezone.utc)
-        row = (42, dt.isoformat(), "download", "doc.pdf", "p1", "error", "network timeout")
+        row = (42, dt.isoformat(), "download", "doc.pdf", "p1", "error", "network timeout", "remote only")
         entry = SyncLogEntry.from_row(row)
         assert entry.id == 42
         assert entry.timestamp == dt
@@ -161,6 +161,14 @@ class TestSyncLogEntry:
         assert entry.pair_id == "p1"
         assert entry.status == "error"
         assert entry.detail == "network timeout"
+        assert entry.reason == "remote only"
+
+    def test_from_row_without_reason_column(self):
+        """from_row must tolerate old DB rows without a reason column."""
+        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=timezone.utc)
+        row = (42, dt.isoformat(), "upload", "file.txt", "p0", "ok", "uploaded successfully")
+        entry = SyncLogEntry.from_row(row)
+        assert entry.reason == ""
 
     def test_default_timestamp_is_utc(self):
         entry = SyncLogEntry()

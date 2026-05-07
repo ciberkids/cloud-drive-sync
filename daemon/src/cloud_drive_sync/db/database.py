@@ -20,7 +20,7 @@ from cloud_drive_sync.util.paths import db_path
 
 log = get_logger("database")
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS sync_log (
     path TEXT NOT NULL,
     pair_id TEXT NOT NULL,
     status TEXT NOT NULL,
-    detail TEXT
+    detail TEXT,
+    reason TEXT
 );
 
 CREATE TABLE IF NOT EXISTS partial_transfers (
@@ -165,6 +166,15 @@ class Database:
                     log.info("Migrated database to v3: added partial_transfers table")
                 except Exception:
                     pass  # Table may already exist
+            # Migration from v3 -> v4: add reason column to sync_log
+            if current_version < 4:
+                try:
+                    await self.db.execute(
+                        "ALTER TABLE sync_log ADD COLUMN reason TEXT"
+                    )
+                    log.info("Migrated database to v4: added reason column to sync_log")
+                except Exception:
+                    pass  # Column may already exist
             await self.db.execute(
                 "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
             )
@@ -316,8 +326,8 @@ class Database:
 
     async def add_log_entry(self, entry: SyncLogEntry) -> None:
         await self.db.execute(
-            """INSERT INTO sync_log (timestamp, action, path, pair_id, status, detail)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO sync_log (timestamp, action, path, pair_id, status, detail, reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             entry.to_row(),
         )
         await self.db.commit()
@@ -345,7 +355,7 @@ class Database:
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.extend([limit, offset])
         cursor = await self.db.execute(
-            f"SELECT id, timestamp, action, path, pair_id, status, detail "
+            f"SELECT id, timestamp, action, path, pair_id, status, detail, reason "
             f"FROM sync_log {where} ORDER BY id DESC LIMIT ? OFFSET ?",
             params,
         )

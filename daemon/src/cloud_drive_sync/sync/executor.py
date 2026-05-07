@@ -545,5 +545,6 @@ class SyncExecutor:
             pair_id=self._pair_id,
             status=status,
             detail=detail,
+            reason=action.reason or "",
         )
         await self._db.add_log_entry(entry)
