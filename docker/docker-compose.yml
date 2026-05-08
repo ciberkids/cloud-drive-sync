@@ -21,6 +21,10 @@ services:
       - "8080:8080"
     environment:
       - XDG_RUNTIME_DIR=/run/cloud-drive-sync
+      # Set to your host user/group IDs so synced files are owned by you,
+      # not root.  Find them with: id -u && id -g
+      - PUID=1000
+      - PGID=1000
 
 volumes:
   cloud-drive-sync-config:
