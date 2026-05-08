@@ -298,6 +298,7 @@ The daemon runs headless in Docker with no GUI dependencies.
 ```bash
 docker run -d --name cloud-drive-sync \
   -p 8080:8080 \
+  -e PUID=$(id -u) -e PGID=$(id -g) \
   -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
   -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
   -v ~/Documents:/data/Documents \
@@ -312,6 +313,33 @@ docker exec -it cloud-drive-sync \
 # Check status
 docker exec cloud-drive-sync python -m cloud_drive_sync status
 ```
+
+### File Ownership (PUID / PGID)
+
+By default the daemon runs as root inside the container, which causes synced files
+in bind-mounted folders to be owned by root on the host.  Set `PUID` and `PGID` to
+your host user's numeric IDs to have the daemon run as that user and write files
+with the correct ownership:
+
+```bash
+docker run -d \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
+  ...
+```
+
+Or in `docker-compose.yml`:
+
+```yaml
+environment:
+  - PUID=1000   # host user ID (id -u)
+  - PGID=1000   # host group ID (id -g)
+```
+
+Config and data volumes (`/root/.config/cloud-drive-sync` and
+`/root/.local/share/cloud-drive-sync`) are automatically chowned to PUID:PGID on
+startup so no manual volume permission changes are needed.  Omitting `PUID`/`PGID`
+(or setting `PUID=0`) preserves the legacy root behaviour.
 
 ### HTTP REST API
 
