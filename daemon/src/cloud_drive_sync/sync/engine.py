@@ -260,6 +260,10 @@ class SyncEngine:
                 else:
                     raise
 
+            # Load stored state — needed for locally-deleted file detection and
+            # upload_only orphan reconcile (avoids a second DB round-trip below).
+            stored_entries = {e.path: e for e in await self._db.get_all_entries(pair_id)}
+
             # Plan — pass provider-specific settings
             native_mimes = None
             folder_mime = None
@@ -274,6 +278,7 @@ class SyncEngine:
                 native_doc_mimes=native_mimes,
                 folder_mime=folder_mime,
                 convert_native_docs=convert_native and getattr(pair_client, 'supports_export', False),
+                stored_entries=stored_entries,
             )
 
             # Apply advanced sync rules
@@ -333,19 +338,24 @@ class SyncEngine:
                     resolved_actions.append(action)
 
             # For upload_only pairs, reconcile remote orphans: files that exist on
-            # remote but no longer locally.  plan_initial_sync generates DOWNLOAD for
-            # these, but upload_only mode drops them silently, leaving the remote
-            # forever out of sync with local.  Only delete files we *previously* synced
+            # remote but no longer locally.  plan_initial_sync with stored_entries may
+            # already have generated DELETE_REMOTE for some of these; the reconcile
+            # block picks up any that slipped through (e.g. when stored_entries was
+            # empty on the first ever run).  Only delete files we *previously* synced
             # (DB entry exists) — brand-new remote-only files are left untouched so a
             # first-time setup with existing remote content is safe.
             if ps.pair.sync_mode == "upload_only":
-                stored_entries = {e.path: e for e in await self._db.get_all_entries(pair_id)}
                 remote_paths = {rf.get("relativePath", rf.get("name", "")) for rf in remote_files}
                 remote_paths.discard("")
                 local_paths = set(local_files.keys())
                 orphan_paths = remote_paths - local_paths
+                already_deleting = {
+                    a.path for a in resolved_actions if a.action == ActionType.DELETE_REMOTE
+                }
                 orphan_actions: list[SyncAction] = []
                 for opath in orphan_paths:
+                    if opath in already_deleting:
+                        continue
                     entry = stored_entries.get(opath)
                     if entry and entry.remote_id:
                         orphan_actions.append(SyncAction(
