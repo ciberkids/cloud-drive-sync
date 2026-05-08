@@ -27,6 +27,13 @@ export function Settings() {
     useState<ConflictStrategy>("keep_both");
   const [saving, setSaving] = useState(false);
 
+  // Seed the dropdown from the daemon's persisted value whenever status loads.
+  useEffect(() => {
+    if (status?.conflict_strategy) {
+      setConflictStrategy(status.conflict_strategy);
+    }
+  }, [status?.conflict_strategy]);
+
   const [addingForAccount, setAddingForAccount] = useState<string | null>(null);
 
   const handleAddPair = async (remoteFolderId: string, localPath: string, accountId?: string, provider?: string, syncMode?: string) => {

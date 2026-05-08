@@ -47,6 +47,7 @@ export interface DaemonStatus {
   active_transfers: number;
   live_transfers: LiveTransfer[];
   daemon: DaemonInfo | null;
+  conflict_strategy?: ConflictStrategy;
 }
 
 export type SyncMode = "two_way" | "upload_only" | "download_only";
