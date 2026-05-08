@@ -457,6 +457,33 @@ See `docker/docker-compose.yml` for a ready-to-use compose file.
 | `CDS_GOOGLE_CLIENT_ID` | (embedded) | Override Google OAuth client ID |
 | `CDS_GOOGLE_CLIENT_SECRET` | (embedded) | Override Google OAuth client secret |
 
+## Stub Repair
+
+Stubs are incomplete sync-state entries that accumulate when a transfer is interrupted or the sync database is reset while remote files still exist. They show up as files tracked in the database that are missing on one side, causing repeated, fruitless sync attempts.
+
+### Scanning for stubs
+
+In the web UI, open **Settings**, expand a sync pair, and click **Scan for stubs**. The daemon checks the database against the live local and remote file lists and reports how many stale entries it found.
+
+Via the REST API:
+
+```bash
+# Dry-run scan (no changes)
+curl -X POST 'http://localhost:8080/api/pairs/0/repair?dry_run=true'
+
+# Apply the repair (deletes stale DB entries)
+curl -X POST 'http://localhost:8080/api/pairs/0/repair'
+```
+
+### When to use it
+
+- After a container restart or database migration where the DB was re-created
+- If the activity log shows repeated errors for the same file that does not exist locally
+- After manually deleting files outside of the sync process
+- After an `rclone bisync --resync` or equivalent baseline reset on the remote side
+
+Stub repair only removes database records — it never deletes files from local storage or from the cloud.
+
 ## Development
 
 ### Setup
