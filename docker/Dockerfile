@@ -5,6 +5,7 @@ LABEL org.opencontainers.image.description="Cloud Drive Sync daemon - multi-clou
 LABEL org.opencontainers.image.licenses=MIT
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,10 +14,15 @@ WORKDIR /app
 COPY daemon/ ./daemon/
 RUN pip install --no-cache-dir "./daemon[all-providers]"
 
+# Entrypoint handles PUID/PGID remapping via gosu.
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create directories for config, data, and sync folders
 RUN mkdir -p /root/.config/cloud-drive-sync \
     /root/.local/share/cloud-drive-sync \
-    /data
+    /data \
+    /run/cloud-drive-sync
 
 # Default sync folder mount point
 VOLUME ["/root/.config/cloud-drive-sync", "/root/.local/share/cloud-drive-sync", "/data"]
@@ -28,5 +34,5 @@ ENV XDG_RUNTIME_DIR=/run/cloud-drive-sync
 # HTTP REST API + Web UI
 EXPOSE 8080
 
-ENTRYPOINT ["python", "-m", "cloud_drive_sync"]
-CMD ["start", "--foreground", "--http-port", "8080"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "cloud_drive_sync", "start", "--foreground", "--http-port", "8080"]
