@@ -174,6 +174,7 @@ def plan_initial_sync(
     native_doc_mimes: frozenset[str] | None = None,
     folder_mime: str | None = None,
     convert_native_docs: bool = False,
+    stored_entries: dict[str, SyncEntry] | None = None,
 ) -> list[SyncAction]:
     """Plan actions for the very first sync (no stored state).
 
@@ -183,11 +184,17 @@ def plan_initial_sync(
     - File both sides, same hash -> synced (noop)
     - File both sides, different hash -> conflict
 
+    When stored_entries is provided, remote-only files that have a stored entry
+    (i.e. were previously synced) and whose local side is genuinely absent (not
+    just a detached mount — guarded by local_files being non-empty) are treated
+    as locally deleted and generate DELETE_REMOTE instead of DOWNLOAD.
+
     Args:
         native_doc_mimes: Provider-specific native doc MIME set. Defaults to Google set.
         folder_mime: Provider-specific folder MIME type. Defaults to Google folder MIME.
         convert_native_docs: If True, generate DOWNLOAD for exportable native docs
             instead of skipping them.
+        stored_entries: Previously persisted sync state keyed by path.
     """
     skip_mimes = native_doc_mimes if native_doc_mimes is not None else _GOOGLE_NATIVE_SKIP_MIMES
     fm = folder_mime if folder_mime is not None else FOLDER_MIME
@@ -233,9 +240,23 @@ def plan_initial_sync(
                     SyncAction(ActionType.DOWNLOAD, path, remote_info=remote, reason="native doc export")
                 )
             else:
-                actions.append(
-                    SyncAction(ActionType.DOWNLOAD, path, remote_info=remote, reason="remote only")
-                )
+                stored = stored_entries.get(path) if stored_entries else None
+                if stored and stored.remote_id and local_files:
+                    # Previously synced, missing locally with non-empty local tree →
+                    # file was deleted locally, propagate deletion to remote.
+                    actions.append(
+                        SyncAction(
+                            ActionType.DELETE_REMOTE,
+                            path,
+                            remote_info=remote,
+                            stored_entry=stored,
+                            reason="locally deleted (not found on re-sync)",
+                        )
+                    )
+                else:
+                    actions.append(
+                        SyncAction(ActionType.DOWNLOAD, path, remote_info=remote, reason="remote only")
+                    )
         elif local and remote:
             mime = remote.get("mimeType", "")
             if _is_folder(mime, fm) or local.is_dir:
