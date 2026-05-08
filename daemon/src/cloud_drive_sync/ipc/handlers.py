@@ -215,6 +215,7 @@ class RequestHandler:
             "active_transfers": len(live_transfers),
             "live_transfers": live_transfers,
             "daemon": daemon_info,
+            "conflict_strategy": self._config.sync.conflict_strategy,
         }
 
     @staticmethod
