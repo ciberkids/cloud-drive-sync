@@ -542,9 +542,16 @@ export function Settings() {
         {(() => {
           const rs = repairStates[pair.id] ?? { phase: "idle" };
           if (rs.phase === "idle") return (
-            <button className="btn btn-sm btn-repair" onClick={() => handleRepairScan(pair.id)} type="button">
-              Scan for stubs
-            </button>
+            <div className="repair-idle">
+              <button className="btn btn-sm btn-repair" onClick={() => handleRepairScan(pair.id)} type="button">
+                Scan for stubs
+              </button>
+              <span
+                className="help-icon"
+                aria-label="What are stubs?"
+                data-tooltip="Stubs are incomplete sync entries left behind after an interrupted transfer or a database reset. They appear as files that exist in the sync database but are missing locally or remotely. Scanning finds them; deleting removes the stale records so the file can sync cleanly on the next cycle."
+              >?</span>
+            </div>
           );
           if (rs.phase === "scanning") return <span className="repair-status">Scanning…</span>;
           if (rs.phase === "preview") return (
