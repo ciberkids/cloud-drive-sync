@@ -38,12 +38,18 @@ jobs:
 
           # Generate wiki pages from docs/ (single source of truth)
           # Map docs filenames to wiki page names
-          cp docs/ARCHITECTURE.md  wiki-repo/Architecture.md
-          cp docs/API.md           wiki-repo/API-Reference.md
-          cp docs/CONTRIBUTING.md  wiki-repo/Contributing.md
-          cp docs/CLI.md           wiki-repo/CLI.md
-          cp docs/DAEMON.md        wiki-repo/Daemon.md
-          cp docs/UI.md            wiki-repo/UI.md
+          cp docs/ARCHITECTURE.md    wiki-repo/Architecture.md
+          cp docs/API.md             wiki-repo/API-Reference.md
+          cp docs/CONTRIBUTING.md    wiki-repo/Contributing.md
+          cp docs/CLI.md             wiki-repo/CLI.md
+          cp docs/DAEMON.md          wiki-repo/Daemon.md
+          cp docs/UI.md              wiki-repo/UI.md
+          cp docs/Installation.md    wiki-repo/Installation.md
+          cp docs/Docker.md          wiki-repo/Docker.md
+          cp docs/Quadlet.md         wiki-repo/Quadlet.md
+          cp docs/Provider-Setup.md  wiki-repo/Provider-Setup.md
+          cp docs/Configuration.md   wiki-repo/Configuration.md
+          cp docs/Cross-Cloud-Sync.md wiki-repo/Cross-Cloud-Sync.md
 
           # Generate Home page from README (strip first line header, adjust links)
           sed 's|\(docs/screenshots/\)|https://raw.githubusercontent.com/${{ github.repository }}/main/\1|g' README.md > wiki-repo/Home.md
@@ -53,10 +59,20 @@ jobs:
           **Cloud Drive Sync**
 
           - [[Home]]
-          - [[Architecture]]
-          - [[API Reference|API-Reference]]
+
+          **Getting Started**
+          - [[Installation]]
+          - [[Docker]]
+          - [[Quadlet]]
+          - [[Provider Setup|Provider-Setup]]
+          - [[Configuration]]
+          - [[Cross-Cloud Sync|Cross-Cloud-Sync]]
+
+          **Reference**
           - [[CLI]]
           - [[Daemon]]
+          - [[API Reference|API-Reference]]
+          - [[Architecture]]
           - [[UI]]
           - [[Contributing]]
           SIDEBAR
