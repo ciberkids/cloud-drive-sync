@@ -1,0 +1,36 @@
+[Unit]
+Description=Cloud Drive Sync Daemon
+Documentation=https://github.com/ciberkids/cloud-drive-sync/wiki/Quadlet
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/ciberkids/cloud-drive-sync:latest
+ContainerName=cloud-drive-sync
+AutoUpdate=registry
+
+# Expose the HTTP management UI + REST API
+PublishPort=8080:8080
+
+# Persistent config and data
+Volume=cloud-drive-sync-config.volume:/root/.config/cloud-drive-sync
+Volume=cloud-drive-sync-data.volume:/root/.local/share/cloud-drive-sync
+
+# IPC socket (for CLI access from host)
+Volume=cloud-drive-sync-run.volume:/run/cloud-drive-sync
+
+# Add your sync folders here — map host paths into /data/
+# Volume=/home/user/Documents:/data/Documents
+# Volume=/home/user/Photos:/data/Photos
+
+# File ownership — set to your host user/group IDs (id -u / id -g)
+Environment=PUID=1000
+Environment=PGID=1000
+Environment=XDG_RUNTIME_DIR=/run/cloud-drive-sync
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
