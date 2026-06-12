@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,9 +13,9 @@ from cloud_drive_sync.util.logging import get_logger
 
 log = get_logger("providers.dropbox.auth")
 
-# Embedded Dropbox app credentials (PKCE flow — app secret not used for token exchange)
-_DEFAULT_APP_KEY = "ch4h2lb0g6k9g42"
-_DEFAULT_APP_SECRET = "[REDACTED]"
+# Dropbox app key (PKCE flow — no app secret needed for token exchange).
+# Override with DBX_APP_KEY env var to use your own Dropbox application.
+_DEFAULT_APP_KEY = os.environ.get("DBX_APP_KEY", "ch4h2lb0g6k9g42")
 
 
 class _AuthUrlReady(Exception):
