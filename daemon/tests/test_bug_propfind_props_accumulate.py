@@ -332,6 +332,7 @@ def test_real_nc_py_api_is_patched_by_provider_import():
     pytest.importorskip("nc_py_api", reason="nextcloud extra not installed")
     from nc_py_api.files import _files, files, files_async
 
+    # Imported for its side effect: the provider package applies the patch.
     import cloud_drive_sync.providers.nextcloud  # noqa: F401
 
     for module in (_files, files, files_async):

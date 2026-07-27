@@ -33,7 +33,11 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
-    "ruff>=0.1.0",
+    # Pinned deliberately. Unpinned, CI floats to the newest ruff and can go red
+    # with no code change: 0.16.0 promoted a batch of rules and reports 183
+    # findings against code that 0.15.x passes cleanly. Raise this intentionally,
+    # with the cleanup, rather than letting a release decide when CI breaks.
+    "ruff>=0.15.4,<0.16",
     "httpx>=0.25.0",
     # The MCP transport tests need the real SDK. CI installs only [dev], so
     # without this the transport layer would go untested there.

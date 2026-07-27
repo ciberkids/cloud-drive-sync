@@ -30,10 +30,10 @@ __all__ = [
 
 
 def is_available() -> bool:
-    """Whether the optional ``mcp`` extra is installed."""
-    try:
-        import mcp  # noqa: F401
-        import uvicorn  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """Whether the optional ``mcp`` extra is installed.
+
+    Checked without importing, so this stays cheap and has no import side effects.
+    """
+    from importlib.util import find_spec
+
+    return find_spec("mcp") is not None and find_spec("uvicorn") is not None

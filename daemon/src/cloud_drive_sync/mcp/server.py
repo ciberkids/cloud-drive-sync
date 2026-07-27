@@ -87,8 +87,8 @@ class McpServer:
     # ── MCP protocol surface ────────────────────────────────────────
 
     def _build_mcp_app(self) -> Any:
+        from mcp import types
         from mcp.server.lowlevel import Server as LowLevelServer
-        import mcp.types as types
 
         # Without an explicit version the SDK reports its own, so an assistant
         # would tell the user their daemon is version 1.28.1.

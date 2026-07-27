@@ -17,12 +17,12 @@ import pytest
 pytest.importorskip("mcp", reason="mcp extra not installed")
 pytest.importorskip("uvicorn", reason="mcp extra not installed")
 
-from mcp.client.session import ClientSession  # noqa: E402
-from mcp.client.streamable_http import streamable_http_client  # noqa: E402
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 
-from cloud_drive_sync.ipc.protocol import JsonRpcResponse  # noqa: E402
-from cloud_drive_sync.mcp.catalog import READ_TOOLS, WRITE_TOOLS  # noqa: E402
-from cloud_drive_sync.mcp.server import McpServer  # noqa: E402
+from cloud_drive_sync.ipc.protocol import JsonRpcResponse
+from cloud_drive_sync.mcp.catalog import READ_TOOLS, WRITE_TOOLS
+from cloud_drive_sync.mcp.server import McpServer
 
 # Ports are per-test to avoid collisions when tests run close together.
 BASE_PORT = 18300
@@ -74,8 +74,10 @@ async def test_client_can_initialize(read_only_server):
     """Covers the two silent transport failures at once: without the session
     manager's lifespan context, or with uvicorn.run() in a live loop, this
     cannot complete."""
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             result = await session.initialize()
 
     assert result.serverInfo.name == "cloud-drive-sync"
@@ -88,8 +90,10 @@ async def test_server_reports_the_daemon_version_not_the_sdk_version(read_only_s
 
     from cloud_drive_sync.mcp.server import _daemon_version
 
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             result = await session.initialize()
 
     assert result.serverInfo.version == _daemon_version()
@@ -99,8 +103,10 @@ async def test_server_reports_the_daemon_version_not_the_sdk_version(read_only_s
 async def test_server_sends_usage_instructions(read_only_server):
     """Tells the assistant how to approach the tools, including that a missing
     write tool means the daemon needs restarting rather than a workaround."""
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             result = await session.initialize()
 
     assert result.instructions
@@ -109,8 +115,10 @@ async def test_server_sends_usage_instructions(read_only_server):
 
 
 async def test_read_only_server_advertises_only_read_tools(read_only_server):
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             listed = await session.list_tools()
 
@@ -121,8 +129,10 @@ async def test_read_only_server_advertises_only_read_tools(read_only_server):
 
 
 async def test_write_server_advertises_write_tools(write_server):
-    async with streamable_http_client(write_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(write_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             listed = await session.list_tools()
 
@@ -132,8 +142,10 @@ async def test_write_server_advertises_write_tools(write_server):
 
 
 async def test_calling_a_tool_reaches_the_request_handler(read_only_server):
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             result = await session.call_tool("get_activity_log", {"limit": 5, "filter": "error"})
 
@@ -143,8 +155,10 @@ async def test_calling_a_tool_reaches_the_request_handler(read_only_server):
 
 
 async def test_tool_name_is_translated_to_the_handler_method(read_only_server):
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             await session.call_tool("list_sync_pairs", {})
 
@@ -153,8 +167,10 @@ async def test_tool_name_is_translated_to_the_handler_method(read_only_server):
 
 async def test_write_tool_on_read_only_server_errors_and_explains(read_only_server):
     """It is not advertised, but a client can still name it directly."""
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             result = await session.call_tool("force_sync", {})
 
@@ -165,8 +181,10 @@ async def test_write_tool_on_read_only_server_errors_and_explains(read_only_serv
 
 async def test_tool_schemas_survive_the_round_trip(read_only_server):
     """The model chooses arguments from these, so they must arrive intact."""
-    async with streamable_http_client(read_only_server.url) as (r, w, _):
-        async with ClientSession(r, w) as session:
+    async with (
+            streamable_http_client(read_only_server.url) as (r, w, _),
+            ClientSession(r, w) as session,
+        ):
             await session.initialize()
             listed = await session.list_tools()
 
@@ -187,8 +205,10 @@ async def test_stop_is_idempotent_and_releases_the_port():
 
     again = await _serve(BASE_PORT + 2)
     try:
-        async with streamable_http_client(again.url) as (r, w, _):
-            async with ClientSession(r, w) as session:
+        async with (
+                streamable_http_client(again.url) as (r, w, _),
+                ClientSession(r, w) as session,
+            ):
                 assert (await session.initialize()).serverInfo.name == "cloud-drive-sync"
     finally:
         await again.server.stop()
