@@ -485,6 +485,20 @@ See `docker/docker-compose.yml` for a ready-to-use compose file.
 | `CDS_GOOGLE_CLIENT_ID` | (embedded) | Override Google OAuth client ID |
 | `CDS_GOOGLE_CLIENT_SECRET` | (embedded) | Override Google OAuth client secret |
 
+## Logging and Disk Usage
+
+The daemon writes to `<data-dir>/cloud-drive-sync.log` and to stderr. Both are bounded, so neither can grow without limit:
+
+| Limit | Value | Notes |
+|---|---|---|
+| Log file size | 10 MB | Rotated in place, oldest discarded |
+| Rotated copies kept | 5 | Total log footprint therefore caps at ~60 MB |
+| Maximum message length | 2000 characters | Longer messages are truncated with the original length appended |
+
+Message truncation matters because provider exceptions embed the full failed request in their text. Without a cap, a single rejected WebDAV request could write a ~440 KB line, and repeated retries wrote it again each time. The diagnostic part of a message — action, path, status code — is always at the front, so truncation never removes it. Tracebacks are not truncated.
+
+Rotated files are named `cloud-drive-sync.log.1` through `.5`. To keep long-term history, ship the log elsewhere (journald, a log collector, or a `logrotate` rule on a copy) rather than relying on the daemon's own files.
+
 ## Stub Repair
 
 Stubs are incomplete sync-state entries that accumulate when a transfer is interrupted or the sync database is reset while remote files still exist. They show up as files tracked in the database that are missing on one side, causing repeated, fruitless sync attempts.
