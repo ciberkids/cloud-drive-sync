@@ -12,6 +12,12 @@ try:
     import nc_py_api  # noqa: F401
 except ImportError:
     _available = False
+else:
+    # Correct nc-py-api's in-place mutation of its PROPFIND property lists
+    # before any client can issue a request (issue #47).
+    from cloud_drive_sync.providers.nextcloud import nc_patch
+
+    nc_patch.apply()
 
 # Register the Nextcloud provider
 register(
