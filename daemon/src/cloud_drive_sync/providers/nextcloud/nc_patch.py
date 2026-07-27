@@ -23,6 +23,7 @@ time. Everything below degrades to a no-op if a future release fixes it.
 from __future__ import annotations
 
 import functools
+import importlib
 from typing import Any
 
 from cloud_drive_sync.util.logging import get_logger
@@ -132,19 +133,32 @@ def _guard_async_listdir(files_api: type) -> None:
 
 
 def apply() -> None:
-    """Correct the nc-py-api PROPFIND property handling. Idempotent."""
+    """Correct the nc-py-api PROPFIND property handling. Idempotent.
+
+    ``pyproject.toml`` pins ``nc-py-api>=0.17.0`` with no upper bound, and this
+    reaches into private upstream shape, so every step degrades independently:
+    a rename in some future release must cost us that one step, never the whole
+    Nextcloud provider.
+    """
     global _applied
     if _applied:
         return
 
-    try:
-        from nc_py_api.files import _files, files, files_async
-    except Exception:  # pragma: no cover - nc-py-api not installed
+    modules = {}
+    for name in ("_files", "files", "files_async"):
+        try:
+            modules[name] = importlib.import_module(f"nc_py_api.files.{name}")
+        except Exception:  # nc-py-api absent, or this module no longer exists
+            log.debug("nc_py_api.files.%s unavailable; skipping its PROPFIND patch", name)
+
+    _files = modules.get("_files")
+    if _files is None:
+        # Without the constants there is nothing to correct and nothing to guard.
         return
 
-    # Heal any accumulation that happened before this ran. All three modules
-    # alias the *same* list object, so mutate it in place — rebinding the name
-    # would only fix one namespace.
+    # Heal any accumulation that happened before this ran. Every module aliases
+    # the *same* list object, so mutate it in place — rebinding the name would
+    # only fix one namespace.
     base = getattr(_files, "PROPFIND_PROPERTIES", None)
     if isinstance(base, list):
         deduped = _dedup(base)
@@ -160,11 +174,26 @@ def apply() -> None:
     # ``_files`` alone would leave every listdir() call on the buggy version,
     # and patching only the two public modules would miss find()/by_id(), which
     # resolve the name in ``_files``' own globals.
-    for module in (_files, files, files_async):
+    for module in modules.values():
         if hasattr(module, "get_propfind_properties"):
             module.get_propfind_properties = _get_propfind_properties
 
-    _guard_listdir(files.FilesAPI)
-    _guard_async_listdir(files_async.AsyncFilesAPI)
+    for name, class_name, guard in (
+        ("files", "FilesAPI", _guard_listdir),
+        ("files_async", "AsyncFilesAPI", _guard_async_listdir),
+    ):
+        module = modules.get(name)
+        if module is None:
+            continue
+        try:
+            guard(getattr(module, class_name))
+        except AttributeError as exc:
+            log.warning(
+                "Could not guard %s.%s._listdir (%s) — the property-list fix is still "
+                "active, but oversized PROPFIND bodies will not be refused locally",
+                module.__name__,
+                class_name,
+                exc,
+            )
 
     _applied = True

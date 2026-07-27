@@ -247,12 +247,44 @@ def test_guard_strips_duplicates_from_a_polluted_list(fake_nc):
 
 def test_apply_is_a_no_op_without_nc_py_api(monkeypatch):
     """``pyproject.toml`` pins only ``nc-py-api>=0.17.0``; import must never fail."""
-    monkeypatch.setitem(sys.modules, "nc_py_api.files", None)
+    for name in ("nc_py_api", "nc_py_api.files", "nc_py_api.files._files"):
+        monkeypatch.setitem(sys.modules, name, None)
     monkeypatch.setattr(nc_patch, "_applied", False)
 
     nc_patch.apply()  # must not raise
 
     assert nc_patch._applied is False
+
+
+def test_apply_survives_a_renamed_listdir(fake_nc, caplog):
+    """A future upstream rename must cost us the guard, not the whole provider.
+
+    Raising out of ``apply()`` would propagate through
+    ``providers/nextcloud/__init__.py`` and disable Nextcloud entirely — a worse
+    outcome than the bug being patched.
+    """
+    del fake_nc.files.FilesAPI._listdir
+
+    with caplog.at_level("WARNING"):
+        nc_patch.apply()  # must not raise
+
+    assert "Could not guard" in caplog.text
+    # The actual fix is still in place.
+    assert fake_nc.files.get_propfind_properties is nc_patch._get_propfind_properties
+    before = list(fake_nc._files.PROPFIND_PROPERTIES)
+    fake_nc._files.get_propfind_properties(CAPS_WITH_LOCKING)
+    assert fake_nc._files.PROPFIND_PROPERTIES == before
+
+
+def test_apply_still_patches_what_it_can_when_a_module_disappears(fake_nc, monkeypatch):
+    """Losing ``files_async`` must not cost us the fix on the sync path we use."""
+    monkeypatch.setitem(sys.modules, "nc_py_api.files.files_async", None)
+
+    nc_patch.apply()
+
+    assert fake_nc._files.get_propfind_properties is nc_patch._get_propfind_properties
+    assert fake_nc.files.get_propfind_properties is nc_patch._get_propfind_properties
+    assert getattr(fake_nc.files.FilesAPI._listdir, "_cds_guarded", False)
 
 
 # ── The property-list guard ─────────────────────────────────────────
