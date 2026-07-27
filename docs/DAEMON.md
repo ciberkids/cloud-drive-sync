@@ -474,6 +474,97 @@ curl -X PUT http://localhost:8080/api/settings/bandwidth \
   -d '{"max_upload_kbps": 1000, "max_download_kbps": 2000}'
 ```
 
+## MCP Server (for AI assistants)
+
+The daemon can expose its capabilities over the [Model Context Protocol](https://modelcontextprotocol.io), so an AI assistant — Claude Desktop, Claude Code, or any MCP client — can inspect and manage sync directly instead of you relaying CLI output to it.
+
+It is a third front-end onto the same request handler the CLI and web UI use, so an assistant cannot reach behaviour those two do not already have.
+
+| | |
+|---|---|
+| Endpoint | `http://<host>:<port>/mcp` |
+| Transport | Streamable HTTP |
+| Default | **Disabled**, containers included |
+
+### Enabling it
+
+```bash
+cloud-drive-sync-daemon start --foreground --mcp-port 8081
+```
+
+In Docker or Quadlet, set the environment variable and publish the port — the image already has the dependency installed:
+
+```bash
+docker run -d --name cloud-drive-sync \
+  -p 8080:8080 -p 127.0.0.1:8081:8081 \
+  -e CDS_MCP_PORT=8081 \
+  -e CDS_MCP_ALLOWED_HOSTS='*' \
+  ghcr.io/ciberkids/cloud-drive-sync:latest
+```
+
+| Flag | Environment variable | Default | Description |
+|---|---|---|---|
+| `--mcp-port` | `CDS_MCP_PORT` | `0` | Port to serve MCP on. `0` disables it. |
+| `--mcp-host` | `CDS_MCP_HOST` | `0.0.0.0` | Bind address. Use `127.0.0.1` to restrict to this machine. |
+| `--mcp-allow-writes` | `CDS_MCP_ALLOW_WRITES` | off | Also expose tools that change state. |
+| `--mcp-allowed-host` | `CDS_MCP_ALLOWED_HOSTS` | localhost only | `Host` header to accept, e.g. `nas.local:*`. Repeatable. `*` accepts any. |
+
+When setting several hosts through the environment variable, **separate them with spaces, not commas** — `CDS_MCP_ALLOWED_HOSTS='a.local:* b.local:*'`. A comma-separated value is read as one malformed host, which then matches nothing and rejects every request.
+
+If `--mcp-port` is set but the optional dependency is missing, the daemon logs an error and carries on without MCP rather than failing to start. Install it with `pip install 'cloud-drive-sync[mcp]'`.
+
+### Connecting an assistant
+
+```json
+{
+  "mcpServers": {
+    "cloud-drive-sync": {
+      "type": "http",
+      "url": "http://localhost:8081/mcp"
+    }
+  }
+}
+```
+
+In Claude Code: `claude mcp add --transport http cloud-drive-sync http://localhost:8081/mcp`
+
+### Tools
+
+**Read-only — always available**
+
+| Tool | Purpose |
+|---|---|
+| `get_status` | Daemon state, uptime, per-pair synced/pending/error counts |
+| `list_sync_pairs` | Configured pairs with paths, provider, mode, strategy |
+| `list_accounts` | Connected accounts (never tokens or credentials) |
+| `get_activity_log` | Recent activity; `filter="error"` to investigate failures |
+| `list_conflicts` | Unresolved conflicts, with ids for `resolve_conflict` |
+| `get_sync_rules` | Include/exclude rules for a pair |
+| `get_bandwidth_limits` | Current throttles |
+| `get_file_status` | Why one specific file has or hasn't synced |
+| `list_remote_folders` | Browse cloud folders when choosing a target |
+
+**State-changing — only with `--mcp-allow-writes`**
+
+`force_sync`, `pause_sync`, `resume_sync`, `resolve_conflict`, `add_sync_pair`, `remove_sync_pair`, `set_sync_mode`, `set_conflict_strategy`, `set_pair_conflict_strategy`, `set_ignore_hidden`, `set_ignore_patterns`, `set_bandwidth_limits`, `set_sync_rules`, `create_remote_folder`, `set_account_max_transfers`, `repair`, `add_account`, `remove_account`
+
+Without the flag these are not advertised at all, rather than offered and refused — an assistant that sees a tool will try to use it. None of them delete files: removing a pair or an account only changes configuration and credentials, and `repair` only touches database records.
+
+**Never exposed at any level**
+
+`shutdown` (an assistant stopping the daemon is never the intent), `start_auth` / `exchange_auth_code` (interactive OAuth, and the code is a secret), `get_proxy` / `set_proxy` (proxy URLs can embed credentials), `list_local_dirs` / `mkdir_local` (host filesystem access beyond synced state).
+
+### Security
+
+> ⚠️ **Like the HTTP API, the MCP endpoint has no authentication.** Anyone who can reach the port can use every enabled tool.
+
+It is safer by default than `--http-port` in two respects, and you should keep it that way:
+
+- **Read-only unless you opt in.** Without `--mcp-allow-writes` nothing can be changed, so the worst case is disclosure of sync metadata rather than someone repointing your data.
+- **Loopback-only `Host` checking.** DNS-rebinding protection is on with only `localhost`, `127.0.0.1` and `[::1]` accepted, so a web page in your browser cannot drive the endpoint. Reaching it from another machine means naming that host with `--mcp-allowed-host nas.local:*`, or disabling the check with `*`.
+
+Recommended: publish it to loopback (`-p 127.0.0.1:8081:8081`) and reach it over an SSH tunnel rather than exposing the port. Enable writes only when you actually want an assistant changing configuration, and prefer a separate read-only endpoint for monitoring agents.
+
 ## Docker Deployment
 
 The daemon runs headless in Docker with no GUI dependencies.

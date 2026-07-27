@@ -37,8 +37,44 @@ def cli(ctx: click.Context, config_path: Path | None, log_level: str | None) -> 
 @click.option("--foreground", is_flag=True, help="Run in the foreground (don't daemonize)")
 @click.option("--demo", is_flag=True, help="Run in demo mode with mock Google Drive (no credentials needed)")
 @click.option("--http-port", type=int, default=0, help="Enable HTTP REST API on this port (0 = disabled)")
+@click.option(
+    "--mcp-port",
+    type=int,
+    default=0,
+    envvar="CDS_MCP_PORT",
+    help="Enable the MCP server for AI assistants on this port (0 = disabled)",
+)
+@click.option(
+    "--mcp-host",
+    default="0.0.0.0",
+    envvar="CDS_MCP_HOST",
+    help="Address the MCP server binds to. Use 127.0.0.1 to restrict it to this machine.",
+)
+@click.option(
+    "--mcp-allow-writes",
+    is_flag=True,
+    envvar="CDS_MCP_ALLOW_WRITES",
+    help="Also expose tools that change state (add/remove pairs and accounts, force sync).",
+)
+@click.option(
+    "--mcp-allowed-host",
+    "mcp_allowed_hosts",
+    multiple=True,
+    envvar="CDS_MCP_ALLOWED_HOSTS",
+    help="Host header the MCP server accepts, e.g. 'nas.local:*'. Repeatable. "
+    "Defaults to localhost only; use '*' to accept any.",
+)
 @click.pass_context
-def start(ctx: click.Context, foreground: bool, demo: bool, http_port: int) -> None:
+def start(
+    ctx: click.Context,
+    foreground: bool,
+    demo: bool,
+    http_port: int,
+    mcp_port: int,
+    mcp_host: str,
+    mcp_allow_writes: bool,
+    mcp_allowed_hosts: tuple[str, ...],
+) -> None:
     """Start the sync daemon."""
     from cloud_drive_sync.daemon import Daemon
 
@@ -51,6 +87,10 @@ def start(ctx: click.Context, foreground: bool, demo: bool, http_port: int) -> N
         log_level=ctx.obj["log_level"],
         demo=demo,
         http_port=http_port,
+        mcp_port=mcp_port,
+        mcp_host=mcp_host,
+        mcp_allow_writes=mcp_allow_writes,
+        mcp_allowed_hosts=mcp_allowed_hosts,
     )
 
     if foreground:

@@ -65,6 +65,9 @@ cloud-drive-sync start --demo
 # Start with HTTP REST API and web UI
 cloud-drive-sync start --foreground --http-port 8080
 
+# Also expose the MCP server so an AI assistant can inspect sync (read-only)
+cloud-drive-sync start --foreground --http-port 8080 --mcp-port 8081
+
 # Start with debug logging
 cloud-drive-sync --log-level debug start --foreground
 ```
@@ -72,6 +75,10 @@ cloud-drive-sync --log-level debug start --foreground
 | Flag | Description |
 |------|-------------|
 | `--http-port PORT` | Enable HTTP REST API and web UI on the given port. Default 0 (disabled). Docker containers default to port 8080. |
+| `--mcp-port PORT` | Enable the MCP server for AI assistants. Default 0 (disabled), containers included. Env: `CDS_MCP_PORT`. |
+| `--mcp-host ADDR` | Address the MCP server binds to. Default `0.0.0.0`; use `127.0.0.1` to restrict to this machine. Env: `CDS_MCP_HOST`. |
+| `--mcp-allow-writes` | Also expose MCP tools that change state. Read-only without it. Env: `CDS_MCP_ALLOW_WRITES`. |
+| `--mcp-allowed-host HOST` | `Host` header the MCP server accepts, e.g. `nas.local:*`. Repeatable, defaults to localhost only, `*` accepts any. Env: `CDS_MCP_ALLOWED_HOSTS`. |
 
 The daemon creates a PID file at `~/.local/run/cloud-drive-sync/daemon.pid` and listens on a Unix socket at `~/.local/run/cloud-drive-sync/daemon.sock`.
 

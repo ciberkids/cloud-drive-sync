@@ -27,6 +27,7 @@ dropbox = ["dropbox>=12.0.0"]
 onedrive = ["msgraph-sdk>=1.0.0", "azure-identity>=1.15.0"]
 nextcloud = ["nc-py-api>=0.17.0", "httpx>=0.25.0"]
 box = ["box-sdk-gen>=1.0.0"]
+mcp = ["mcp>=1.28.0", "uvicorn>=0.30.0"]
 all-providers = ["cloud-drive-sync[dropbox,onedrive,nextcloud,box]"]
 dev = [
     "pytest>=7.4.0",
@@ -34,6 +35,10 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
     "httpx>=0.25.0",
+    # The MCP transport tests need the real SDK. CI installs only [dev], so
+    # without this the transport layer would go untested there.
+    "mcp>=1.28.0",
+    "uvicorn>=0.30.0",
 ]
 
 [project.scripts]

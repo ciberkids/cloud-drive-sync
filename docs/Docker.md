@@ -50,6 +50,21 @@ The container runs the daemon headless, and the daemon itself serves that UI ove
 > - The two named volumes keep your config and credentials safe across container restarts
 > - `~/Documents:/data/Documents` — maps a host folder into the container so the daemon can sync it
 
+### Letting an AI assistant manage sync
+
+The image also ships an [MCP](https://modelcontextprotocol.io) server, so Claude Desktop, Claude Code or any MCP client can inspect sync state and answer questions like "why hasn't this file uploaded?" directly. It is **off by default** — enable it with an environment variable and publish the port:
+
+```bash
+docker run -d --name cloud-drive-sync \
+  -p 8080:8080 \
+  -p 127.0.0.1:8081:8081 \
+  -e CDS_MCP_PORT=8081 \
+  -e CDS_MCP_ALLOWED_HOSTS='*' \
+  ...
+```
+
+Then point your client at `http://localhost:8081/mcp`. It is read-only unless you add `-e CDS_MCP_ALLOW_WRITES=1`, so by default an assistant can observe but not change anything. `CDS_MCP_ALLOWED_HOSTS='*'` is needed because the container sees a different `Host` header than localhost; publishing to `127.0.0.1` is what keeps it off the network. Tool list and security notes: [MCP Server](Daemon#mcp-server-for-ai-assistants).
+
 ---
 
 ## Using Docker Compose

@@ -156,6 +156,18 @@ Although this is a headless deployment with no desktop session, you still get th
 >
 > For permanent remote access, put a reverse proxy in front of it that terminates TLS and enforces authentication. See [Security](Daemon#security).
 
+### Letting an AI assistant manage sync
+
+The container also ships an [MCP](https://modelcontextprotocol.io) server for AI clients, off by default. Add to the `[Container]` section of your Quadlet file:
+
+```ini
+PublishPort=127.0.0.1:8081:8081
+Environment=CDS_MCP_PORT=8081
+Environment=CDS_MCP_ALLOWED_HOSTS=*
+```
+
+Reload with `systemctl --user daemon-reload && systemctl --user restart cloud-drive-sync`, then reach it at `http://localhost:8081/mcp` — over an SSH tunnel if the server is remote, since publishing to `127.0.0.1` deliberately keeps it off the network. It is read-only unless you also set `Environment=CDS_MCP_ALLOW_WRITES=1`. See [MCP Server](Daemon#mcp-server-for-ai-assistants).
+
 ## Adding Accounts
 
 The easiest way to add a cloud account is through the **web UI** at `http://<server-ip>:8080`:

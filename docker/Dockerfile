@@ -12,7 +12,7 @@ WORKDIR /app
 
 # Install daemon with all providers
 COPY daemon/ ./daemon/
-RUN pip install --no-cache-dir "./daemon[all-providers]"
+RUN pip install --no-cache-dir "./daemon[all-providers,mcp]"
 
 # Entrypoint handles PUID/PGID remapping via gosu.
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -33,6 +33,11 @@ ENV XDG_RUNTIME_DIR=/run/cloud-drive-sync
 
 # HTTP REST API + Web UI
 EXPOSE 8080
+
+# MCP server for AI assistants. Opt-in: set CDS_MCP_PORT=8081 to enable, and
+# publish the port. Off by default so upgrading never opens a new control
+# channel for anyone who did not ask for one.
+EXPOSE 8081
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "cloud_drive_sync", "start", "--foreground", "--http-port", "8080"]
