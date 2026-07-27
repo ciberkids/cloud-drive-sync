@@ -81,6 +81,33 @@ async def test_client_can_initialize(read_only_server):
     assert result.serverInfo.name == "cloud-drive-sync"
 
 
+async def test_server_reports_the_daemon_version_not_the_sdk_version(read_only_server):
+    """The SDK defaults serverInfo.version to its own, so an assistant would tell
+    the user their daemon is version 1.28.1."""
+    import mcp
+
+    from cloud_drive_sync.mcp.server import _daemon_version
+
+    async with streamable_http_client(read_only_server.url) as (r, w, _):
+        async with ClientSession(r, w) as session:
+            result = await session.initialize()
+
+    assert result.serverInfo.version == _daemon_version()
+    assert result.serverInfo.version != getattr(mcp, "__version__", None)
+
+
+async def test_server_sends_usage_instructions(read_only_server):
+    """Tells the assistant how to approach the tools, including that a missing
+    write tool means the daemon needs restarting rather than a workaround."""
+    async with streamable_http_client(read_only_server.url) as (r, w, _):
+        async with ClientSession(r, w) as session:
+            result = await session.initialize()
+
+    assert result.instructions
+    assert "get_status" in result.instructions
+    assert "--mcp-allow-writes" in result.instructions
+
+
 async def test_read_only_server_advertises_only_read_tools(read_only_server):
     async with streamable_http_client(read_only_server.url) as (r, w, _):
         async with ClientSession(r, w) as session:

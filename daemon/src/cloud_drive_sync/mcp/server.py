@@ -23,6 +23,32 @@ log = get_logger("mcp.server")
 
 SERVER_NAME = "cloud-drive-sync"
 
+# Shown to the assistant on connect, so it knows how to approach the tools rather
+# than inferring it from names alone.
+INSTRUCTIONS = """\
+Manage and inspect a Cloud Drive Sync daemon syncing local folders with cloud \
+storage (Google Drive, Nextcloud, Dropbox, OneDrive, Box).
+
+Start with get_status for overall health, then get_activity_log with \
+filter="error" to investigate failures, and get_file_status for a specific file \
+that has not synced. Sync pairs are identified by pair_id like "pair_0"; most \
+tools default to the first pair when it is omitted.
+
+This server may be read-only. If a tool you need is not listed, the daemon was \
+started without --mcp-allow-writes and the user must restart it to enable \
+changes — say so rather than trying alternatives."""
+
+
+def _daemon_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("cloud-drive-sync")
+    except Exception:
+        from cloud_drive_sync import __version__
+
+        return __version__
+
 # The Host values accepted when DNS-rebinding protection is on. It has to be
 # populated: the SDK's middleware rejects every request when this is empty.
 DEFAULT_ALLOWED_HOSTS = (
@@ -64,7 +90,9 @@ class McpServer:
         from mcp.server.lowlevel import Server as LowLevelServer
         import mcp.types as types
 
-        server = LowLevelServer(SERVER_NAME)
+        # Without an explicit version the SDK reports its own, so an assistant
+        # would tell the user their daemon is version 1.28.1.
+        server = LowLevelServer(SERVER_NAME, version=_daemon_version(), instructions=INSTRUCTIONS)
         allow_writes = self._allow_writes
         handler = self._handler
 

@@ -70,8 +70,9 @@ READ_TOOLS: tuple[McpTool, ...] = (
     McpTool(
         "get_status",
         "get_status",
-        "Overall daemon and sync status: running state, uptime, version, per-pair "
-        "counts of synced/pending/error files. Start here to answer 'is sync healthy?'.",
+        "Overall sync health: whether the daemon is connected, syncing or paused, the "
+        "current error if any, last sync time, total files synced, per-pair counts, "
+        "active transfers, and daemon version and uptime. Start here.",
     ),
     McpTool(
         "list_sync_pairs",
