@@ -499,6 +499,23 @@ Message truncation matters because provider exceptions embed the full failed req
 
 Rotated files are named `cloud-drive-sync.log.1` through `.5`. To keep long-term history, ship the log elsewhere (journald, a log collector, or a `logrotate` rule on a copy) rather than relying on the daemon's own files.
 
+### Database maintenance
+
+The sync state database at `<data-dir>/state.db` maintains itself, so it does not need manual `VACUUM`ing.
+
+| Behaviour | Value |
+|---|---|
+| Activity log retention | 30 days |
+| Maintenance interval | 6 hours |
+| Startup reclaim threshold | 25% of the file free **and** at least 64 MB reclaimable |
+
+Two things run automatically:
+
+- **Every 6 hours**, activity-log rows older than 30 days are deleted and the freed pages are returned to the filesystem. Pruning is bounded per run, so the first pass on a large history is spread over several runs rather than blocking. Activity older than 30 days will therefore disappear from the **Activity** view — export it first if you need to keep it.
+- **At startup**, if the file is mostly wasted space, it is rewritten to reclaim it. SQLite does not shrink a database when rows are deleted: freed pages go on an internal free list and get reused, so a long-running daemon's file only ever grows. Databases created before this behaviour existed could reach several GB while holding no rows at all; the first start after upgrading reclaims that and logs the before/after size.
+
+The startup reclaim is deliberately rare because it rewrites the whole file and delays startup while it runs. New databases are created with incremental auto-vacuum enabled, so they give space back continuously and should never reach the threshold.
+
 ## Stub Repair
 
 Stubs are incomplete sync-state entries that accumulate when a transfer is interrupted or the sync database is reset while remote files still exist. They show up as files tracked in the database that are missing on one side, causing repeated, fruitless sync attempts.

@@ -33,6 +33,10 @@ from cloud_drive_sync.util.throttle import BandwidthThrottle
 
 log = get_logger("sync.engine")
 
+# How often to prune the activity log and release free database pages. Far
+# longer than poll_interval: this is upkeep, not part of the sync cycle.
+MAINTENANCE_INTERVAL_SECONDS = 6 * 60 * 60
+
 
 @dataclass
 class PairStatus:
@@ -106,6 +110,10 @@ class SyncEngine:
                 continue
             pair_id = f"pair_{i}"
             await self._start_pair(pair, pair_id)
+
+        # One database-wide loop, not one per pair.
+        task_maint = asyncio.create_task(self._maintenance_loop())
+        self._tasks.append(task_maint)
 
     async def stop(self) -> None:
         """Gracefully stop all sync operations."""
@@ -574,6 +582,26 @@ class SyncEngine:
 
             except Exception:
                 log.exception("Error processing local changes batch (%d changes)", len(changes))
+
+    async def _maintenance_loop(self) -> None:
+        """Prune old activity rows and hand free database pages back periodically.
+
+        Runs on its own long cadence rather than in the poll loop: the poll
+        interval defaults to 30 seconds, and issuing pragmas that often for the
+        rest of the process lifetime buys nothing.
+        """
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(), timeout=MAINTENANCE_INTERVAL_SECONDS
+                )
+                return  # stop requested
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await self._db.maintain()
+            except Exception:
+                log.exception("Database maintenance failed")
 
     async def _remote_poll_loop(self, ps: PairStatus) -> None:
         """Poll for remote changes at the configured interval."""

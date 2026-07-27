@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -21,6 +21,19 @@ from cloud_drive_sync.util.paths import db_path
 log = get_logger("database")
 
 SCHEMA_VERSION = 4
+
+# A full VACUUM rewrites the whole database and blocks startup, so it only runs
+# when a meaningful fraction *and* a meaningful absolute amount is wasted. The
+# reported case was 4.4 GB at 99.998% free (issue #49).
+VACUUM_FREELIST_RATIO = 0.25
+VACUUM_MIN_RECLAIM_BYTES = 64 * 1024 * 1024
+
+# Activity-history retention. sync_log is written on every poll cycle, and its
+# churn is what drove the file's high-water mark.
+SYNC_LOG_RETENTION_DAYS = 30
+SYNC_LOG_PRUNE_LIMIT = 10_000
+
+MEGABYTE = 1024 * 1024
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -104,9 +117,16 @@ class Database:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self._path)
         self._db.row_factory = aiosqlite.Row
+        # Must come before journal_mode and before any table exists. On a new
+        # database auto_vacuum can only be set while it is still empty, and
+        # setting journal_mode=WAL first is enough to make this silently stick at
+        # NONE. On an existing database it takes effect only after the next full
+        # VACUUM, which _reclaim_free_pages performs when the waste warrants it.
+        await self._db.execute("PRAGMA auto_vacuum=INCREMENTAL")
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA foreign_keys=ON")
         await self._migrate()
+        await self._reclaim_free_pages()
         log.info("Database opened at %s", self._path)
 
     async def close(self) -> None:
@@ -120,6 +140,115 @@ class Database:
         if self._db is None:
             raise RuntimeError("Database not opened")
         return self._db
+
+    # ── Space management ────────────────────────────────────────────
+
+    def file_size(self) -> int:
+        """Size of the main database file in bytes (0 if it does not exist)."""
+        try:
+            return self._path.stat().st_size
+        except OSError:
+            return 0
+
+    async def _pragma(self, name: str) -> int:
+        cursor = await self.db.execute(f"PRAGMA {name}")
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def free_page_stats(self) -> tuple[int, int, int]:
+        """Return ``(page_count, freelist_count, page_size)``."""
+        return (
+            await self._pragma("page_count"),
+            await self._pragma("freelist_count"),
+            await self._pragma("page_size"),
+        )
+
+    async def _reclaim_free_pages(self) -> None:
+        """Return disk to the filesystem when the file is mostly freelist.
+
+        SQLite never shrinks a database on DELETE: freed pages go on the
+        freelist and are reused for later inserts, so a sync engine with high
+        row churn keeps raising the high-water mark and never gives it back. A
+        live instance reached 4.4 GB with every table empty (issue #49).
+        """
+        page_count, freelist, page_size = await self.free_page_stats()
+        if not page_count:
+            return
+
+        reclaimable = freelist * page_size
+        ratio = freelist / page_count
+        if ratio < VACUUM_FREELIST_RATIO or reclaimable < VACUUM_MIN_RECLAIM_BYTES:
+            return
+
+        before = self.file_size()
+        log.info(
+            "Reclaiming %.1f MB of free database pages (%.2f%% of the file) — this "
+            "rewrites %s and may take a while",
+            reclaimable / MEGABYTE,
+            ratio * 100,
+            self._path,
+        )
+        # VACUUM cannot run inside a transaction, and aiosqlite opens one
+        # implicitly for DML.
+        await self.db.commit()
+        await self.db.execute("VACUUM")
+        await self.db.commit()
+        # In WAL mode the rewrite lands in the WAL, and the main file keeps its
+        # old size until a checkpoint — without this nothing is actually
+        # returned to the filesystem.
+        await self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        log.info(
+            "Database reclaimed: %.1f MB -> %.1f MB",
+            before / MEGABYTE,
+            self.file_size() / MEGABYTE,
+        )
+
+    async def incremental_vacuum(self) -> int:
+        """Release freed pages to the filesystem. Returns pages released.
+
+        The pragma has to be stepped to completion: executing it without reading
+        the result releases exactly one page, which looks like success and
+        reclaims essentially nothing.
+        """
+        before = await self._pragma("freelist_count")
+        if not before:
+            return 0
+        cursor = await self.db.execute("PRAGMA incremental_vacuum")
+        await cursor.fetchall()
+        await self.db.commit()
+        return before - await self._pragma("freelist_count")
+
+    async def prune_sync_log(self, retention_days: int = SYNC_LOG_RETENTION_DAYS) -> int:
+        """Delete activity-log rows older than the retention window.
+
+        Bounded per call so the first run against an already-huge table cannot
+        stall the caller's loop; the next run continues where this one stopped.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        cursor = await self.db.execute(
+            """DELETE FROM sync_log WHERE id IN (
+                   SELECT id FROM sync_log WHERE timestamp < ? LIMIT ?
+               )""",
+            (cutoff, SYNC_LOG_PRUNE_LIMIT),
+        )
+        await self.db.commit()
+        return max(cursor.rowcount, 0)
+
+    async def maintain(self) -> None:
+        """Periodic upkeep: prune old activity rows, then release free pages.
+
+        Ordered deliberately — pruning creates the free pages that the
+        incremental vacuum then hands back.
+        """
+        pruned = await self.prune_sync_log()
+        released = await self.incremental_vacuum()
+        if pruned or released:
+            log.info(
+                "Database maintenance: pruned %d log rows, released %d pages (%.1f MB file)",
+                pruned,
+                released,
+                self.file_size() / MEGABYTE,
+            )
 
     async def _migrate(self) -> None:
         """Run schema creation and any necessary migrations."""
