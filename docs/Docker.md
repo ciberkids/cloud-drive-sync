@@ -40,6 +40,10 @@ docker run -d \
 
 Then open **http://localhost:8080** in your browser — that's the web management UI where you can add accounts, configure sync pairs, and monitor transfers.
 
+The container runs the daemon headless, and the daemon itself serves that UI over HTTP — there is no separate web server involved. The image's default command is `start --foreground --http-port 8080`, so it is on already and you only need to publish the port. It is the same interface as the desktop app, backed by the same request handler, so the browser, the CLI and the desktop app all drive one daemon identically. Full details and the endpoint reference: [HTTP Server (Web UI + REST API)](Daemon#http-server-web-ui--rest-api).
+
+> ⚠️ **The UI has no authentication.** `-p 8080:8080` publishes it on every interface of your host, and anyone who reaches it can add or remove cloud accounts and change where your data syncs. For a single machine, publish it as `-p 127.0.0.1:8080:8080` instead so only that host can connect. To reach it from elsewhere, use an SSH tunnel or put a TLS-terminating reverse proxy with authentication in front of it — never forward the port from a router to the internet. See [Security](Daemon#security).
+
 > **What those flags do:**
 > - `-p 8080:8080` — exposes the web UI and REST API on port 8080
 > - `-e PUID / PGID` — makes synced files owned by your host user instead of root (see [File Ownership](#file-ownership-puid--pgid) below)

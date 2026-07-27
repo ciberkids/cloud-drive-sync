@@ -289,68 +289,78 @@ docker exec cloud-drive-sync python -m cloud_drive_sync account list
 
 After adding accounts, the daemon syncs automatically — no restart needed.
 
-## Docker Deployment
+## HTTP Server (Web UI + REST API)
 
-The daemon runs headless in Docker with no GUI dependencies.
+Headless does not mean CLI-only. Started with `--http-port`, the daemon serves the **full web management UI** — the same React interface as the desktop app — plus a REST API, from the daemon process itself. There is no separate web server to run and nothing extra to install: the compiled UI ships inside the daemon package.
 
-### Quick Start
+| | |
+|---|---|
+| Web UI | `http://<host>:<port>/` |
+| REST API | `http://<host>:<port>/api/*` |
 
-```bash
-docker run -d --name cloud-drive-sync \
-  -p 8080:8080 \
-  -e PUID=$(id -u) -e PGID=$(id -g) \
-  -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
-  -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
-  -v ~/Documents:/data/Documents \
-  ghcr.io/ciberkids/cloud-drive-sync:latest
+Everything the desktop UI does is available in the browser: adding accounts, creating and editing sync pairs, resolving conflicts, watching transfers, browsing remote folders, and reading the activity log. The HTTP server dispatches to the same request handler as the IPC socket, so the CLI, the desktop app and the browser all drive one daemon with no difference in behaviour.
 
-# Open http://localhost:8080/ for the web management UI
+### Enabling it
 
-# Add account (interactive — prints auth URL)
-docker exec -it cloud-drive-sync \
-  python -m cloud_drive_sync account add --provider gdrive --headless
+`--http-port` defaults to `0`, meaning **disabled**. It is opt-in everywhere except the container images.
 
-# Check status
-docker exec cloud-drive-sync python -m cloud_drive_sync status
-```
-
-### File Ownership (PUID / PGID)
-
-By default the daemon runs as root inside the container, which causes synced files
-in bind-mounted folders to be owned by root on the host.  Set `PUID` and `PGID` to
-your host user's numeric IDs to have the daemon run as that user and write files
-with the correct ownership:
+**Foreground / manual**
 
 ```bash
-docker run -d \
-  -e PUID=$(id -u) \
-  -e PGID=$(id -g) \
-  ...
+cloud-drive-sync-daemon start --foreground --http-port 8080
 ```
 
-Or in `docker-compose.yml`:
+**Docker and Quadlet** — already enabled. The image's default command is `start --foreground --http-port 8080`, so you only need to publish the port (`-p 8080:8080`). See [Docker](Docker) and [Quadlet](Quadlet).
 
-```yaml
-environment:
-  - PUID=1000   # host user ID (id -u)
-  - PGID=1000   # host group ID (id -g)
+**systemd (packaged install)** — **not** enabled. The shipped unit runs `start --foreground` with no HTTP port, so a `.deb` / `.rpm` / AppImage install on a headless server has no web UI until you add the flag:
+
+```bash
+systemctl --user edit cloud-drive-sync-daemon
 ```
 
-Config and data volumes (`/root/.config/cloud-drive-sync` and
-`/root/.local/share/cloud-drive-sync`) are automatically chowned to PUID:PGID on
-startup so no manual volume permission changes are needed.  Omitting `PUID`/`PGID`
-(or setting `PUID=0`) preserves the legacy root behaviour.
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/bin/cloud-drive-sync-daemon start --foreground --http-port 8080
+```
 
-### HTTP REST API
+The bare `ExecStart=` is required: it clears the unit's original value, and without it systemd refuses to start a service with two `ExecStart` lines. Then reload and restart:
 
-The daemon can expose an HTTP REST API with a built-in web UI for headless and Docker management.
+```bash
+systemctl --user daemon-reload
+systemctl --user restart cloud-drive-sync-daemon
+```
 
-- Enable with the `--http-port` flag: `cloud-drive-sync-daemon start --foreground --http-port 8080`
-- Docker containers enable it by default on port 8080.
-- **Web UI**: http://localhost:8080/
-- **REST API**: http://localhost:8080/api/*
+Confirm it came up — the daemon logs the bound address on startup:
 
-#### Endpoints
+```
+[INFO] HTTP server listening on http://0.0.0.0:8080
+```
+
+### Security
+
+> ⚠️ **The HTTP server has no authentication and listens on all interfaces.** Anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, and change where data syncs to.
+
+Three specifics worth knowing before you expose it:
+
+- **It binds `0.0.0.0`,** and there is currently no option to change the bind address. Restricting exposure has to happen outside the daemon.
+- **There is no login.** No token, no password, no session — every endpoint is open to whoever connects.
+- **CORS is `Access-Control-Allow-Origin: *`.** If the port is reachable from a machine running a browser, a web page open in that browser can issue requests to the API.
+
+Recommended deployments:
+
+| Situation | Approach |
+|---|---|
+| Single machine, local use | Docker: publish as `-p 127.0.0.1:8080:8080` so only that host can connect |
+| Remote server, occasional admin | Leave the port unpublished and use an SSH tunnel: `ssh -L 8080:localhost:8080 user@server`, then open `http://localhost:8080` |
+| Permanent remote access | Reverse proxy (nginx, Caddy, Traefik) terminating TLS and enforcing authentication in front of it |
+| Any | Firewall the port; never forward it from a router to the internet |
+
+Treat a reachable port as equivalent to filesystem access to everything the daemon syncs.
+
+
+
+### REST API reference
 
 **Status**
 
@@ -416,7 +426,7 @@ The daemon can expose an HTTP REST API with a built-in web UI for headless and D
 | GET | `/api/local-dirs` | List local directories (`?path=`) |
 | POST | `/api/local-dirs` | Create a local directory |
 
-#### Adding accounts via Web UI
+### Adding accounts via Web UI
 
 When you click **Add Account** in the web UI, the daemon runs the headless auth flow in the background. Since the auth prompts appear in the daemon's stdout (not in the browser), follow these steps:
 
@@ -435,7 +445,7 @@ When you click **Add Account** in the web UI, the daemon runs the headless auth 
 3. Open the authorization URL in your browser and complete sign-in
 4. The web UI updates automatically when auth completes
 
-#### Example curl commands
+### Example curl commands
 
 ```bash
 # Check status
@@ -463,6 +473,64 @@ curl -X PUT http://localhost:8080/api/settings/bandwidth \
   -H "Content-Type: application/json" \
   -d '{"max_upload_kbps": 1000, "max_download_kbps": 2000}'
 ```
+
+## Docker Deployment
+
+The daemon runs headless in Docker with no GUI dependencies.
+
+### Quick Start
+
+```bash
+docker run -d --name cloud-drive-sync \
+  -p 8080:8080 \
+  -e PUID=$(id -u) -e PGID=$(id -g) \
+  -v cloud-drive-sync-config:/root/.config/cloud-drive-sync \
+  -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync \
+  -v ~/Documents:/data/Documents \
+  ghcr.io/ciberkids/cloud-drive-sync:latest
+
+# Open http://localhost:8080/ for the web management UI
+
+# Add account (interactive — prints auth URL)
+docker exec -it cloud-drive-sync \
+  python -m cloud_drive_sync account add --provider gdrive --headless
+
+# Check status
+docker exec cloud-drive-sync python -m cloud_drive_sync status
+```
+
+### File Ownership (PUID / PGID)
+
+By default the daemon runs as root inside the container, which causes synced files
+in bind-mounted folders to be owned by root on the host.  Set `PUID` and `PGID` to
+your host user's numeric IDs to have the daemon run as that user and write files
+with the correct ownership:
+
+```bash
+docker run -d \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
+  ...
+```
+
+Or in `docker-compose.yml`:
+
+```yaml
+environment:
+  - PUID=1000   # host user ID (id -u)
+  - PGID=1000   # host group ID (id -g)
+```
+
+Config and data volumes (`/root/.config/cloud-drive-sync` and
+`/root/.local/share/cloud-drive-sync`) are automatically chowned to PUID:PGID on
+startup so no manual volume permission changes are needed.  Omitting `PUID`/`PGID`
+(or setting `PUID=0`) preserves the legacy root behaviour.
+
+### HTTP REST API
+
+Enabled by default in the container images on port 8080 — publish it with `-p 8080:8080` and open `http://localhost:8080/`.
+
+See [HTTP Server (Web UI + REST API)](#http-server-web-ui--rest-api) above for the endpoint reference and the security notes that apply when the port is reachable from other machines.
 
 ### Docker Compose
 

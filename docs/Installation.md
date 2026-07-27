@@ -147,3 +147,30 @@ Once installed, open the app and:
 3. Sync starts automatically. Check the **Status** dashboard to monitor progress.
 
 For CLI usage and advanced configuration, see [CLI](CLI) and [Daemon](Daemon).
+
+## Headless Servers (no desktop)
+
+On a server or NAS with no desktop session you are not limited to the CLI — the daemon can serve the same web UI over HTTP that the desktop app shows, from its own process.
+
+Unlike the Docker and Quadlet images, **the packaged installs above do not enable it by default.** The bundled systemd unit runs `start --foreground` with no HTTP port, so add the flag:
+
+```bash
+systemctl --user edit cloud-drive-sync-daemon
+```
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/bin/cloud-drive-sync-daemon start --foreground --http-port 8080
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart cloud-drive-sync-daemon
+```
+
+Then open `http://<server-ip>:8080`. The bare `ExecStart=` is required — it clears the original value, and systemd refuses a service with two `ExecStart` lines.
+
+> ⚠️ The web UI has **no authentication** and binds all interfaces. Firewall the port, or reach it through an SSH tunnel (`ssh -L 8080:localhost:8080 user@server`) rather than exposing it. See [Security](Daemon#security).
+
+If you would rather run headless in a container, [Docker](Docker) and [Quadlet](Quadlet) have the HTTP UI switched on out of the box.
