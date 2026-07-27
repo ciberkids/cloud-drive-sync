@@ -76,6 +76,8 @@ The HTTP server (web UI + REST API) starts with `--http-port 8080`. Docker conta
 
 An **MCP server** for AI assistants (Claude Desktop, Claude Code, any MCP client) starts with `--mcp-port 8081`, or `CDS_MCP_PORT=8081` in a container. It is off by default and read-only unless you add `--mcp-allow-writes`, so an assistant can answer "is sync healthy?" or "why hasn't this file uploaded?" without being able to change anything. See [MCP Server](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#mcp-server-for-ai-assistants).
 
+> **Not in a release yet.** MCP is on `main` but not in `v2.1.0` or `:latest` — the published image has no `--mcp-port` and silently ignores `CDS_MCP_PORT`. Build from `main` to use it today, or wait for the next tagged release.
+
 > ⚠️ Neither the web UI nor the MCP endpoint has authentication, and both bind all interfaces. If you publish either port, read [Security](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#security) first.
 
 Authentication in headless mode works without a local browser — the daemon prints an authorization URL to the console, and you complete sign-in on any device.

@@ -52,7 +52,9 @@ The container runs the daemon headless, and the daemon itself serves that UI ove
 
 ### Letting an AI assistant manage sync
 
-The image also ships an [MCP](https://modelcontextprotocol.io) server, so Claude Desktop, Claude Code or any MCP client can inspect sync state and answer questions like "why hasn't this file uploaded?" directly. It is **off by default** — enable it with an environment variable and publish the port:
+> **Not in a release yet.** MCP support is on `main` but is not in `v2.1.0` or `:latest` — the published image has no `--mcp-port` and silently ignores `CDS_MCP_PORT`. Build from `main` to use it today, or wait for the next tagged release.
+
+The image will ship an [MCP](https://modelcontextprotocol.io) server, so Claude Desktop, Claude Code or any MCP client can inspect sync state and answer questions like "why hasn't this file uploaded?" directly. It is **off by default** — enable it with an environment variable and publish the port:
 
 ```bash
 docker run -d --name cloud-drive-sync \

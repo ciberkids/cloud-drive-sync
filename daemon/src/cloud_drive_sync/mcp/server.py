@@ -126,6 +126,13 @@ class McpServer:
         from starlette.applications import Starlette
         from starlette.routing import Mount
 
+        # Origin headers are full URLs, Host headers are bare host:port. Passing
+        # the host patterns straight through as origins means no Origin can ever
+        # match, which silently rejects browser-based clients.
+        origins = [
+            f"{scheme}://{host}" for host in self._allowed_hosts for scheme in ("http", "https")
+        ]
+
         if ANY_HOST in self._allowed_hosts:
             log.warning(
                 "MCP host checking disabled (--mcp-allowed-host '*'); any Host header is "
@@ -136,7 +143,7 @@ class McpServer:
             security = TransportSecuritySettings(
                 enable_dns_rebinding_protection=True,
                 allowed_hosts=list(self._allowed_hosts),
-                allowed_origins=list(self._allowed_hosts),
+                allowed_origins=origins,
             )
 
         # stateless: each request is self-contained, so there is no session state

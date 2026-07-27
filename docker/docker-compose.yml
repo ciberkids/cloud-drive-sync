@@ -19,12 +19,19 @@ services:
     ports:
       # HTTP REST API + Web UI
       - "8080:8080"
+      # MCP server for AI assistants. Uncomment together with CDS_MCP_PORT below.
+      # Bound to 127.0.0.1 deliberately: the endpoint has no authentication.
+      # - "127.0.0.1:8081:8081"
     environment:
       - XDG_RUNTIME_DIR=/run/cloud-drive-sync
       # Set to your host user/group IDs so synced files are owned by you,
       # not root.  Find them with: id -u && id -g
       - PUID=1000
       - PGID=1000
+      # Let an AI assistant inspect sync over MCP (off unless set).
+      # Read-only unless you also set CDS_MCP_ALLOW_WRITES=1.
+      # - CDS_MCP_PORT=8081
+      # - CDS_MCP_ALLOWED_HOSTS=*
 
 volumes:
   cloud-drive-sync-config:

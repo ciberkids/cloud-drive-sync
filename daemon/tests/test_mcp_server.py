@@ -222,3 +222,32 @@ async def test_disabled_by_default_in_the_daemon():
     assert daemon._mcp_port == 0
     assert daemon._mcp_allow_writes is False
     assert daemon._mcp_server is None
+
+
+def test_allowed_origins_are_derived_as_urls_not_reused_as_hosts():
+    """Origin headers are full URLs; Host headers are bare host:port.
+
+    Feeding the host patterns straight through as origins means no Origin can
+    ever match, which silently rejects browser-based clients — and the transport
+    tests above would still pass, because MCP clients send no Origin at all.
+    """
+    from mcp.server.transport_security import (
+        TransportSecurityMiddleware,
+        TransportSecuritySettings,
+    )
+
+    from cloud_drive_sync.mcp.server import DEFAULT_ALLOWED_HOSTS
+
+    origins = [f"{s}://{h}" for h in DEFAULT_ALLOWED_HOSTS for s in ("http", "https")]
+    mw = TransportSecurityMiddleware(
+        TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=list(DEFAULT_ALLOWED_HOSTS),
+            allowed_origins=origins,
+        )
+    )
+
+    assert mw._validate_origin("http://localhost:8081") is True
+    assert mw._validate_origin("https://127.0.0.1:8081") is True
+    # A foreign origin must still be refused.
+    assert mw._validate_origin("http://evil.example:8081") is False

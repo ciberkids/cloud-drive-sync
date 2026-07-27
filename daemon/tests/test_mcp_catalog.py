@@ -293,3 +293,4 @@ def test_allowed_hosts_env_var_splits_on_whitespace():
 
 def test_mcp_host_can_be_restricted_to_loopback():
     assert _invoke({"CDS_MCP_HOST": "127.0.0.1"})["mcp_host"] == "127.0.0.1"
+
