@@ -70,9 +70,13 @@ Cloud Drive Sync runs in two modes:
 | Mode | Description |
 |------|-------------|
 | **Desktop Mode** | Native desktop app (Tauri + React) with system tray, desktop notifications, and visual management of accounts, sync folders, and conflicts. Works on Linux, macOS, and Windows. |
-| **Headless Mode** | Daemon runs standalone — ideal for servers, NAS devices, and Docker containers. Manage via CLI (`cloud-drive-sync status`), Web UI (`http://localhost:8080/`), or REST API (`curl http://localhost:8080/api/status`). |
+| **Headless Mode** | Daemon runs standalone — ideal for servers, NAS devices, and Docker containers. Manage via CLI (`cloud-drive-sync status`), Web UI (`http://localhost:8080/`), REST API (`curl http://localhost:8080/api/status`), or an AI assistant over [MCP](https://modelcontextprotocol.io). |
 
-The HTTP server (web UI + REST API) starts with `--http-port 8080`. Docker containers enable it by default.
+The HTTP server (web UI + REST API) starts with `--http-port 8080`. Docker containers enable it by default. Headless does not mean CLI-only — the daemon serves the same web UI as the desktop app from its own process, with no separate web server to run.
+
+An **MCP server** for AI assistants (Claude Desktop, Claude Code, any MCP client) starts with `--mcp-port 8081`, or `CDS_MCP_PORT=8081` in a container. It is off by default and read-only unless you add `--mcp-allow-writes`, so an assistant can answer "is sync healthy?" or "why hasn't this file uploaded?" without being able to change anything. See [MCP Server](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#mcp-server-for-ai-assistants).
+
+> ⚠️ Neither the web UI nor the MCP endpoint has authentication, and both bind all interfaces. If you publish either port, read [Security](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#security) first.
 
 Authentication in headless mode works without a local browser — the daemon prints an authorization URL to the console, and you complete sign-in on any device.
 
