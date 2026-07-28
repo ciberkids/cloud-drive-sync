@@ -486,8 +486,6 @@ It is a third front-end onto the same request handler the CLI and web UI use, so
 | Transport | Streamable HTTP |
 | Default | **Disabled**, containers included |
 
-> **Not in a release yet.** MCP support is on `main` but is not in `v2.1.0` or `:latest` — the published image has no `--mcp-port` and silently ignores `CDS_MCP_PORT`. Build from `main` to use it today, or wait for the next tagged release.
-
 ### Enabling it
 
 ```bash

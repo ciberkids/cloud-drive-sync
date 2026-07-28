@@ -158,9 +158,7 @@ Although this is a headless deployment with no desktop session, you still get th
 
 ### Letting an AI assistant manage sync
 
-> **Not in a release yet.** MCP support is on `main` but is not in `v2.1.0` or `:latest` — the published image has no `--mcp-port` and silently ignores `CDS_MCP_PORT`. Build from `main` to use it today, or wait for the next tagged release.
-
-The container will ship an [MCP](https://modelcontextprotocol.io) server for AI clients, off by default. Add to the `[Container]` section of your Quadlet file:
+The container ships an [MCP](https://modelcontextprotocol.io) server for AI clients, off by default. Add to the `[Container]` section of your Quadlet file:
 
 ```ini
 PublishPort=127.0.0.1:8081:8081
