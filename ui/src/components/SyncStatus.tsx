@@ -358,6 +358,30 @@ export function SyncStatus() {
                 <span className="daemon-value">{status.daemon.started_at}</span>
               </div>
             )}
+            {status.daemon.database && (
+              <div className="daemon-row">
+                <span className="daemon-label">Database</span>
+                <span
+                  className="daemon-value"
+                  title={
+                    `${status.daemon.database.page_count} pages, ` +
+                    `${status.daemon.database.freelist_count} free — ` +
+                    `${status.daemon.database.reclaimable_formatted} reclaimable`
+                  }
+                >
+                  {status.daemon.database.size_formatted}
+                  {/* Only worth mentioning once a meaningful share of a
+                      non-trivial file is dead space — otherwise it is noise. */}
+                  {status.daemon.database.reclaimable_ratio >= 0.25 &&
+                    status.daemon.database.reclaimable_bytes > 64 * 1024 * 1024 && (
+                      <span className="daemon-warn">
+                        {" "}
+                        · {status.daemon.database.reclaimable_formatted} reclaimable
+                      </span>
+                    )}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,5 +1,16 @@
 export type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user" | "local_wins" | "remote_wins";
 
+export interface DatabaseInfo {
+  size_bytes: number;
+  size_formatted: string;
+  reclaimable_bytes: number;
+  reclaimable_formatted: string;
+  /** Fraction of the file that is free pages, 0..1. High on a large file = mostly dead space. */
+  reclaimable_ratio: number;
+  page_count: number;
+  freelist_count: number;
+}
+
 export interface DaemonInfo {
   pid: number | null;
   uptime: number | null;
@@ -8,6 +19,7 @@ export interface DaemonInfo {
   version: string | null;
   started_at: string | null;
   build_date: string | null;
+  database?: DatabaseInfo | null;
 }
 
 export interface LiveTransfer {

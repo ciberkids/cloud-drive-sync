@@ -34,6 +34,15 @@ const DEMO_STATUS: DaemonStatus = {
     socket_path: "/run/user/1000/cloud-drive-sync.sock",
     version: "1.2.0",
     started_at: "2026-04-09 10:00",
+    database: {
+      size_bytes: 2_310_144,
+      size_formatted: "2.2 MB",
+      reclaimable_bytes: 172_032,
+      reclaimable_formatted: "168.0 KB",
+      reclaimable_ratio: 0.0745,
+      page_count: 564,
+      freelist_count: 42,
+    },
     build_date: "2026-04-09",
   },
 };

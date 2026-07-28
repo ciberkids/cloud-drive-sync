@@ -163,6 +163,7 @@ class RequestHandler:
             "version": self._get_version(),
             "started_at": started_at,
             "build_date": __build_date__ or None,
+            "database": await self._database_info(),
         }
 
         if self._engine is None:
@@ -221,6 +222,44 @@ class RequestHandler:
             "daemon": daemon_info,
             "conflict_strategy": self._config.sync.conflict_strategy,
         }
+
+    async def _database_info(self) -> dict | None:
+        """Size and reclaimable-space gauge for ``state.db``.
+
+        Early warning for the failure mode in issue #49, where the file reached
+        4.4 GB while every table was empty: SQLite reuses freed pages but never
+        shrinks the file, so bloat is invisible until someone checks disk usage.
+        ``reclaimable_ratio`` is the number worth watching — a high ratio on a
+        large file means most of it is dead space.
+        """
+        db = self._db or (self._engine._db if self._engine else None)
+        if db is None:
+            return None
+        try:
+            page_count, freelist, page_size = await db.free_page_stats()
+            size = db.file_size()
+        except Exception as exc:
+            log.debug("Could not read database stats: %s", exc)
+            return None
+
+        reclaimable = freelist * page_size
+        return {
+            "size_bytes": size,
+            "size_formatted": self._format_bytes(size),
+            "reclaimable_bytes": reclaimable,
+            "reclaimable_formatted": self._format_bytes(reclaimable),
+            "reclaimable_ratio": round(freelist / page_count, 4) if page_count else 0.0,
+            "page_count": page_count,
+            "freelist_count": freelist,
+        }
+
+    @staticmethod
+    def _format_bytes(size: float) -> str:
+        for unit in ("B", "KB", "MB", "GB"):
+            if abs(size) < 1024 or unit == "GB":
+                return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
 
     @staticmethod
     def _format_uptime(seconds: float) -> str:

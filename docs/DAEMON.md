@@ -677,6 +677,24 @@ Two things run automatically:
 
 The startup reclaim is deliberately rare because it rewrites the whole file and delays startup while it runs. New databases are created with incremental auto-vacuum enabled, so they give space back continuously and should never reach the threshold.
 
+**Checking it yourself.** The status payload reports the database size and how much of it is reclaimable free space, so bloat is visible before it reaches GB scale:
+
+```bash
+curl -s http://localhost:8080/api/status | jq '.daemon.database'
+```
+
+```json
+{
+  "size_formatted": "312.0 KB",
+  "reclaimable_formatted": "0 B",
+  "reclaimable_ratio": 0.0,
+  "page_count": 83,
+  "freelist_count": 0
+}
+```
+
+`reclaimable_ratio` is the number to watch — it distinguishes a file that is large because it holds data from one that is large because it is mostly dead space. The **Status** dashboard shows the size, and calls out the reclaimable amount once it passes the same thresholds that trigger the startup reclaim.
+
 ## Stub Repair
 
 Stubs are incomplete sync-state entries that accumulate when a transfer is interrupted or the sync database is reset while remote files still exist. They show up as files tracked in the database that are missing on one side, causing repeated, fruitless sync attempts.
