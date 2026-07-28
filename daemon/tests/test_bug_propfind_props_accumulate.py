@@ -24,6 +24,8 @@ from cloud_drive_sync.providers.nextcloud import nc_patch
 
 # Trimmed copies of the real upstream constants — enough to show accumulation.
 BASE_PROPS = ["d:resourcetype", "d:getetag", "d:getlastmodified", "oc:fileid"]
+# The two the server pays for and nobody parses (issue #50).
+EXPENSIVE = ["oc:checksums", "oc:share-types"]
 LOCK_PROPS = ["nc:lock", "nc:lock-owner", "nc:lock-time", "nc:lock-timeout"]
 
 # Capabilities where files.locking is present. check_capabilities returns the
@@ -52,7 +54,7 @@ def _build_fake_nc_py_api() -> SimpleNamespace:
 
     misc.check_capabilities = check_capabilities
 
-    _files.PROPFIND_PROPERTIES = list(BASE_PROPS)
+    _files.PROPFIND_PROPERTIES = [*BASE_PROPS, *EXPENSIVE]
     _files.PROPFIND_LOCKING_PROPERTIES = list(LOCK_PROPS)
 
     def get_propfind_properties(capabilities: dict) -> list:
@@ -140,7 +142,8 @@ def test_fake_reproduces_the_unbounded_growth(fake_nc):
     for _ in range(10):
         fake_nc.original_get(CAPS_WITH_LOCKING)
 
-    assert len(fake_nc._files.PROPFIND_PROPERTIES) == len(BASE_PROPS) + 10 * len(LOCK_PROPS)
+    expected = len(BASE_PROPS) + len(EXPENSIVE) + 10 * len(LOCK_PROPS)
+    assert len(fake_nc._files.PROPFIND_PROPERTIES) == expected
     assert fake_nc._files.PROPFIND_PROPERTIES.count("nc:lock-timeout") == 10
 
 
@@ -342,3 +345,46 @@ def test_real_nc_py_api_is_patched_by_provider_import():
     for _ in range(25):
         files.get_propfind_properties({"files": {"locking": "1.0"}})
     assert _files.PROPFIND_PROPERTIES == before
+
+
+# ── Issue #50: expensive unused properties ──────────────────────────
+
+
+def test_apply_drops_properties_the_server_pays_for_and_nobody_reads(fake_nc):
+    """oc:checksums and oc:share-types are requested on every listdir() but
+    never parsed into FsNode, and FsNodeInfo has no checksum attribute at all.
+
+    Their cost is O(properties x resources) server-side and is what pinned
+    PHP-FPM at 100% CPU in #44.
+    """
+    assert set(EXPENSIVE) <= set(fake_nc._files.PROPFIND_PROPERTIES), "fixture precondition"
+
+    nc_patch.apply()
+
+    for prop in EXPENSIVE:
+        assert prop not in fake_nc._files.PROPFIND_PROPERTIES
+    # Everything else survives — this is a trim, not a rewrite.
+    for prop in BASE_PROPS:
+        assert prop in fake_nc._files.PROPFIND_PROPERTIES
+
+
+def test_trim_reaches_the_listdir_call_path(fake_nc):
+    """All 11 NextcloudClient call sites go through listdir(), so the trim has to
+    land on what listdir() actually sends."""
+    nc_patch.apply()
+    api = fake_nc.files.FilesAPI()
+
+    api.listdir("/Docs")
+
+    sent = api.sent[0]
+    assert "oc:checksums" not in sent
+    assert "oc:share-types" not in sent
+    assert "d:getetag" in sent
+
+
+def test_expensive_list_matches_what_the_change_poller_already_excludes():
+    """changes.py hand-trimmed these for #44; the two lists must not drift."""
+    from cloud_drive_sync.providers.nextcloud import changes
+
+    for prop in nc_patch.EXPENSIVE_UNUSED_PROPERTIES:
+        assert prop not in changes._ETAG_MAP_PROPERTIES

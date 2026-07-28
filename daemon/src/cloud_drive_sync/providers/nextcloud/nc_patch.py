@@ -35,6 +35,19 @@ log = get_logger("providers.nextcloud.patch")
 # O(properties x resources) for it, so refuse to send it at all.
 MAX_PROPFIND_PROPERTIES = 128
 
+# Properties nc-py-api requests on every listdir() but never parses into FsNode,
+# and which are the expensive ones server-side (issue #50, and #44 before it).
+#
+# Verified against nc-py-api 0.30.1: both appear only in PROPFIND_PROPERTIES and
+# nowhere in its response parser, and FsNodeInfo exposes no checksum attribute at
+# all — so the server computes them and the result is discarded before anything
+# could read it. Nothing in this codebase consumes either.
+#
+# The cost is not theoretical: computing checksums and share types for every
+# resource in a large directory is what pinned Nextcloud's PHP-FPM workers at
+# 100% CPU in #44, which is why the change poller already hand-trimmed them.
+EXPENSIVE_UNUSED_PROPERTIES = ("oc:checksums", "oc:share-types")
+
 _applied = False
 
 
@@ -167,7 +180,15 @@ def apply() -> None:
                 "Removed %d duplicate PROPFIND properties accumulated before patching",
                 len(base) - len(deduped),
             )
-            base[:] = deduped
+        # Drop the properties the server pays for and nobody reads. Mutated in
+        # place for the same reason as above: every module aliases this object.
+        trimmed = [p for p in deduped if p not in EXPENSIVE_UNUSED_PROPERTIES]
+        if len(trimmed) != len(deduped):
+            log.debug(
+                "Dropped %s from PROPFIND requests — requested but never parsed (issue #50)",
+                ", ".join(EXPENSIVE_UNUSED_PROPERTIES),
+            )
+        base[:] = trimmed
 
     # ``files`` and ``files_async`` each did ``from ._files import
     # get_propfind_properties``, so they hold their own name bindings. Patching
