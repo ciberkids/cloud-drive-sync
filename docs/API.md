@@ -6,6 +6,15 @@ Cloud Drive Sync uses **JSON-RPC 2.0 over a Unix domain socket** for communicati
 - **Framing**: newline-delimited JSON (`\n` after each message)
 - **Protocol**: JSON-RPC 2.0 — requests have an `id`, notifications do not
 
+The methods below are the daemon's single backend. Two other front-ends dispatch to exactly the same methods, so anything documented here is reachable from all three:
+
+| Front-end | How to reach these methods |
+|---|---|
+| HTTP REST | `POST/GET http://localhost:8080/api/*` — see [HTTP Server](Daemon#http-server-web-ui--rest-api) |
+| MCP | tools over `http://localhost:8081/mcp` — see [MCP Server](Daemon#mcp-server-for-ai-assistants) |
+
+MCP exposes a curated subset under different tool names (`list_sync_pairs` maps to `get_sync_pairs`), is read-only unless `--mcp-allow-writes` is set, and never exposes `shutdown`, `start_auth`, `exchange_auth_code`, `get_proxy`, `set_proxy`, `list_local_dirs` or `mkdir_local`.
+
 ## IPC Methods (Client → Daemon)
 
 ### `get_status`

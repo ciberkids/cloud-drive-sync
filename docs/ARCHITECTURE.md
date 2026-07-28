@@ -39,7 +39,21 @@ graph TB
     DriveClient -->|"HTTPS"| GoogleDrive[("Google Drive\nAPI v3")]
 ```
 
-The daemon optionally exposes an HTTP REST API (`--http-port`) with a built-in web UI for headless/Docker management. The HTTP server calls the same `RequestHandler` as the IPC socket -- no separate backend.
+### Front-ends
+
+`RequestHandler` is the single backend. Everything that drives the daemon is a front-end onto it, so no front-end can reach behaviour the others cannot, and sync logic exists in exactly one place.
+
+| Front-end | Transport | Enabled by | Consumers |
+|---|---|---|---|
+| IPC socket | JSON-RPC 2.0 over a Unix socket | always | CLI, desktop app (Tauri) |
+| HTTP | REST at `/api/*` + the web UI at `/` | `--http-port` | browser, `curl`, scripts |
+| MCP | Streamable HTTP at `/mcp` | `--mcp-port` | AI assistants (Claude Desktop/Code, any MCP client) |
+
+The HTTP front-end serves the same compiled React UI as the desktop app, from inside the daemon process — headless deployments get the full interface with no separate web server. See [HTTP Server](Daemon#http-server-web-ui--rest-api).
+
+The MCP front-end maps handler methods to tools. It is read-only by default and its state-changing tools require `--mcp-allow-writes`; a few handler methods (`shutdown`, the OAuth code exchange, proxy configuration, host filesystem browsing) are never exposed at any level. The tool catalogue and its gating live in `cloud_drive_sync/mcp/catalog.py` and deliberately import no MCP SDK, so the permission logic is testable without the optional extra installed; only `mcp/server.py` needs it. See [MCP Server](Daemon#mcp-server-for-ai-assistants).
+
+> Neither the HTTP nor the MCP front-end has authentication, and both bind all interfaces. See [Security](Daemon#security).
 
 ## Component Breakdown
 
