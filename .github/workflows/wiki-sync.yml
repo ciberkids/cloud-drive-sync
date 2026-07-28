@@ -48,6 +48,7 @@ jobs:
             [UI]=docs/UI.md
             [Contributing]=docs/CONTRIBUTING.md
             [ROADMAP]=docs/ROADMAP.md
+            [Spike-Nextcloud-Backend]=docs/Spike-Nextcloud-Backend.md
           )
 
           # Sidebar layout: "Section:Page1,Page2". Every page name must be a key
@@ -55,7 +56,7 @@ jobs:
           SIDEBAR_SECTIONS=(
             "Getting Started:Installation,Docker,Quadlet,Provider-Setup,Configuration,Cross-Cloud-Sync"
             "Reference:CLI,Daemon,API-Reference,Architecture,UI,Contributing"
-            "Project:ROADMAP"
+            "Project:ROADMAP,Spike-Nextcloud-Backend"
           )
 
           # ── Validate before touching the wiki ──────────────────────

@@ -6,9 +6,10 @@ The ordered list of what gets built next. This file is the queue; each item also
 
 | # | Item | Kind | Issue | Status |
 |---|------|------|-------|--------|
-| 1 | [Delete fail-safe](#1--delete-fail-safe) | Data safety | [#53](https://github.com/ciberkids/cloud-drive-sync/issues/53) | Queued |
-| 2 | [Emergency stop button](#2--emergency-stop-button) | Data safety / control | [#54](https://github.com/ciberkids/cloud-drive-sync/issues/54) | Queued |
-| 3 | [Nextcloud backend research spike](#3--nextcloud-backend-research-spike) | Spike | [#55](https://github.com/ciberkids/cloud-drive-sync/issues/55) | Queued |
+| 1 | [Delete fail-safe](#1--delete-fail-safe) | Data safety | [#53](https://github.com/ciberkids/cloud-drive-sync/issues/53) | ✅ Done |
+| 2 | [Emergency stop button](#2--emergency-stop-button) | Data safety / control | [#54](https://github.com/ciberkids/cloud-drive-sync/issues/54) | ✅ Done |
+| 3 | [Nextcloud backend research spike](#3--nextcloud-backend-research-spike) | Spike | [#55](https://github.com/ciberkids/cloud-drive-sync/issues/55) | ✅ Done — see [findings](Spike-Nextcloud-Backend) |
+| 4 | Nextcloud push-based change detection | Feature | [#56](https://github.com/ciberkids/cloud-drive-sync/issues/56) | Queued |
 
 ---
 
@@ -62,6 +63,8 @@ The ordered list of what gets built next. This file is the queue; each item also
 **Problem.** The WebDAV bridge is not viable. This session alone produced three Nextcloud-specific incidents from it: a runaway PROPFIND property list that DoS'd the user's server ([#47](https://github.com/ciberkids/cloud-drive-sync/issues/47)), expensive properties requested on every listing ([#50](https://github.com/ciberkids/cloud-drive-sync/issues/50), following [#44](https://github.com/ciberkids/cloud-drive-sync/issues/44)), and an upstream library that mutates its own module state and is unmaintained on this point. Underneath that, WebDAV gives no delta/changes API, so change detection walks the whole tree comparing ETags — which is why the property cost matters so much in the first place.
 
 **Spike.** Research alternatives, prototype the most promising, and report back with a recommendation. Timeboxed investigation, not an implementation commitment.
+
+> **Outcome:** rclone does *not* solve change detection — its WebDAV backend has no `ChangeNotify`. Nextcloud's `notify_push` app does, and delivers the very file IDs we already store. Full findings: [Spike: Nextcloud Backend](Spike-Nextcloud-Backend). Implementation tracked as #56.
 
 **Candidates**
 
