@@ -2,6 +2,8 @@
 
 Complete reference for `config.toml` — the Cloud Drive Sync configuration file.
 
+> **Not configured here:** the HTTP server (web UI + REST API) and the MCP server for AI assistants are enabled by command-line flags or environment variables, not by `config.toml` — they are per-invocation deployment choices rather than persistent settings. See [HTTP Server](Daemon#http-server-web-ui--rest-api), [MCP Server](Daemon#mcp-server-for-ai-assistants) and the [CLI options](CLI).
+
 ## File Location
 
 The configuration file is created automatically on first run with sensible defaults. You do not need to create it manually.
