@@ -80,6 +80,8 @@ An **MCP server** for AI assistants (Claude Desktop, Claude Code, any MCP client
 
 > ⚠️ Neither the web UI nor the MCP endpoint has authentication, and both bind all interfaces. If you publish either port, read [Security](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#security) first.
 
+**What's next:** the ordered [Feature Queue](https://github.com/ciberkids/cloud-drive-sync/wiki/ROADMAP) lists what is being built and in what order — currently a delete fail-safe, an emergency stop control, and a spike on replacing the Nextcloud WebDAV bridge.
+
 Authentication in headless mode works without a local browser — the daemon prints an authorization URL to the console, and you complete sign-in on any device.
 
 ---

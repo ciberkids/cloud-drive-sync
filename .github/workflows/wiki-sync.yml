@@ -47,6 +47,7 @@ jobs:
             [Architecture]=docs/ARCHITECTURE.md
             [UI]=docs/UI.md
             [Contributing]=docs/CONTRIBUTING.md
+            [ROADMAP]=docs/ROADMAP.md
           )
 
           # Sidebar layout: "Section:Page1,Page2". Every page name must be a key
@@ -54,6 +55,7 @@ jobs:
           SIDEBAR_SECTIONS=(
             "Getting Started:Installation,Docker,Quadlet,Provider-Setup,Configuration,Cross-Cloud-Sync"
             "Reference:CLI,Daemon,API-Reference,Architecture,UI,Contributing"
+            "Project:ROADMAP"
           )
 
           # ── Validate before touching the wiki ──────────────────────
