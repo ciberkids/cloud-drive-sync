@@ -337,6 +337,100 @@ def sync_now(pair_id: str | None):
         sys.exit(1)
 
 
+@cli.group("deletions")
+def deletions():
+    """Inspect and resolve deletions blocked by the delete fail-safe."""
+
+
+@deletions.command("list")
+def deletions_list():
+    """Show deletion batches the fail-safe refused."""
+    try:
+        pending = _run_client_call("get_pending_deletions", {})
+        if not pending:
+            click.echo("No blocked deletions.")
+            return
+        for item in pending:
+            pair = item.get("pair_id", "?")
+            click.echo(
+                f"{pair}  {item.get('count', 0)} {item.get('direction', '?')} file(s) blocked "
+                f"(limit {item.get('limit', '?')})"
+            )
+            tracked = item.get("tracked") or 0
+            if tracked:
+                pct = 100 * item.get("count", 0) / tracked
+                click.echo(f"    {pct:.0f}% of {tracked} tracked file(s)")
+            for path in (item.get("sample") or [])[:10]:
+                click.echo(f"    - {path}")
+            extra = item.get("count", 0) - len(item.get("sample") or [])
+            if extra > 0:
+                click.echo(f"    … and {extra} more")
+            click.echo(f"    blocked at {item.get('created_at', '?')}")
+        click.echo()
+        click.echo("Approve with:  cloud-drive-sync deletions approve <pair_id>")
+        click.echo("Reject with:   cloud-drive-sync deletions reject <pair_id>")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@deletions.command("approve")
+@click.argument("pair_id")
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+def deletions_approve(pair_id: str, yes: bool):
+    """Allow the blocked deletions for PAIR_ID to proceed.
+
+    The next sync pass re-plans rather than replaying the stored batch, so if the
+    files have since been restored nothing is deleted.
+    """
+    try:
+        pending = _run_client_call("get_pending_deletions", {"pair_id": pair_id})
+        if not pending:
+            click.echo(f"No blocked deletions for {pair_id}.")
+            return
+        total = sum(item.get("count", 0) for item in pending)
+        if not yes:
+            click.echo(f"This will allow {total} file(s) to be deleted on {pair_id}:")
+            for item in pending:
+                for path in (item.get("sample") or [])[:5]:
+                    click.echo(f"  - {path}")
+            click.confirm("Proceed?", abort=True)
+        result = _run_client_call(
+            "resolve_pending_deletions", {"pair_id": pair_id, "approve": True}
+        )
+        click.echo(
+            f"Approved {result.get('batches', 0)} batch(es); sync resumed for {pair_id}. "
+            "The approval applies to the next pass only."
+        )
+    except click.Abort:
+        click.echo("Aborted — nothing was deleted.")
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@deletions.command("reject")
+@click.argument("pair_id")
+def deletions_reject(pair_id: str):
+    """Refuse the blocked deletions for PAIR_ID. The pair stays paused."""
+    try:
+        result = _run_client_call(
+            "resolve_pending_deletions", {"pair_id": pair_id, "approve": False}
+        )
+        if result.get("status") == "not_found":
+            click.echo(f"No blocked deletions for {pair_id}.")
+            return
+        click.echo(
+            f"Rejected {result.get('batches', 0)} batch(es). Nothing was deleted and "
+            f"{pair_id} stays paused — resume it with `resume {pair_id}` once the "
+            "cause is resolved."
+        )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command("stop-activity")
 @click.option("--account", "account_id", default=None, help="Stop one account only.")
 def stop_activity(account_id: str | None):

@@ -682,10 +682,22 @@ The delete fail-safe refuses batches that look like that.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `max_deletions_per_sync` (`[sync]`) | `100` | Global cap per sync pass, per direction |
+| `max_deletions_per_sync` (`[sync]`) | `100` | Cap per direction, counted over the window below |
+| `deletion_window_seconds` (`[sync]`) | `60` | Sliding window the cap applies to. `0` = per sync pass only |
 | `max_deletions_per_sync` (`[[sync.pairs]]`) | inherit | Per-pair override; `0` disables the guard for that pair |
+| `deletion_window_seconds` (`[[sync.pairs]]`) | inherit | Per-pair window override |
 
-A pass is also refused when deletions exceed **50% of the files tracked for that pair**, whichever limit trips first. An absolute count catches a large library; the ratio catches a small one, where 90 deletions is under any sensible count but is nearly everything the user has. Batches under 10 files are never gated by ratio alone.
+All four are editable in **Settings → Delete Protection** (global) and under **Advanced Rules** on each pair. There is no enforced minimum — set the cap to `2` if you want a third deletion inside the window to require confirmation.
+
+### Three triggers, whichever fires first
+
+**1. Count over a time window.** The cap applies to the proposed deletions *plus* those already performed in the last `deletion_window_seconds`. A per-pass cap alone is defeated by a slow drip: 99 deletions per pass never trips a limit of 100, but repeated it still empties the library. Counting the window closes that — a mass delete breaches on its first pass, a drip on its Nth.
+
+The window is counted from the activity log, not from an in-memory counter, so it **survives a restart**. An in-memory count would reset on restart, and a crash-loop would hand a fresh allowance every cycle. Only deletions that actually succeeded count; failed attempts do not consume the allowance, and each pair has its own.
+
+**2. Share of tracked files.** A pass is also refused when deletions exceed **50%** of the files tracked for that pair. An absolute count catches a large library; the ratio catches a small one, where 90 deletions is under any sensible count but is nearly everything the user has. Batches under 10 files are never gated by ratio alone.
+
+**3. Direction.** Local and remote are counted separately throughout — a wiped *remote* emptying the local copy is the same threat mirrored, and download-only pairs make it reachable.
 
 ### What happens on a breach
 
@@ -698,7 +710,20 @@ Local and remote deletions are counted separately: a wiped *remote* must not be 
 
 ### Resolving a block
 
-In the web UI, the banner offers **Delete them** or **Keep files**. Via the API:
+In the web UI, the banner offers **Delete them** or **Keep files**. From the command line:
+
+```bash
+# What is blocked, with sample paths
+cloud-drive-sync deletions list
+
+# Allow them — prompts for confirmation first
+cloud-drive-sync deletions approve 0
+
+# Refuse them; the pair stays paused
+cloud-drive-sync deletions reject 0
+```
+
+Via the API:
 
 ```bash
 # What is blocked?

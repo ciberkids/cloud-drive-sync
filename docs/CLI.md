@@ -62,6 +62,11 @@ cloud-drive-sync start --foreground
 # Start in demo mode (no real cloud account needed)
 cloud-drive-sync start --demo
 
+# Inspect and resolve deletions the fail-safe blocked
+cloud-drive-sync deletions list
+cloud-drive-sync deletions approve 0
+cloud-drive-sync deletions reject 0
+
 # Stop ALL activity immediately, cancelling transfers in progress
 cloud-drive-sync stop-activity
 cloud-drive-sync stop-activity --account you@example.com

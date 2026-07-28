@@ -639,6 +639,12 @@ class SyncEngine:
         if not failsafe.only_deletions(actions):
             return True
 
+        window = (
+            ps.pair.deletion_window_seconds
+            if ps.pair.deletion_window_seconds is not None
+            else self._config.sync.deletion_window_seconds
+        )
+
         tracked = 0
         try:
             counts = await self._db.count_by_state(ps.pair_id)
@@ -646,7 +652,22 @@ class SyncEngine:
         except Exception:
             log.debug("Could not read tracked count for %s; ratio check skipped", ps.pair_id)
 
-        verdict = failsafe.check(actions, max_deletions=limit, tracked_files=tracked)
+        # Deletions already performed inside the window count toward the limit, so
+        # a drip of just-under-limit passes cannot empty the library unnoticed.
+        recent: dict[str, int] = {}
+        if window > 0:
+            try:
+                recent = await self._db.count_recent_deletions(ps.pair_id, window)
+            except Exception:
+                log.debug("Could not read the recent-deletion window for %s", ps.pair_id)
+
+        verdict = failsafe.check(
+            actions,
+            max_deletions=limit,
+            tracked_files=tracked,
+            recent_deletions=recent,
+            window_seconds=window,
+        )
         if not verdict.blocked:
             return True
 

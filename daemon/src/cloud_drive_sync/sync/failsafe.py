@@ -21,6 +21,12 @@ Design notes:
 * **Count and ratio, whichever trips first.** 500 deletions is unremarkable in a
   200k-file library and catastrophic in a 600-file one. An absolute count catches
   the large-library case; a ratio of what is tracked catches the small one.
+* **Counted over a time window, not per pass.** A per-pass cap alone is defeated
+  by a slow drip: 99 deletions per pass, repeated, never trips a limit of 100 and
+  still empties the library. The window counts deletions already performed
+  recently and adds the proposed batch, so the limit means "no more than N
+  deletions in any W seconds" — which a mass delete breaches on its first pass
+  and a drip breaches on its Nth.
 """
 
 from __future__ import annotations
@@ -46,6 +52,11 @@ DEFAULT_MAX_DELETION_RATIO = 0.5
 # files is 75% and entirely normal.
 RATIO_FLOOR = 10
 
+# Deletions are counted over a sliding window this many seconds wide, across sync
+# passes. One minute is long enough to catch a drip that a per-pass cap misses,
+# short enough that ordinary staggered cleanup is not penalised.
+DEFAULT_WINDOW_SECONDS = 60
+
 # How many paths to keep for the confirmation prompt. Enough to recognise what is
 # being deleted; few enough to store and render.
 SAMPLE_SIZE = 20
@@ -69,20 +80,31 @@ class DeletionBreach:
     limit: int
     tracked: int
     sample: list[str] = field(default_factory=list)
+    #: Deletions already performed in this direction inside the window.
+    recent: int = 0
+    window_seconds: int = DEFAULT_WINDOW_SECONDS
 
     @property
     def ratio(self) -> float:
         return self.count / self.tracked if self.tracked else 0.0
 
+    @property
+    def total_in_window(self) -> int:
+        """Proposed plus already-performed, which is what the limit applies to."""
+        return self.count + self.recent
+
     def describe(self) -> str:
         """One line suitable for a log entry or a notification body."""
         where = "local files" if self.direction is Direction.LOCAL else "remote files"
-        if self.tracked:
-            return (
-                f"{self.count} {where} would be deleted "
-                f"({self.ratio:.0%} of {self.tracked} tracked) — limit is {self.limit}"
+        parts = [f"{self.count} {where} would be deleted"]
+        if self.recent:
+            parts.append(
+                f"on top of {self.recent} already deleted in the last "
+                f"{self.window_seconds}s ({self.total_in_window} total)"
             )
-        return f"{self.count} {where} would be deleted — limit is {self.limit}"
+        if self.tracked:
+            parts.append(f"{self.ratio:.0%} of {self.tracked} tracked")
+        return ", ".join(parts) + f" — limit is {self.limit}"
 
 
 @dataclass(frozen=True)
@@ -119,21 +141,30 @@ def check(
     max_deletions: int = DEFAULT_MAX_DELETIONS,
     tracked_files: int = 0,
     max_ratio: float = DEFAULT_MAX_DELETION_RATIO,
+    recent_deletions: dict[str, int] | None = None,
+    window_seconds: int = DEFAULT_WINDOW_SECONDS,
 ) -> Verdict:
     """Decide whether ``actions`` may proceed.
 
     Args:
         actions: the planned batch, including non-deletions.
-        max_deletions: per-direction cap. ``0`` disables the guard entirely.
+        max_deletions: cap per direction, applied to the proposed batch *plus*
+            anything already deleted inside the window. ``0`` disables the guard.
         tracked_files: how many files the database currently tracks for this
             pair, used for the ratio check. ``0`` skips the ratio check.
         max_ratio: fraction of ``tracked_files`` above which a batch is refused.
+        recent_deletions: ``{"local": n, "remote": n}`` already performed inside
+            the window. Omitting it makes the check per-pass only, which a slow
+            drip can defeat.
+        window_seconds: width of that window, for reporting.
 
     Returns:
         A :class:`Verdict`. ``blocked`` is false when the batch is plausible.
     """
     if max_deletions <= 0:
         return Verdict()
+
+    recent = recent_deletions or {}
 
     grouped: dict[Direction, list[SyncAction]] = {Direction.LOCAL: [], Direction.REMOTE: []}
     for action in actions:
@@ -148,7 +179,9 @@ def check(
         if not count:
             continue
 
-        over_count = count > max_deletions
+        already = int(recent.get(direction.value, 0) or 0)
+        # The limit applies to the window, not to this pass alone.
+        over_count = (count + already) > max_deletions
         over_ratio = (
             tracked_files >= RATIO_FLOOR
             and count >= RATIO_FLOOR
@@ -164,6 +197,8 @@ def check(
                 limit=max_deletions,
                 tracked=tracked_files,
                 sample=sorted(a.path for a in group)[:SAMPLE_SIZE],
+                recent=already,
+                window_seconds=window_seconds,
             )
         )
 

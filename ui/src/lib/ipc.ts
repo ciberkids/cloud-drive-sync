@@ -259,11 +259,13 @@ export async function getMaxDeletions(): Promise<DeleteFailsafeLimits> {
 
 export async function setMaxDeletions(
   maxDeletionsPerSync: number | null,
-  pairId?: string
+  pairId?: string,
+  deletionWindowSeconds?: number
 ): Promise<{ status: string }> {
   return invoke<{ status: string }>("set_max_deletions", {
     maxDeletionsPerSync,
     pairId,
+    deletionWindowSeconds,
   });
 }
 

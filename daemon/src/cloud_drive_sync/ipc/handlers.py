@@ -283,11 +283,21 @@ class RequestHandler:
         return self._engine.stop_state()
 
     async def _get_max_deletions(self, params: dict) -> dict:
-        """Current delete fail-safe limits: global default and per-pair overrides."""
+        """Current delete fail-safe limits: global defaults and per-pair overrides.
+
+        Pairs are keyed by index string ("0", "1"), matching ``get_sync_pairs``
+        and every other pair-addressing method in this API. The engine's internal
+        "pair_0" form is not exposed here.
+        """
         return {
             "max_deletions_per_sync": self._config.sync.max_deletions_per_sync,
+            "deletion_window_seconds": self._config.sync.deletion_window_seconds,
             "pairs": {
-                f"pair_{i}": p.max_deletions_per_sync
+                str(i): p.max_deletions_per_sync
+                for i, p in enumerate(self._config.sync.pairs)
+            },
+            "pair_windows": {
+                str(i): p.deletion_window_seconds
                 for i, p in enumerate(self._config.sync.pairs)
             },
         }
@@ -298,27 +308,50 @@ class RequestHandler:
         ``0`` disables the guard; ``null`` on a pair restores inheritance.
         """
         params = params or {}
-        if "max_deletions_per_sync" not in params:
-            raise TypeError("max_deletions_per_sync is required")
-        value = params["max_deletions_per_sync"]
         pair_id = params.get("pair_id")
+        window = params.get("deletion_window_seconds")
 
-        if value is not None:
+        has_limit = "max_deletions_per_sync" in params
+        if not has_limit and window is None:
+            raise TypeError("max_deletions_per_sync or deletion_window_seconds is required")
+
+        value = params.get("max_deletions_per_sync")
+        if has_limit and value is not None:
             value = int(value)
             if value < 0:
                 raise TypeError("max_deletions_per_sync cannot be negative")
+        if window is not None:
+            window = int(window)
+            if window < 0:
+                raise TypeError("deletion_window_seconds cannot be negative")
 
         if pair_id:
             pair = self._pair_by_id(pair_id)
-            pair.max_deletions_per_sync = value
+            if has_limit:
+                pair.max_deletions_per_sync = value
+            if window is not None:
+                pair.deletion_window_seconds = window
         else:
-            if value is None:
-                raise TypeError("the global limit cannot be null")
-            self._config.sync.max_deletions_per_sync = value
+            if has_limit:
+                if value is None:
+                    raise TypeError("the global limit cannot be null")
+                self._config.sync.max_deletions_per_sync = value
+            if window is not None:
+                self._config.sync.deletion_window_seconds = window
 
         self._config.save()
-        log.info("Delete fail-safe limit set to %s for %s", value, pair_id or "all pairs")
-        return {"status": "ok", "pair_id": pair_id, "max_deletions_per_sync": value}
+        log.info(
+            "Delete fail-safe set to limit=%s window=%ss for %s",
+            value if has_limit else "unchanged",
+            window if window is not None else "unchanged",
+            pair_id or "all pairs",
+        )
+        return {
+            "status": "ok",
+            "pair_id": pair_id,
+            "max_deletions_per_sync": value if has_limit else None,
+            "deletion_window_seconds": window,
+        }
 
     async def _get_pending_deletions(self, params: dict) -> list[dict]:
         """Deletion batches the fail-safe refused, awaiting a decision (#53)."""

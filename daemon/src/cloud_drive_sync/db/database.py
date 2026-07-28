@@ -607,6 +607,30 @@ CREATE TABLE IF NOT EXISTS partial_transfers (
             log.info("Cleaned up %d stale partial transfers", count)
         return count
 
+    async def count_recent_deletions(self, pair_id: str, window_seconds: int) -> dict[str, int]:
+        """Successful deletions per direction within the last ``window_seconds``.
+
+        Counted from sync_log rather than from in-memory state, so the window
+        survives a restart. That matters: an in-memory counter would reset on
+        restart, and a crash-loop would hand an attacker — or an accident — a
+        fresh allowance on every cycle.
+
+        Returns ``{"local": n, "remote": n}``.
+        """
+        cutoff = (datetime.now(UTC) - timedelta(seconds=window_seconds)).isoformat()
+        cursor = await self.db.execute(
+            """SELECT action, COUNT(*) FROM sync_log
+               WHERE pair_id = ? AND timestamp >= ? AND status = 'ok'
+                 AND action IN ('delete_local', 'delete_remote')
+               GROUP BY action""",
+            (pair_id, cutoff),
+        )
+        rows = await cursor.fetchall()
+        counts = {"local": 0, "remote": 0}
+        for action, n in rows:
+            counts["local" if action == "delete_local" else "remote"] = n
+        return counts
+
     # ── Pending deletions (delete fail-safe, #53) ───────────────────
 
     async def record_pending_deletions(

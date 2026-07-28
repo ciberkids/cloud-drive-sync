@@ -61,6 +61,8 @@ class SyncPair:
     # Delete fail-safe (#53). None inherits sync.max_deletions_per_sync;
     # 0 disables the guard for this pair.
     max_deletions_per_sync: int | None = None
+    # Window the per-pair limit is counted over. None inherits the global value.
+    deletion_window_seconds: int | None = None
 
 
 @dataclass
@@ -80,6 +82,9 @@ class SyncConfig:
     # Delete fail-safe (#53): refuse a sync pass that would delete more than this
     # many files in one direction, until a human confirms it. 0 disables it.
     max_deletions_per_sync: int = 100
+    # Deletions are counted over this sliding window, across sync passes — a
+    # per-pass cap alone is defeated by a slow drip (#53).
+    deletion_window_seconds: int = 60
     # Application-wide emergency stop (#54). Persisted for the same reason.
     stopped: bool = False
     pairs: list[SyncPair] = field(default_factory=list)
@@ -135,6 +140,9 @@ class Config:
             "max_deletions_per_sync", cfg.sync.max_deletions_per_sync
         )
         cfg.sync.stopped = sync.get("stopped", cfg.sync.stopped)
+        cfg.sync.deletion_window_seconds = sync.get(
+            "deletion_window_seconds", cfg.sync.deletion_window_seconds
+        )
         cfg.sync.convert_google_docs = sync.get("convert_google_docs", cfg.sync.convert_google_docs)
         cfg.sync.notify_sync_complete = sync.get("notify_sync_complete", cfg.sync.notify_sync_complete)
         cfg.sync.notify_conflicts = sync.get("notify_conflicts", cfg.sync.notify_conflicts)
@@ -164,6 +172,7 @@ class Config:
                     sync_rules=sync_rules,
                     conflict_strategy=pair_data.get("conflict_strategy", ""),
                     max_deletions_per_sync=pair_data.get("max_deletions_per_sync"),
+                    deletion_window_seconds=pair_data.get("deletion_window_seconds"),
                 )
             )
 
@@ -223,6 +232,7 @@ class Config:
                 "conflict_strategy": self.sync.conflict_strategy,
                 "max_deletions_per_sync": self.sync.max_deletions_per_sync,
                 "stopped": self.sync.stopped,
+                "deletion_window_seconds": self.sync.deletion_window_seconds,
                 "max_concurrent_transfers": self.sync.max_concurrent_transfers,
                 "debounce_delay": self.sync.debounce_delay,
                 "convert_google_docs": self.sync.convert_google_docs,
@@ -245,6 +255,11 @@ class Config:
                         **(
                             {"max_deletions_per_sync": p.max_deletions_per_sync}
                             if p.max_deletions_per_sync is not None
+                            else {}
+                        ),
+                        **(
+                            {"deletion_window_seconds": p.deletion_window_seconds}
+                            if p.deletion_window_seconds is not None
                             else {}
                         ),
                         "sync_rules": {

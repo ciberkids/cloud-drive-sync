@@ -233,3 +233,123 @@ def test_the_guard_precedes_execution_at_every_site():
         else:
             assert pending_guards > 0, "an execute_all call is not preceded by a guard"
             pending_guards -= 1
+
+
+# ── Time window through the real database path ──────────────────────
+
+
+async def test_the_drip_is_caught_using_real_activity_log_history(engine):
+    """End-to-end for the hole a per-pass cap leaves.
+
+    The window is counted from sync_log, so this exercises the real query rather
+    than a passed-in number. Limit is 10 in the fixture.
+    """
+    from datetime import UTC, datetime
+
+    from cloud_drive_sync.db.models import SyncLogEntry
+
+    eng, ps, db = engine
+
+    # A batch of 8 is under the limit of 10 and passes.
+    assert await eng._may_execute(ps, _deletes(8)) is True
+
+    # Record those 8 as actually performed, as the executor would.
+    for i in range(8):
+        await db.add_log_entry(
+            SyncLogEntry(
+                timestamp=datetime.now(UTC),
+                action="delete_remote",
+                path=f"gone{i}.txt",
+                pair_id="pair_0",
+                status="ok",
+            )
+        )
+
+    # Another 8 is still under the per-pass limit, but 16 in the window is not.
+    allowed = await eng._may_execute(ps, _deletes(8))
+
+    assert allowed is False, "a drip of just-under-limit passes was not caught"
+    pending = await db.get_pending_deletions("pair_0")
+    assert pending[0]["count"] == 8
+
+
+async def test_failed_deletions_do_not_consume_the_window_allowance(engine):
+    """Only deletions that actually happened count against the limit."""
+    from datetime import UTC, datetime
+
+    from cloud_drive_sync.db.models import SyncLogEntry
+
+    eng, ps, db = engine
+    for i in range(50):
+        await db.add_log_entry(
+            SyncLogEntry(
+                timestamp=datetime.now(UTC),
+                action="delete_remote",
+                path=f"failed{i}.txt",
+                pair_id="pair_0",
+                status="error",
+            )
+        )
+
+    assert await eng._may_execute(ps, _deletes(5)) is True
+
+
+async def test_another_pairs_deletions_do_not_consume_the_window(engine):
+    from datetime import UTC, datetime
+
+    from cloud_drive_sync.db.models import SyncLogEntry
+
+    eng, ps, db = engine
+    for i in range(50):
+        await db.add_log_entry(
+            SyncLogEntry(
+                timestamp=datetime.now(UTC),
+                action="delete_remote",
+                path=f"other{i}.txt",
+                pair_id="pair_9",
+                status="ok",
+            )
+        )
+
+    assert await eng._may_execute(ps, _deletes(5)) is True
+
+
+async def test_a_zero_window_disables_the_history_check_only(engine):
+    """Setting the window to 0 keeps the per-pass cap; it does not disable the guard."""
+    from datetime import UTC, datetime
+
+    from cloud_drive_sync.db.models import SyncLogEntry
+
+    eng, ps, db = engine
+    ps.pair.deletion_window_seconds = 0
+    for i in range(50):
+        await db.add_log_entry(
+            SyncLogEntry(
+                timestamp=datetime.now(UTC),
+                action="delete_remote",
+                path=f"gone{i}.txt",
+                pair_id="pair_0",
+                status="ok",
+            )
+        )
+
+    # History ignored, so a small batch passes...
+    assert await eng._may_execute(ps, _deletes(5)) is True
+    # ...but the per-pass cap of 10 still applies.
+    assert await eng._may_execute(ps, _deletes(50)) is False
+
+
+async def test_a_limit_of_two_blocks_a_wiped_directory_immediately(engine):
+    """The user's scenario: with the limit at 2, a mass delete is refused before
+    anything is deleted."""
+    eng, ps, db = engine
+    ps.pair.max_deletions_per_sync = 2
+
+    allowed = await eng._may_execute(ps, _deletes(5000))
+
+    assert allowed is False
+    assert ps.executor.batches == []
+    assert ps.paused is True
+    pending = await db.get_pending_deletions("pair_0")
+    assert pending[0]["count"] == 5000
+    assert pending[0]["limit"] == 2

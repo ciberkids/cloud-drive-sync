@@ -223,6 +223,10 @@ export function Settings() {
 
   // Bandwidth limits state
   const [maxDeletions, setMaxDeletionsState] = useState<number>(100);
+  const [deletionWindow, setDeletionWindowState] = useState<number>(60);
+  const [pairDeleteLimits, setPairDeleteLimits] = useState<
+    Record<string, number | null>
+  >({});
   const [bandwidthLimits, setBandwidthLimits] = useState({
     max_upload_kbps: 0,
     max_download_kbps: 0,
@@ -232,9 +236,34 @@ export function Settings() {
     ipc.getBandwidthLimits().then(setBandwidthLimits).catch(() => {});
     ipc
       .getMaxDeletions()
-      .then((l) => setMaxDeletionsState(l.max_deletions_per_sync))
+      .then((l) => {
+        setMaxDeletionsState(l.max_deletions_per_sync);
+        setDeletionWindowState(l.deletion_window_seconds ?? 60);
+        setPairDeleteLimits(l.pairs ?? {});
+      })
       .catch(() => {});
   }, []);
+
+  const handlePairDeleteLimitChange = async (
+    pairId: string,
+    value: number | null
+  ) => {
+    setPairDeleteLimits((prev) => ({ ...prev, [pairId]: value }));
+    try {
+      await ipc.setMaxDeletions(value, pairId);
+    } catch (e) {
+      console.error("Failed to set the pair deletion limit:", e);
+    }
+  };
+
+  const handleDeletionWindowChange = async (value: number) => {
+    setDeletionWindowState(value);
+    try {
+      await ipc.setMaxDeletions(maxDeletions, undefined, value);
+    } catch (e) {
+      console.error("Failed to set the deletion window:", e);
+    }
+  };
 
   const handleMaxDeletionsChange = async (value: number) => {
     // Optimistic: the input must stay responsive while typing.
@@ -515,6 +544,29 @@ export function Settings() {
               />
             </div>
             <div className="field">
+              <label className="field-label">
+                Max deletions for this pair (blank = use the global setting)
+              </label>
+              <input
+                type="number"
+                className="input"
+                min={0}
+                placeholder={`${maxDeletions} (global)`}
+                value={pairDeleteLimits[pair.id] ?? ""}
+                onChange={(e) =>
+                  handlePairDeleteLimitChange(
+                    pair.id,
+                    e.target.value === "" ? null : parseInt(e.target.value) || 0
+                  )
+                }
+              />
+              {pairDeleteLimits[pair.id] === 0 && (
+                <p className="field-warning">
+                  ⚠ Delete protection is off for this pair.
+                </p>
+              )}
+            </div>
+            <div className="field">
               <label className="field-label">Exclude regex (one per line)</label>
               <textarea
                 className="ignore-patterns-textarea"
@@ -737,23 +789,43 @@ export function Settings() {
           folder, an unmounted drive, a bad <code>rm -rf</code> — nothing is deleted and
           the pair pauses until you confirm.
         </p>
-        <div className="field">
-          <label className="field-label">
-            Max deletions per sync (0 = no limit, not recommended)
-          </label>
-          <input
-            type="number"
-            className="input"
-            min={0}
-            value={maxDeletions}
-            onChange={(e) => handleMaxDeletionsChange(parseInt(e.target.value) || 0)}
-          />
-          {maxDeletions === 0 && (
-            <p className="field-warning">
-              ⚠ Delete protection is off. A wiped local folder will empty the cloud copy.
+        <div className="bandwidth-settings">
+          <div className="field">
+            <label className="field-label">
+              Max deletions (0 = no limit, not recommended)
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={0}
+              value={maxDeletions}
+              onChange={(e) => handleMaxDeletionsChange(parseInt(e.target.value) || 0)}
+            />
+            <p className="field-hint">
+              Counted per direction. Set it as low as you like — 2 means a third
+              deletion inside the window is blocked.
             </p>
-          )}
+          </div>
+          <div className="field">
+            <label className="field-label">Within (seconds, 0 = per sync pass only)</label>
+            <input
+              type="number"
+              className="input"
+              min={0}
+              value={deletionWindow}
+              onChange={(e) => handleDeletionWindowChange(parseInt(e.target.value) || 0)}
+            />
+            <p className="field-hint">
+              Deletions already made in this window count toward the limit, so a
+              slow trickle cannot empty your library one pass at a time.
+            </p>
+          </div>
         </div>
+        {maxDeletions === 0 && (
+          <p className="field-warning">
+            ⚠ Delete protection is off. A wiped local folder will empty the cloud copy.
+          </p>
+        )}
       </section>
 
       <section className="settings-section">

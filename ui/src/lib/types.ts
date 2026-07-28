@@ -19,7 +19,11 @@ export interface StopState {
 
 export interface DeleteFailsafeLimits {
   max_deletions_per_sync: number;
+  /** Sliding window the limit is counted over. 0 = per sync pass only. */
+  deletion_window_seconds: number;
+  /** Per-pair overrides, keyed by pair index string ("0", "1") as get_sync_pairs returns. */
   pairs: Record<string, number | null>;
+  pair_windows: Record<string, number | null>;
 }
 
 export interface DatabaseInfo {

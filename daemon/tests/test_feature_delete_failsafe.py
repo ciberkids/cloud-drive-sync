@@ -176,3 +176,95 @@ def test_only_deletions_keeps_both_directions():
 
     assert len(dels) == 6
     assert all(a.action in failsafe.DELETE_ACTIONS for a in dels)
+
+
+# ── Time window: the slow-drip hole ─────────────────────────────────
+
+
+def test_a_drip_under_the_per_pass_limit_is_caught_by_the_window():
+    """The hole a per-pass cap alone leaves.
+
+    99 deletions in one pass never trips a limit of 100. Repeated, it empties the
+    library. Counting what was already deleted inside the window closes it.
+    """
+    batch = _deletes(99, ActionType.DELETE_REMOTE)
+
+    # First pass: nothing recent, so 99 is allowed.
+    assert not check(batch, max_deletions=100, recent_deletions={"remote": 0}).blocked
+
+    # Second pass: 99 already gone in the window, so 99 more is refused.
+    verdict = check(batch, max_deletions=100, recent_deletions={"remote": 99})
+
+    assert verdict.blocked
+    breach = verdict.breaches[0]
+    assert breach.count == 99
+    assert breach.recent == 99
+    assert breach.total_in_window == 198
+
+
+def test_the_window_counts_directions_separately():
+    """Remote deletions must not consume the local allowance."""
+    verdict = check(
+        _deletes(50, ActionType.DELETE_LOCAL),
+        max_deletions=100,
+        recent_deletions={"remote": 500, "local": 0},
+    )
+
+    assert not verdict.blocked, "remote history must not block local deletions"
+
+
+def test_recent_deletions_alone_do_not_block_an_empty_batch():
+    """No deletions proposed means nothing to refuse, whatever the history."""
+    assert not check(_uploads(10), max_deletions=100, recent_deletions={"remote": 9999}).blocked
+
+
+def test_omitting_recent_deletions_keeps_the_per_pass_behaviour():
+    """Callers that cannot supply history still get the batch check."""
+    assert not check(_deletes(50, ActionType.DELETE_REMOTE), max_deletions=100).blocked
+    assert check(_deletes(150, ActionType.DELETE_REMOTE), max_deletions=100).blocked
+
+
+def test_the_description_mentions_the_window_history():
+    verdict = check(
+        _deletes(5, ActionType.DELETE_REMOTE),
+        max_deletions=10,
+        recent_deletions={"remote": 8},
+        window_seconds=30,
+    )
+
+    text = verdict.describe()
+    assert "8 already deleted" in text
+    assert "30s" in text
+    assert "13 total" in text
+
+
+# ── A very low limit, as a user might set ───────────────────────────
+
+
+def test_a_limit_of_two_blocks_a_third_deletion():
+    """The tightest sensible setting: no more than 2 deletions in the window."""
+    assert not check(_deletes(2, ActionType.DELETE_REMOTE), max_deletions=2).blocked
+    assert check(_deletes(3, ActionType.DELETE_REMOTE), max_deletions=2).blocked
+
+
+def test_a_limit_of_two_blocks_a_mass_delete_on_the_first_pass():
+    """A wiped directory is refused before anything is deleted."""
+    verdict = check(_deletes(5000, ActionType.DELETE_REMOTE), max_deletions=2)
+
+    assert verdict.blocked
+    assert verdict.breaches[0].count == 5000
+
+
+def test_a_limit_of_two_accumulates_across_the_window():
+    """Two now and two more a moment later is four in the window — refused."""
+    assert not check(
+        _deletes(2, ActionType.DELETE_REMOTE), max_deletions=2, recent_deletions={"remote": 0}
+    ).blocked
+    assert check(
+        _deletes(2, ActionType.DELETE_REMOTE), max_deletions=2, recent_deletions={"remote": 2}
+    ).blocked
+
+
+def test_a_limit_of_one_is_usable():
+    assert not check(_deletes(1, ActionType.DELETE_REMOTE), max_deletions=1).blocked
+    assert check(_deletes(2, ActionType.DELETE_REMOTE), max_deletions=1).blocked

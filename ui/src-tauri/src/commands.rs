@@ -473,11 +473,15 @@ pub async fn set_max_deletions(
     bridge: State<'_, BridgeState>,
     max_deletions_per_sync: Option<i64>,
     pair_id: Option<String>,
+    deletion_window_seconds: Option<i64>,
 ) -> Result<Value, String> {
     let bridge = bridge.0.lock().await;
     let mut params = json!({ "max_deletions_per_sync": max_deletions_per_sync });
     if let Some(id) = pair_id {
         params["pair_id"] = json!(id);
+    }
+    if let Some(w) = deletion_window_seconds {
+        params["deletion_window_seconds"] = json!(w);
     }
     bridge.call("set_max_deletions", Some(params)).await
 }

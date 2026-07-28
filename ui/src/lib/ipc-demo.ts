@@ -196,10 +196,19 @@ export async function mkdirLocal() { return { ok: true }; }
 // ── Delete fail-safe (#53) ──────────────────────────────────────────
 
 export async function getMaxDeletions() {
-  return { max_deletions_per_sync: 100, pairs: { pair_0: null, pair_1: null } };
+  return {
+    max_deletions_per_sync: 100,
+    deletion_window_seconds: 60,
+    pairs: { "0": null, "1": null },
+    pair_windows: { "0": null, "1": null },
+  };
 }
 
-export async function setMaxDeletions(_max: number | null, _pairId?: string) {
+export async function setMaxDeletions(
+  _max: number | null,
+  _pairId?: string,
+  _window?: number
+) {
   return { status: "ok" };
 }
 
