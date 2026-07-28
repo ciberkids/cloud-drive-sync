@@ -6,7 +6,8 @@ from cloud_drive_sync.providers.base import (
     CloudClient,
     CloudFileOps,
 )
-from cloud_drive_sync.providers.registry import available_providers as available, get, register
+from cloud_drive_sync.providers.registry import available_providers as available
+from cloud_drive_sync.providers.registry import get, register
 
 __all__ = [
     "AuthProvider",

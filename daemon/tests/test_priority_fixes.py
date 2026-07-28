@@ -28,7 +28,6 @@ from cloud_drive_sync.sync.engine import SyncEngine
 from cloud_drive_sync.sync.executor import SyncExecutor
 from cloud_drive_sync.sync.planner import ActionType, SyncAction
 
-
 # ── Shared fixtures ──────────────────────────────────────────────────
 
 
@@ -81,7 +80,7 @@ class TestSanitizePath:
 
     def test_rejects_parent_traversal(self, executor: SyncExecutor, demo_dirs):
         """Paths containing '../' that escape the sync root must be rejected."""
-        local, _ = demo_dirs
+        _local, _ = demo_dirs
         with pytest.raises(ValueError, match="Path traversal detected"):
             executor._sanitize_path("../../etc/passwd")
 
@@ -280,7 +279,7 @@ class TestAtomicDownloads:
     @pytest.mark.asyncio
     async def test_failed_download_cleans_up_temp(self, demo_dirs):
         """When a download fails mid-stream, temp files must be cleaned up."""
-        local, remote = demo_dirs
+        local, _remote = demo_dirs
         target = local / "fail_download.txt"
 
         # Simulate what operations.py does: write to temp, fail, clean up
@@ -291,8 +290,8 @@ class TestAtomicDownloads:
             with os.fdopen(fd, "wb") as f:
                 f.write(b"partial data")
             # Simulate failure
-            raise IOError("network error")
-        except IOError:
+            raise OSError("network error")
+        except OSError:
             # This is the cleanup path from operations.py
             try:
                 os.unlink(tmp_path)

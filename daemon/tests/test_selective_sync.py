@@ -1,7 +1,13 @@
 """Tests for selective sync ignore patterns."""
 import pytest
-from cloud_drive_sync.local.scanner import _is_ignored, load_ignore_file, scan_directory, DEFAULT_IGNORE_PATTERNS
-from cloud_drive_sync.config import SyncPair, Config
+
+from cloud_drive_sync.config import Config, SyncPair
+from cloud_drive_sync.local.scanner import (
+    DEFAULT_IGNORE_PATTERNS,
+    _is_ignored,
+    load_ignore_file,
+    scan_directory,
+)
 
 
 class TestIsIgnored:

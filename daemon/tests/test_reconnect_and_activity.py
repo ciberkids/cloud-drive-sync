@@ -33,7 +33,6 @@ from cloud_drive_sync.ipc.handlers import RequestHandler
 from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 from cloud_drive_sync.ipc.server import IpcServer
 
-
 # ── Fixtures ───────────────────────────────────────────────────────
 
 

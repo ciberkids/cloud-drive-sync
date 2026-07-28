@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cloud_drive_sync.config import Config, SyncPair
@@ -14,8 +14,8 @@ from cloud_drive_sync.drive.changes import ChangePoller, RemoteChange
 from cloud_drive_sync.drive.client import DriveClient
 from cloud_drive_sync.drive.operations import FileOperations
 from cloud_drive_sync.local.hasher import md5_hash
-from cloud_drive_sync.local.scanner import scan_directory, load_ignore_file, DEFAULT_IGNORE_PATTERNS
-from cloud_drive_sync.local.watcher import DirectoryWatcher, LocalChange, ChangeType
+from cloud_drive_sync.local.scanner import DEFAULT_IGNORE_PATTERNS, load_ignore_file, scan_directory
+from cloud_drive_sync.local.watcher import ChangeType, DirectoryWatcher, LocalChange
 from cloud_drive_sync.providers.base import CloudChangePoller, CloudClient, CloudFileOps
 from cloud_drive_sync.sync.conflict import ConflictResolver
 from cloud_drive_sync.sync.executor import SyncExecutor
@@ -425,7 +425,7 @@ class SyncEngine:
             known_paths.discard("")
             await self._db.prune_stale_entries(pair_id, known_paths)
 
-            ps.last_sync = datetime.now(timezone.utc)
+            ps.last_sync = datetime.now(UTC)
             log.info("Initial sync complete for %s", pair_id)
 
             # Log sync result
@@ -524,7 +524,7 @@ class SyncEngine:
                 first_change: LocalChange = await asyncio.wait_for(
                     ps.watcher.changes.get(), timeout=1.0
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
             if ps.paused:
@@ -578,7 +578,7 @@ class SyncEngine:
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
                     await ps.executor.execute_all(actions)
-                    ps.last_sync = datetime.now(timezone.utc)
+                    ps.last_sync = datetime.now(UTC)
 
             except Exception:
                 log.exception("Error processing local changes batch (%d changes)", len(changes))
@@ -596,7 +596,7 @@ class SyncEngine:
                     self._stop_event.wait(), timeout=MAINTENANCE_INTERVAL_SECONDS
                 )
                 return  # stop requested
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             try:
                 await self._db.maintain()
@@ -626,13 +626,13 @@ class SyncEngine:
                 )
                 if changes:
                     await self._process_remote_changes(ps, changes)
-                    ps.last_sync = datetime.now(timezone.utc)
+                    ps.last_sync = datetime.now(UTC)
             except Exception:
                 log.exception("Error polling remote changes for %s", ps.pair_id)
 
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     async def _process_remote_changes(

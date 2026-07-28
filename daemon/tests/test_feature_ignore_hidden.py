@@ -169,6 +169,7 @@ async def test_watcher_filters_dotfile_events(tmp_path: Path):
     FEATURE: DirectoryWatcher doesn't currently have ignore_hidden support.
     """
     import asyncio
+
     from cloud_drive_sync.local.watcher import DirectoryWatcher
 
     watch_dir = tmp_path / "watch_test"

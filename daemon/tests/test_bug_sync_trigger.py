@@ -211,7 +211,11 @@ async def test_engine_emits_sync_complete_notification(db: Database, config: Con
 
     The engine has a _notify_callback but never calls it after sync.
     """
-    from cloud_drive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
+    from cloud_drive_sync.drive.mock_client import (
+        MockChangePoller,
+        MockDriveClient,
+        MockFileOperations,
+    )
 
     local_dir = tmp_path / "local"
     local_dir.mkdir(exist_ok=True)
@@ -233,7 +237,7 @@ async def test_engine_emits_sync_complete_notification(db: Database, config: Con
     # Track notifications
     notifications = []
 
-    async def on_notify(method: str, params: dict = None):
+    async def on_notify(method: str, params: dict | None = None):
         notifications.append({"method": method, "params": params})
 
     engine.set_notify_callback(on_notify)

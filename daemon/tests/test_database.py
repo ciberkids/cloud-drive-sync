@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,7 @@ async def test_upsert_and_get_sync_entry(db: Database):
         state=FileState.SYNCED,
         local_mtime=1000.0,
         remote_mtime=1000.0,
-        last_synced=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        last_synced=datetime(2025, 1, 1, tzinfo=UTC),
     )
     await db.upsert_sync_entry(entry)
 

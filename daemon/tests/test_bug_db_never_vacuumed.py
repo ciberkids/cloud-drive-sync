@@ -14,7 +14,7 @@ silently if got wrong — so each is asserted directly:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -40,7 +40,7 @@ async def _churn(db: Database, rows: int = 40_000) -> None:
     await db.db.executemany(
         "INSERT INTO sync_log (timestamp, action, path, pair_id, status) VALUES (?,?,?,?,?)",
         [
-            (datetime.now(timezone.utc).isoformat(), "upload", f"f{i}", "pair_0", "ok")
+            (datetime.now(UTC).isoformat(), "upload", f"f{i}", "pair_0", "ok")
             for i in range(rows)
         ],
     )
@@ -188,7 +188,7 @@ async def test_open_leaves_a_healthy_database_alone(tmp_path):
         for i in range(50):
             await db.add_log_entry(
                 SyncLogEntry(
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     action="upload",
                     path=f"f{i}",
                     pair_id="pair_0",
@@ -216,7 +216,7 @@ async def test_open_leaves_a_healthy_database_alone(tmp_path):
 async def test_prune_removes_only_rows_past_retention(tmp_path):
     db = await _open(tmp_path / "state.db")
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for age_days, name in ((1, "recent"), (10, "midlife"), (400, "ancient")):
             await db.add_log_entry(
                 SyncLogEntry(
@@ -242,7 +242,7 @@ async def test_prune_keeps_a_month_of_history_by_default(tmp_path):
     """Retention is user-visible; a row just inside the window must survive."""
     db = await _open(tmp_path / "state.db")
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await db.add_log_entry(
             SyncLogEntry(
                 timestamp=now - timedelta(days=SYNC_LOG_RETENTION_DAYS - 1),
@@ -274,7 +274,7 @@ async def test_prune_is_bounded_per_call(tmp_path):
     """An unbounded first run against a huge table would stall the caller's loop."""
     db = await _open(tmp_path / "state.db")
     try:
-        old = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        old = (datetime.now(UTC) - timedelta(days=90)).isoformat()
         await db.db.executemany(
             "INSERT INTO sync_log (timestamp, action, path, pair_id, status) VALUES (?,?,?,?,?)",
             [(old, "upload", f"f{i}", "pair_0", "ok") for i in range(SYNC_LOG_PRUNE_LIMIT + 500)],
@@ -298,7 +298,7 @@ async def test_maintain_prunes_then_reclaims(tmp_path):
     path = tmp_path / "state.db"
     db = await _open(path)
     try:
-        old = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        old = (datetime.now(UTC) - timedelta(days=90)).isoformat()
         await db.db.executemany(
             "INSERT INTO sync_log (timestamp, action, path, pair_id, status, detail) "
             "VALUES (?,?,?,?,?,?)",

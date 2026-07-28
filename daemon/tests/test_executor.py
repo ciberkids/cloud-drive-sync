@@ -80,7 +80,7 @@ async def test_execute_upload(executor: SyncExecutor, db: Database, demo_dirs):
 
 @pytest.mark.asyncio
 async def test_execute_download(executor: SyncExecutor, db: Database, demo_dirs, mock_client):
-    local, remote = demo_dirs
+    local, _remote = demo_dirs
     # Create file in remote first
     src = local / "_tmp_src.txt"
     src.write_text("download me")
@@ -135,7 +135,7 @@ async def test_execute_delete_local(executor: SyncExecutor, db: Database, demo_d
 
 @pytest.mark.asyncio
 async def test_execute_delete_remote(executor: SyncExecutor, db: Database, demo_dirs, mock_client):
-    local, remote = demo_dirs
+    local, _remote = demo_dirs
     # Create file in remote
     src = local / "_tmp.txt"
     src.write_text("to delete")
@@ -254,7 +254,7 @@ async def test_active_count_tracking(executor: SyncExecutor, demo_dirs):
 
 @pytest.mark.asyncio
 async def test_execute_upload_with_existing_id(executor: SyncExecutor, db: Database, demo_dirs, mock_client):
-    local, remote = demo_dirs
+    local, _remote = demo_dirs
     # Create initial file
     src = local / "update.txt"
     src.write_text("v1")
@@ -322,7 +322,7 @@ async def test_delete_local_folder_cleans_child_entries(executor: SyncExecutor, 
 @pytest.mark.asyncio
 async def test_delete_remote_folder_cleans_child_entries(executor: SyncExecutor, db: Database, demo_dirs, mock_client):
     """Deleting a remote folder should also remove child DB entries."""
-    local, _ = demo_dirs
+    _local, _ = demo_dirs
     # Create a folder in mock remote
     folder_result = await mock_client.create_file("projects", "root", is_folder=True)
 

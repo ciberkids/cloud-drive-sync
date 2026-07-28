@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cloud_drive_sync.providers.base import CloudClient
@@ -127,11 +127,11 @@ class NextcloudClient(CloudClient):
         # Modified time via FsNodeInfo.last_modified (datetime property)
         mod_time = getattr(info, "last_modified", None)
         if isinstance(mod_time, datetime):
-            mod_time_str = mod_time.astimezone(timezone.utc).isoformat()
+            mod_time_str = mod_time.astimezone(UTC).isoformat()
         elif mod_time is not None:
             mod_time_str = str(mod_time)
         else:
-            mod_time_str = datetime.now(timezone.utc).isoformat()
+            mod_time_str = datetime.now(UTC).isoformat()
 
         size = getattr(info, "size", 0) or 0
 

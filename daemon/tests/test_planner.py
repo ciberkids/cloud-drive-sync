@@ -228,7 +228,7 @@ class TestApplyStrategyOverrides:
         assert result[0].action == ActionType.DOWNLOAD
 
     def test_remote_wins_move_expands_to_delete_local_and_download(self):
-        from cloud_drive_sync.sync.planner import apply_strategy_overrides, SyncAction
+        from cloud_drive_sync.sync.planner import SyncAction, apply_strategy_overrides
         move = SyncAction(action=ActionType.MOVE, path="old.txt", dest_path="new.txt")
         result = apply_strategy_overrides([move], "remote_wins")
         assert len(result) == 2

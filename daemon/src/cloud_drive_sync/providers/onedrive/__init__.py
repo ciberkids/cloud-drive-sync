@@ -9,8 +9,8 @@ from cloud_drive_sync.providers.registry import register
 # Check if required packages are installed
 _available = False
 try:
-    import msgraph  # noqa: F401
     import azure.identity  # noqa: F401
+    import msgraph  # noqa: F401
     _available = True
 except ImportError:
     pass

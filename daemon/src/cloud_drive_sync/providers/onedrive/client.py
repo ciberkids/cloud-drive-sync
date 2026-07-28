@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import aiofiles
+
 from cloud_drive_sync.providers.base import CloudClient
 from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.retry import async_retry
@@ -344,9 +346,11 @@ class OneDriveClient(CloudClient):
 
         async with httpx.AsyncClient(timeout=300) as client:
             offset = 0
-            with open(content_path, "rb") as f:
+            # Async file I/O: 10 MB reads on the event loop would stall every
+            # other sync pair once per chunk.
+            async with aiofiles.open(content_path, "rb") as f:
                 while offset < file_size:
-                    chunk = f.read(chunk_size)
+                    chunk = await f.read(chunk_size)
                     end = offset + len(chunk) - 1
                     headers = {
                         "Content-Range": f"bytes {offset}-{end}/{file_size}",

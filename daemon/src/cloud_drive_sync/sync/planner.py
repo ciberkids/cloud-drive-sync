@@ -6,9 +6,8 @@ import enum
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 
 from cloud_drive_sync.db.models import SyncEntry
 from cloud_drive_sync.local.scanner import LocalFileInfo
@@ -633,15 +632,21 @@ def apply_sync_rules(actions: list[SyncAction], rules) -> list[SyncAction]:
     include_patterns = [re.compile(p) for p in rules.include_regex if p]
     exclude_patterns = [re.compile(p) for p in rules.exclude_regex if p]
 
-    min_dt = None
+    # Compared as a POSIX timestamp rather than a datetime. min_date is ISO 8601,
+    # so fromisoformat returns an *aware* datetime when the string carries an
+    # offset ("2026-01-01T00:00:00Z") and a naive one otherwise, while file mtimes
+    # are always naive local — comparing the two raised TypeError and aborted the
+    # whole sync pass. .timestamp() reads a naive value as local time, which is
+    # what the naive comparison already did, and handles the aware case correctly.
+    min_ts: float | None = None
     if rules.min_date:
         try:
-            min_dt = datetime.fromisoformat(rules.min_date)
-        except ValueError:
+            min_ts = datetime.fromisoformat(rules.min_date).timestamp()
+        except (ValueError, OSError, OverflowError):
             log.warning("Invalid min_date in sync rules: %s", rules.min_date)
 
     # If no rules are active, skip filtering
-    if not max_bytes and not include_patterns and not exclude_patterns and not min_dt:
+    if not max_bytes and not include_patterns and not exclude_patterns and min_ts is None:
         return actions
 
     filtered: list[SyncAction] = []
@@ -675,11 +680,11 @@ def apply_sync_rules(actions: list[SyncAction], rules) -> list[SyncAction]:
             continue
 
         # Min date check
-        if min_dt:
+        if min_ts is not None:
             mtime = 0.0
             if action.local_info and hasattr(action.local_info, "mtime"):
                 mtime = action.local_info.mtime or 0.0
-            if mtime > 0 and datetime.fromtimestamp(mtime) < min_dt:
+            if mtime > 0 and mtime < min_ts:
                 log.debug("Sync rule: skipping %s (mtime before min_date)", path)
                 continue
 

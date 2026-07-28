@@ -9,8 +9,10 @@ from __future__ import annotations
 from cloud_drive_sync.providers.gdrive.client import (
     FIELDS_FILE,
     FOLDER_MIME,
+)
+from cloud_drive_sync.providers.gdrive.client import (
     GoogleDriveClient as DriveClient,
 )
 
 # Re-export for backward compatibility
-__all__ = ["DriveClient", "FIELDS_FILE", "FOLDER_MIME"]
+__all__ = ["FIELDS_FILE", "FOLDER_MIME", "DriveClient"]

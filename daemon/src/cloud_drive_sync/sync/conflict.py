@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cloud_drive_sync.db.models import ConflictRecord, SyncEntry
@@ -42,7 +42,7 @@ def resolve_keep_both(local_path: Path) -> Path:
     Returns:
         Path to the renamed conflict copy.
     """
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     stem = local_path.stem
     suffix = local_path.suffix
     conflict_name = f"{stem}_conflict_{ts}{suffix}"
@@ -183,7 +183,7 @@ class ConflictResolver:
         # Wait for user resolution (with timeout to avoid hanging forever)
         try:
             resolution = await asyncio.wait_for(future, timeout=3600)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("Conflict resolution timed out for %s", path)
             self._pending_resolutions.pop(conflict_id, None)
             return None

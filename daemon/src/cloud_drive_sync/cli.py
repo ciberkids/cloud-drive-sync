@@ -190,7 +190,6 @@ def _run_client_call(method: str, params: dict | None = None):
 @cli.group()
 def account():
     """Manage cloud storage accounts."""
-    pass
 
 
 @account.command("add")
@@ -264,7 +263,6 @@ def account_list():
 @cli.group()
 def pair():
     """Manage sync folder pairs."""
-    pass
 
 
 @pair.command("add")

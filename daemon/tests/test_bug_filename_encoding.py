@@ -11,13 +11,13 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import MagicMock as MM, patch as _patch
+from unittest.mock import MagicMock as MM
+from unittest.mock import patch as _patch
 
 import pytest
 
 from cloud_drive_sync.providers.nextcloud.client import NextcloudClient
 from cloud_drive_sync.providers.nextcloud.operations import NextcloudFileOps, _sanitise_name
-
 
 # ── _sanitise_name unit tests ─────────────────────────────────────────────────
 

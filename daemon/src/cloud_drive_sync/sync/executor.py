@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from cloud_drive_sync.db.database import Database
 from cloud_drive_sync.db.models import FileState, PartialTransfer, SyncEntry, SyncLogEntry
-from cloud_drive_sync.drive.operations import FileOperations, _format_speed, _format_size
+from cloud_drive_sync.drive.operations import FileOperations, _format_size, _format_speed
 from cloud_drive_sync.sync.planner import ActionType, SyncAction
 from cloud_drive_sync.util.logging import get_logger
 
@@ -184,7 +184,7 @@ class SyncExecutor:
             remote_id = await self._ensure_remote_dirs(dummy_child)
             # remote_id is now the ID of the directory we wanted to create
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entry = SyncEntry(
             path=action.path,
             pair_id=self._pair_id,
@@ -295,7 +295,7 @@ class SyncExecutor:
         if hasattr(self._drive_client, 'hash_field'):
             hash_field = self._drive_client.hash_field
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stat = local_path.stat()
         entry = SyncEntry(
             path=action.path,
@@ -370,7 +370,7 @@ class SyncExecutor:
                 stat = export_path.stat()
 
                 action._transfer_detail = f"{_format_size(len(data))} (exported)"
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 entry = SyncEntry(
                     path=action.path,
                     pair_id=self._pair_id,
@@ -433,7 +433,7 @@ class SyncExecutor:
         if hasattr(self._drive_client, 'hash_field'):
             hash_field = self._drive_client.hash_field
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entry = SyncEntry(
             path=action.path,
             pair_id=self._pair_id,
@@ -480,7 +480,7 @@ class SyncExecutor:
 
         # Insert new DB entry for the destination path
         local_path = self._sanitize_path(action.dest_path)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stat = local_path.stat() if local_path.exists() else None
         entry = SyncEntry(
             path=action.dest_path,

@@ -7,7 +7,7 @@ import hashlib
 import re
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +55,7 @@ class MockDriveClient:
                 "mimeType": "application/octet-stream",
                 "md5Checksum": md5,
                 "modifiedTime": datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
+                    path.stat().st_mtime, tz=UTC
                 ).isoformat(),
                 "parents": ["root"],
                 "size": str(path.stat().st_size),
@@ -121,7 +121,7 @@ class MockDriveClient:
         is_folder: bool = False,
     ) -> dict[str, Any]:
         file_id = self._generate_id()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         if is_folder:
             meta = {
@@ -189,7 +189,7 @@ class MockDriveClient:
             meta["size"] = str(dest.stat().st_size)
             meta["_local_path"] = str(dest)
 
-        meta["modifiedTime"] = datetime.now(timezone.utc).isoformat()
+        meta["modifiedTime"] = datetime.now(UTC).isoformat()
         if mime_type:
             meta["mimeType"] = mime_type
 
@@ -225,7 +225,7 @@ class MockDriveClient:
             meta["name"] = new_name
             meta["_local_path"] = str(new_path)
 
-        meta["modifiedTime"] = datetime.now(timezone.utc).isoformat()
+        meta["modifiedTime"] = datetime.now(UTC).isoformat()
         log.debug("Mock moved: %s -> parent=%s name=%s", file_id, new_parent_id, new_name)
         return dict(meta)
 
@@ -352,7 +352,7 @@ class MockChangePoller:
                     "mimeType": "application/octet-stream",
                     "md5Checksum": md5,
                     "modifiedTime": datetime.fromtimestamp(
-                        path.stat().st_mtime, tz=timezone.utc
+                        path.stat().st_mtime, tz=UTC
                     ).isoformat(),
                     "parents": ["root"],
                     "size": str(path.stat().st_size),
@@ -391,7 +391,7 @@ class MockChangePoller:
                 if current_md5 != meta.get("md5Checksum"):
                     # File content changed on disk
                     meta["md5Checksum"] = current_md5
-                    meta["modifiedTime"] = datetime.now(timezone.utc).isoformat()
+                    meta["modifiedTime"] = datetime.now(UTC).isoformat()
 
                 old_md5 = old_snapshot.get(fid)
                 if old_md5 is not None and current_md5 != old_md5:
@@ -442,7 +442,7 @@ class MockChangePoller:
 
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         return current_token

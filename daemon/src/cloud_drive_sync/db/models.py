@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 
@@ -72,7 +72,7 @@ class ChangeToken:
 
     pair_id: str
     token: str
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -86,7 +86,7 @@ class ConflictRecord:
     remote_md5: str = ""
     local_mtime: float = 0.0
     remote_mtime: float = 0.0
-    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     resolved: bool = False
     resolution: str | None = None
 
@@ -124,7 +124,7 @@ class SyncLogEntry:
     """An entry in the sync activity log."""
 
     id: int | None = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     action: str = ""
     path: str = ""
     pair_id: str = ""
@@ -169,7 +169,7 @@ class PartialTransfer:
     bytes_transferred: int = 0
     total_size: int = 0
     temp_path: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_row(self) -> tuple:
         return (

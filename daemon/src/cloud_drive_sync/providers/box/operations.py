@@ -74,12 +74,11 @@ class BoxFileOps(CloudFileOps):
                     str(local_path), existing_id, attrs, file_size
                 )
             else:
-                with open(local_path, "rb") as f:
-                    files_obj = await self._client._run(
-                        self._client.client.uploads.upload_file_version,
-                        existing_id,
-                        f,
-                    )
+                def _upload_version():
+                    with open(local_path, "rb") as f:
+                        return self._client.client.uploads.upload_file_version(existing_id, f)
+
+                files_obj = await asyncio.to_thread(_upload_version)
                 result_item = files_obj.entries[0]
         else:
             # New file upload
@@ -92,12 +91,11 @@ class BoxFileOps(CloudFileOps):
                     str(local_path), attrs, file_size
                 )
             else:
-                with open(local_path, "rb") as f:
-                    files_obj = await self._client._run(
-                        self._client.client.uploads.upload_file,
-                        attrs,
-                        f,
-                    )
+                def _upload_new():
+                    with open(local_path, "rb") as f:
+                        return self._client.client.uploads.upload_file(attrs, f)
+
+                files_obj = await asyncio.to_thread(_upload_new)
                 result_item = files_obj.entries[0]
 
         elapsed = time.monotonic() - start_time

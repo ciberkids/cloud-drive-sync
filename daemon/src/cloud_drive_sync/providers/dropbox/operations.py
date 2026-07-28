@@ -95,8 +95,7 @@ class DropboxFileOps(CloudFileOps):
 
     async def _upload_simple(self, local_path: Path, dest_path: str, mode: Any) -> Any:
         """Upload a small file in a single request."""
-        with open(local_path, "rb") as f:
-            content = f.read()
+        content = await asyncio.to_thread(Path(local_path).read_bytes)
         return await self._client._run(
             self._client.dbx.files_upload, content, dest_path, mode=mode
         )

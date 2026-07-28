@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-# Import all provider packages to trigger registration
-import cloud_drive_sync.providers.gdrive  # noqa: F401
-import cloud_drive_sync.providers.dropbox  # noqa: F401
-import cloud_drive_sync.providers.onedrive  # noqa: F401
-import cloud_drive_sync.providers.nextcloud  # noqa: F401
-import cloud_drive_sync.providers.box  # noqa: F401
-import cloud_drive_sync.providers.proton  # noqa: F401
+import cloud_drive_sync.providers.box
+import cloud_drive_sync.providers.dropbox
 
+# Import all provider packages to trigger registration
+import cloud_drive_sync.providers.gdrive
+import cloud_drive_sync.providers.nextcloud
+import cloud_drive_sync.providers.onedrive
+import cloud_drive_sync.providers.proton  # noqa: F401
 from cloud_drive_sync.providers.registry import all_providers
 
 
@@ -25,7 +25,7 @@ class TestAuthProviderInstantiation:
 
     @pytest.mark.parametrize(
         "provider",
-        [p for p in all_providers()],
+        list(all_providers()),
         ids=[p.name for p in all_providers()],
     )
     def test_auth_class_instantiates(self, provider):
@@ -35,7 +35,7 @@ class TestAuthProviderInstantiation:
 
     @pytest.mark.parametrize(
         "provider",
-        [p for p in all_providers()],
+        list(all_providers()),
         ids=[p.name for p in all_providers()],
     )
     def test_auth_class_has_required_methods(self, provider):
@@ -48,7 +48,7 @@ class TestAuthProviderInstantiation:
 
     @pytest.mark.parametrize(
         "provider",
-        [p for p in all_providers()],
+        list(all_providers()),
         ids=[p.name for p in all_providers()],
     )
     def test_client_class_instantiation_signature(self, provider):
@@ -58,7 +58,7 @@ class TestAuthProviderInstantiation:
 
     @pytest.mark.parametrize(
         "provider",
-        [p for p in all_providers()],
+        list(all_providers()),
         ids=[p.name for p in all_providers()],
     )
     def test_ops_and_poller_classes(self, provider):

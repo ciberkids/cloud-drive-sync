@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import time
 import urllib.request
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.nextcloud
 
 _IMAGE = "nextcloud:30-apache"
 _ADMIN_USER = "admin"
-_ADMIN_PASS = "testpassword123"  # noqa: S105 — test-only credential
+_ADMIN_PASS = "testpassword123"  # test-only credential for a throwaway container
 _PORT = 18080
 _CONTAINER = "cds-test-nextcloud"
 
@@ -46,7 +46,7 @@ def nc_url() -> Iterator[str]:
         pytest.skip("No container runtime (docker/podman) on PATH")
 
     # Remove any leftover container from a previous interrupted run
-    subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True)
+    subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True, check=False)
 
     result = subprocess.run(
         [
@@ -59,6 +59,7 @@ def nc_url() -> Iterator[str]:
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         pytest.skip(f"Container start failed: {result.stderr.strip()}")
@@ -79,12 +80,12 @@ def nc_url() -> Iterator[str]:
         time.sleep(3)
 
     if not ready:
-        subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True)
+        subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True, check=False)
         pytest.skip("Nextcloud did not become ready within 120 s")
 
     yield url
 
-    subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True)
+    subprocess.run([rt, "rm", "-f", _CONTAINER], capture_output=True, check=False)
 
 
 class TestNextcloudContainerAuth:

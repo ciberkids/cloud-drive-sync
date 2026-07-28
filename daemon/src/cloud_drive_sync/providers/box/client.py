@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import aiofiles
+
 from cloud_drive_sync.providers.base import CloudClient
 from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.retry import async_retry
@@ -133,7 +135,10 @@ class BoxClient(CloudClient):
         is_folder: bool = False,
     ) -> dict[str, Any]:
         from box_sdk_gen.managers.folders import CreateFolderParent
-        from box_sdk_gen.managers.uploads import UploadFileAttributes, UploadFileAttributesParentField
+        from box_sdk_gen.managers.uploads import (
+            UploadFileAttributes,
+            UploadFileAttributesParentField,
+        )
 
         if is_folder:
             folder = await self._run(
@@ -152,12 +157,11 @@ class BoxClient(CloudClient):
             if file_size > 50 * 1024 * 1024:
                 result = await self._chunked_upload(content_path, attrs, file_size)
             else:
-                with open(content_path, "rb") as f:
-                    files_obj = await self._run(
-                        self._client.uploads.upload_file,
-                        attrs,
-                        f,
-                    )
+                def _upload_new():
+                    with open(content_path, "rb") as f:
+                        return self._client.uploads.upload_file(attrs, f)
+
+                files_obj = await asyncio.to_thread(_upload_new)
                 result = files_obj.entries[0]
             return _normalize_item(result)
 
@@ -201,12 +205,11 @@ class BoxClient(CloudClient):
                 attrs = UploadFileVersionAttributes(name=new_name or "")
                 result = await self._chunked_upload_version(content_path, file_id, attrs, file_size)
             else:
-                with open(content_path, "rb") as f:
-                    files_obj = await self._run(
-                        self._client.uploads.upload_file_version,
-                        file_id,
-                        f,
-                    )
+                def _upload_version():
+                    with open(content_path, "rb") as f:
+                        return self._client.uploads.upload_file_version(file_id, f)
+
+                files_obj = await asyncio.to_thread(_upload_version)
                 result = files_obj.entries[0]
             return _normalize_item(result)
 
@@ -328,10 +331,12 @@ class BoxClient(CloudClient):
         parts = []
         sha1 = hashlib.sha1()
 
-        with open(file_path, "rb") as f:
+        # Async file I/O: part-sized reads on the event loop would stall every
+        # other sync pair once per part on a multi-GB upload.
+        async with aiofiles.open(file_path, "rb") as f:
             offset = 0
             while offset < file_size:
-                chunk = f.read(part_size)
+                chunk = await f.read(part_size)
                 sha1.update(chunk)
                 chunk_size = len(chunk)
                 content_range = f"bytes {offset}-{offset + chunk_size - 1}/{file_size}"

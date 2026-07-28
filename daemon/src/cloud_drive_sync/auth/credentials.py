@@ -37,6 +37,7 @@ def _get_machine_id() -> bytes:
             result = subprocess.run(
                 ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
                 capture_output=True, text=True, timeout=5,
+                check=False,  # falls through to the default key if this fails
             )
             for line in result.stdout.splitlines():
                 if "IOPlatformUUID" in line:

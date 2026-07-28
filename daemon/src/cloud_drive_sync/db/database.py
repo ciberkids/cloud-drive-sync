@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -224,7 +224,7 @@ class Database:
         Bounded per call so the first run against an already-huge table cannot
         stall the caller's loop; the next run continues where this one stopped.
         """
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
         cursor = await self.db.execute(
             """DELETE FROM sync_log WHERE id IN (
                    SELECT id FROM sync_log WHERE timestamp < ? LIMIT ?
@@ -269,8 +269,11 @@ class Database:
                         "ALTER TABLE sync_state ADD COLUMN remote_native_mime TEXT"
                     )
                     log.info("Migrated database to v2: added remote_native_mime column")
-                except Exception:
-                    pass  # Column may already exist
+                except Exception as exc:
+                    # Expected when re-running against an already-migrated database.
+                    # Logged so a genuine failure (disk full, corruption) leaves a trace
+                    # instead of the schema version being bumped over a missing column.
+                    log.debug("v2 migration step skipped: %s", exc)
             # Migration from v2 -> v3: add partial_transfers table
             if current_version < 3:
                 try:
@@ -293,8 +296,8 @@ class Database:
                         """
                     )
                     log.info("Migrated database to v3: added partial_transfers table")
-                except Exception:
-                    pass  # Table may already exist
+                except Exception as exc:
+                    log.debug("v3 migration step skipped: %s", exc)
             # Migration from v3 -> v4: add reason column to sync_log
             if current_version < 4:
                 try:
@@ -302,8 +305,8 @@ class Database:
                         "ALTER TABLE sync_log ADD COLUMN reason TEXT"
                     )
                     log.info("Migrated database to v4: added reason column to sync_log")
-                except Exception:
-                    pass  # Column may already exist
+                except Exception as exc:
+                    log.debug("v4 migration step skipped: %s", exc)
             await self.db.execute(
                 "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
             )
@@ -551,7 +554,7 @@ class Database:
         """Delete partial transfer records older than max_age_days."""
         from datetime import timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=max_age_days)).isoformat()
         cursor = await self.db.execute(
             "DELETE FROM partial_transfers WHERE created_at < ?", (cutoff,)
         )

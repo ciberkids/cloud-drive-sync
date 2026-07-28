@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from cloud_drive_sync.providers.base import CloudClient
@@ -142,8 +143,9 @@ class DropboxClient(CloudClient):
                 # Upload empty file
                 content = b""
             else:
-                with open(content_path, "rb") as f:
-                    content = f.read()
+                # Read in a thread: reading a large file here would block every
+                # other pair's sync, the HTTP UI and the IPC socket meanwhile.
+                content = await asyncio.to_thread(Path(content_path).read_bytes)
 
             mode = dropbox.files.WriteMode.add
             result = await self._run(
@@ -173,8 +175,7 @@ class DropboxClient(CloudClient):
             current_path = result.metadata.path_lower
 
         if content_path:
-            with open(content_path, "rb") as f:
-                content = f.read()
+            content = await asyncio.to_thread(Path(content_path).read_bytes)
             mode = dropbox.files.WriteMode.overwrite
             result = await self._run(
                 self._dbx.files_upload, content, current_path, mode=mode

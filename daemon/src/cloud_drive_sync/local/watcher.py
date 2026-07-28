@@ -151,7 +151,7 @@ class DirectoryWatcher:
                 change = await asyncio.wait_for(self._raw_queue.get(), timeout=0.2)
                 key = change.path
                 pending[key] = _PendingEvent(change)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             # Flush events older than debounce_delay

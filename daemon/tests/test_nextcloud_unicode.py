@@ -129,7 +129,8 @@ async def test_upload_file_finds_node_with_nfd_filename():
     import tempfile
     from pathlib import Path
     from types import ModuleType
-    from unittest.mock import patch as _patch, MagicMock as MM
+    from unittest.mock import MagicMock as MM
+    from unittest.mock import patch as _patch
 
     async def fake_to_thread(fn, *args, **kwargs):
         return fn()

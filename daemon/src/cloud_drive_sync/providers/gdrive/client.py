@@ -44,8 +44,8 @@ class GoogleDriveClient(CloudClient):
             proxy_url = proxy.https_proxy or proxy.http_proxy
             proxy_info = parse_proxy_url(proxy_url)
             if proxy_info:
-                import httplib2
                 import google_auth_httplib2
+                import httplib2
                 http = httplib2.Http(proxy_info=proxy_info)
                 authed_http = google_auth_httplib2.AuthorizedHttp(credentials, http=http)
                 self._service = build("drive", "v3", http=authed_http, cache_discovery=False)

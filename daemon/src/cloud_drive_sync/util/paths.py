@@ -82,8 +82,8 @@ def _migrate_old_paths() -> None:
     """Copy files from old gdrive-sync directories to cloud-drive-sync if needed."""
     if sys.platform != "linux":
         return
-    import shutil
     import logging
+    import shutil
 
     log = logging.getLogger("cloud_drive_sync.paths")
 

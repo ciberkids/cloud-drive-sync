@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cloud_drive_sync.db.models import (
     ChangeToken,
@@ -15,7 +15,7 @@ from cloud_drive_sync.db.models import (
 
 class TestSyncEntry:
     def test_to_row_full(self):
-        dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
         entry = SyncEntry(
             path="docs/readme.md",
             local_md5="abc",
@@ -43,7 +43,7 @@ class TestSyncEntry:
         assert row[7] is None  # last_synced
 
     def test_from_row_roundtrip(self):
-        dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, tzinfo=UTC)
         original = SyncEntry(
             path="test.txt",
             local_md5="aaa",
@@ -86,7 +86,7 @@ class TestSyncEntry:
 
 class TestConflictRecord:
     def test_to_row(self):
-        dt = datetime(2025, 3, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 3, 1, tzinfo=UTC)
         record = ConflictRecord(
             id=5,
             path="conflict.txt",
@@ -107,7 +107,7 @@ class TestConflictRecord:
         )
 
     def test_from_row_roundtrip(self):
-        dt = datetime(2025, 3, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 3, 1, tzinfo=UTC)
         row = (
             10, "conflict.txt", "p0", "aaa", "bbb",
             100.0, 200.0, dt.isoformat(), 1, "keep_both",
@@ -134,7 +134,7 @@ class TestConflictRecord:
 
 class TestSyncLogEntry:
     def test_to_row(self):
-        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=UTC)
         entry = SyncLogEntry(
             id=1,
             timestamp=dt,
@@ -151,7 +151,7 @@ class TestSyncLogEntry:
         )
 
     def test_from_row_roundtrip(self):
-        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=UTC)
         row = (42, dt.isoformat(), "download", "doc.pdf", "p1", "error", "network timeout", "remote only")
         entry = SyncLogEntry.from_row(row)
         assert entry.id == 42
@@ -165,23 +165,23 @@ class TestSyncLogEntry:
 
     def test_from_row_without_reason_column(self):
         """from_row must tolerate old DB rows without a reason column."""
-        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 1, 10, 30, 0, tzinfo=UTC)
         row = (42, dt.isoformat(), "upload", "file.txt", "p0", "ok", "uploaded successfully")
         entry = SyncLogEntry.from_row(row)
         assert entry.reason == ""
 
     def test_default_timestamp_is_utc(self):
         entry = SyncLogEntry()
-        assert entry.timestamp.tzinfo == timezone.utc
+        assert entry.timestamp.tzinfo == UTC
 
 
 class TestChangeToken:
     def test_default_updated_at(self):
         ct = ChangeToken(pair_id="p0", token="tok")
-        assert ct.updated_at.tzinfo == timezone.utc
+        assert ct.updated_at.tzinfo == UTC
 
     def test_fields(self):
-        dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, tzinfo=UTC)
         ct = ChangeToken(pair_id="p1", token="abc", updated_at=dt)
         assert ct.pair_id == "p1"
         assert ct.token == "abc"

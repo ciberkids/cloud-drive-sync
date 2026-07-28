@@ -33,11 +33,9 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
-    # Pinned deliberately. Unpinned, CI floats to the newest ruff and can go red
-    # with no code change: 0.16.0 promoted a batch of rules and reports 183
-    # findings against code that 0.15.x passes cleanly. Raise this intentionally,
-    # with the cleanup, rather than letting a release decide when CI breaks.
-    "ruff>=0.15.4,<0.16",
+    # No upper bound needed: [tool.ruff.lint].select below pins the rule set
+    # explicitly, so a new ruff release cannot silently enable more rules.
+    "ruff>=0.15.4",
     "httpx>=0.25.0",
     # The MCP transport tests need the real SDK. CI installs only [dev], so
     # without this the transport layer would go untested there.
@@ -62,3 +60,48 @@ markers = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint]
+# Selected explicitly, on purpose. With no `select`, ruff applies its *default*
+# rule set — and that default is not stable across releases: 0.15.4 enabled 59
+# rules here, 0.16.0 enabled 413. CI installs ruff unpinned, so the upgrade
+# turned main red with no code change, attaching the failure to whatever commit
+# happened to be next. An explicit list makes the rule set our decision and lets
+# the version float safely.
+#
+# This is ruff's classic default (E4/E7/E9 + F) — the standard the codebase was
+# written and reviewed against — plus the specific rules that caught real bugs:
+select = [
+    "E4",        # pycodestyle: imports
+    "E7",        # pycodestyle: statements
+    "E9",        # pycodestyle: runtime errors
+    "F",         # pyflakes
+    "W",         # pycodestyle warnings (trailing whitespace, etc.)
+    "I",         # import sorting
+    "UP",        # pyupgrade — keeps us on current syntax for the pinned py312
+    "C4",        # flake8-comprehensions
+    "PIE",       # flake8-pie
+    "SIM117",    # nested `with` that should be combined
+    "DTZ",       # naive datetimes: a tz-aware min_date crashed the sync pass
+    "ASYNC230",  # blocking file I/O in async: 10 MB reads stalled the event loop
+    "PLW1510",   # subprocess.run without explicit check=
+    "RUF100",    # stale noqa directives
+]
+
+# Deliberately not selected, with reasons — so the next person does not have to
+# rediscover why:
+#   BLE001 (48 sites)  broad `except Exception` is the graceful-degradation
+#                      pattern this daemon is built on: an optional provider or
+#                      a missing extra must never take the process down.
+#                      Narrowing them would trade real resilience for tidiness.
+#   S110   (6 sites)   the remaining silent handlers are documented fallbacks
+#                      with a default result. The three that mattered — schema
+#                      migrations, where a swallowed failure let schema_version
+#                      advance past a column that was never added — now log.
+#   S101/S105/S106     assert and "password"-shaped literals in tests; almost
+#                      entirely false positives (including a Dropbox API
+#                      parameter literally named token_access_type).
+#   E501               line length is advisory here; line-length above formats.
+#   D, ANN, COM, TRY, EM, ARG, PTH
+#                      style families with 100s of findings and no defect risk.
+#                      Adopting any of them should be its own change.

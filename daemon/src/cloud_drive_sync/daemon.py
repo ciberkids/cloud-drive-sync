@@ -85,16 +85,19 @@ class Daemon:
                 client, file_ops, change_poller = await self._setup_demo()
                 clients = {"": client} if client else {}
             else:
-                from cloud_drive_sync.auth.credentials import load_account_credentials, load_credentials
-                from cloud_drive_sync.drive.client import DriveClient
+                import cloud_drive_sync.providers.box
+                import cloud_drive_sync.providers.dropbox
 
                 # Ensure all providers are registered (each __init__ guards missing deps)
-                import cloud_drive_sync.providers.gdrive  # noqa: F401
-                import cloud_drive_sync.providers.nextcloud  # noqa: F401
-                import cloud_drive_sync.providers.dropbox  # noqa: F401
-                import cloud_drive_sync.providers.onedrive  # noqa: F401
-                import cloud_drive_sync.providers.box  # noqa: F401
+                import cloud_drive_sync.providers.gdrive
+                import cloud_drive_sync.providers.nextcloud
+                import cloud_drive_sync.providers.onedrive
                 import cloud_drive_sync.providers.proton  # noqa: F401
+                from cloud_drive_sync.auth.credentials import (
+                    load_account_credentials,
+                    load_credentials,
+                )
+                from cloud_drive_sync.drive.client import DriveClient
 
                 client = None
                 file_ops = None
@@ -475,6 +478,7 @@ class Daemon:
         if self._db is None:
             return
         import asyncio
+
         from cloud_drive_sync.db.models import SyncLogEntry
 
         entry = SyncLogEntry(

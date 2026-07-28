@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from cloud_drive_sync.providers.gdrive.operations import (
     GoogleDriveFileOps as FileOperations,
+)
+from cloud_drive_sync.providers.gdrive.operations import (
     _format_size,
     _format_speed,
 )

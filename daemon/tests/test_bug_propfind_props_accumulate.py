@@ -171,7 +171,7 @@ def test_repeated_calls_do_not_grow_the_shared_list(fake_nc):
     for _ in range(50):
         fake_nc._files.get_propfind_properties(CAPS_WITH_LOCKING)
 
-    assert fake_nc._files.PROPFIND_PROPERTIES == before
+    assert before == fake_nc._files.PROPFIND_PROPERTIES
 
 
 def test_listdir_property_count_stays_constant_across_calls(fake_nc):
@@ -276,7 +276,7 @@ def test_apply_survives_a_renamed_listdir(fake_nc, caplog):
     assert fake_nc.files.get_propfind_properties is nc_patch._get_propfind_properties
     before = list(fake_nc._files.PROPFIND_PROPERTIES)
     fake_nc._files.get_propfind_properties(CAPS_WITH_LOCKING)
-    assert fake_nc._files.PROPFIND_PROPERTIES == before
+    assert before == fake_nc._files.PROPFIND_PROPERTIES
 
 
 def test_apply_still_patches_what_it_can_when_a_module_disappears(fake_nc, monkeypatch):
@@ -344,7 +344,7 @@ def test_real_nc_py_api_is_patched_by_provider_import():
     before = list(_files.PROPFIND_PROPERTIES)
     for _ in range(25):
         files.get_propfind_properties({"files": {"locking": "1.0"}})
-    assert _files.PROPFIND_PROPERTIES == before
+    assert before == _files.PROPFIND_PROPERTIES
 
 
 # ── Issue #50: expensive unused properties ──────────────────────────

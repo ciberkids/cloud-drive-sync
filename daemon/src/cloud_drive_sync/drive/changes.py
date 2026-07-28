@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from cloud_drive_sync.providers.gdrive.changes import (
     GoogleDriveChangePoller as ChangePoller,
+)
+from cloud_drive_sync.providers.gdrive.changes import (
     RemoteChange,
 )
 

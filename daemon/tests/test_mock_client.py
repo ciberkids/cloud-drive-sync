@@ -173,7 +173,7 @@ class TestMockFileOperations:
 
     @pytest.mark.asyncio
     async def test_upload_with_custom_name(self, ops: MockFileOperations, dirs):
-        local, remote = dirs
+        local, _remote = dirs
         src = local / "original.txt"
         src.write_text("data")
 
@@ -182,7 +182,7 @@ class TestMockFileOperations:
 
     @pytest.mark.asyncio
     async def test_download_creates_local_file(self, ops: MockFileOperations, dirs):
-        local, remote = dirs
+        local, _remote = dirs
         src = local / "src.txt"
         src.write_text("source data")
 

@@ -5,8 +5,9 @@ must be removed so the counter reflects only current files.
 """
 
 import pytest
+
 from cloud_drive_sync.db.database import Database
-from cloud_drive_sync.db.models import SyncEntry, FileState
+from cloud_drive_sync.db.models import FileState, SyncEntry
 
 
 @pytest.fixture

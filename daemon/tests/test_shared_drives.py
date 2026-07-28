@@ -1,6 +1,8 @@
 """Tests for Shared Drives support."""
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from cloud_drive_sync.drive.client import DriveClient
 
 

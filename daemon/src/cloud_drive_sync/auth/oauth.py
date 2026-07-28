@@ -5,8 +5,14 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+if TYPE_CHECKING:
+    # Annotation only. `from __future__ import annotations` keeps it lazy, so
+    # this costs nothing at import time but gives type checkers a real name.
+    from google.oauth2.credentials import Credentials
 
 from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.paths import config_dir
@@ -60,7 +66,7 @@ def _create_oauth_flow() -> InstalledAppFlow:
 def run_oauth_flow(
     client_secrets: Path | None = None,
     timeout: int = AUTH_TIMEOUT,
-) -> "google.oauth2.credentials.Credentials":  # noqa: F821
+) -> Credentials:
     """Run the OAuth2 browser-based consent flow.
 
     Opens the user's default browser for Google account authorization.

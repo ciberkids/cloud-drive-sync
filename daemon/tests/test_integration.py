@@ -27,7 +27,7 @@ def demo_dirs(tmp_path: Path):
 
 @pytest.fixture
 def demo_config(demo_dirs):
-    local, remote = demo_dirs
+    local, _remote = demo_dirs
     config = Config()
     config.sync = SyncConfig(
         poll_interval=1,
@@ -145,7 +145,7 @@ async def test_mock_client_delete(mock_client: MockDriveClient, demo_dirs):
 
 @pytest.mark.integration
 async def test_mock_client_trash(mock_client: MockDriveClient, demo_dirs):
-    local, remote = demo_dirs
+    local, _remote = demo_dirs
     src = local / "trash_me.txt"
     src.write_text("to trash")
     created = await mock_client.create_file("trash_me.txt", "root", content_path=str(src))
@@ -216,7 +216,7 @@ async def test_mock_poller_detects_new_file(
     (remote / "new_file.txt").write_text("appeared externally")
 
     # Poll should detect it
-    changes, new_token = await mock_poller.poll_changes(token)
+    changes, _new_token = await mock_poller.poll_changes(token)
     assert len(changes) >= 1
     new_file_changes = [c for c in changes if c.file_name == "new_file.txt"]
     assert len(new_file_changes) == 1

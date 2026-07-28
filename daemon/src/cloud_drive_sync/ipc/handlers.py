@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 from cloud_drive_sync.config import Config, SyncPair, SyncRules
 from cloud_drive_sync.ipc.protocol import (
@@ -143,11 +143,15 @@ class RequestHandler:
 
     async def _get_status(self, params: dict) -> dict:
         import datetime
+
         from cloud_drive_sync.util.paths import socket_path
 
         uptime = time.monotonic() - self._start_time
         sock_path = str(socket_path())
-        started_at = (datetime.datetime.now() - datetime.timedelta(seconds=uptime)).strftime("%Y-%m-%d %H:%M")
+        started_at = (
+            datetime.datetime.now(datetime.UTC).astimezone()
+            - datetime.timedelta(seconds=uptime)
+        ).strftime("%Y-%m-%d %H:%M")
 
         from cloud_drive_sync import __build_date__
 
@@ -390,7 +394,7 @@ class RequestHandler:
         return {"status": "resumed" if ok else "not_found"}
 
     # Maps UI filter tab names → (status, actions) for server-side filtering.
-    _FILTER_TO_ACTIONS: dict[str, list[str]] = {
+    _FILTER_TO_ACTIONS: ClassVar[dict[str, list[str]]] = {
         "upload": ["upload"],
         "download": ["download"],
         "delete": ["delete_local", "delete_remote"],

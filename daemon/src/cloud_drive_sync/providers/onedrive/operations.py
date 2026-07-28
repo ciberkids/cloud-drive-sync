@@ -105,10 +105,12 @@ class OneDriveFileOps(CloudFileOps):
             suffix=".tmp",
         )
         try:
-            async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
-                async with client.stream(
+            async with (
+                httpx.AsyncClient(timeout=300, follow_redirects=True) as client,
+                client.stream(
                     "GET", download_url, headers={"Authorization": f"Bearer {token}"}
-                ) as resp:
+                ) as resp,
+            ):
                     resp.raise_for_status()
                     with os.fdopen(fd, "wb") as tmp_file:
                         async for chunk in resp.aiter_bytes(chunk_size=256 * 1024):

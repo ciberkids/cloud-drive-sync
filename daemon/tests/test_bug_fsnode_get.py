@@ -24,7 +24,6 @@ from cloud_drive_sync.providers.nextcloud.changes import (
 )
 from cloud_drive_sync.providers.nextcloud.client import NextcloudClient
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_fsnode_info(**kwargs) -> SimpleNamespace:

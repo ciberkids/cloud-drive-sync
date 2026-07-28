@@ -222,7 +222,7 @@ class CloudChangePoller(ABC):
 
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         return current_token

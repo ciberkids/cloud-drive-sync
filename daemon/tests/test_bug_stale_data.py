@@ -218,7 +218,11 @@ async def test_engine_startup_does_not_clean_stale_pairs(
 
     On daemon restart, old pair data should be purged.
     """
-    from cloud_drive_sync.drive.mock_client import MockDriveClient, MockChangePoller, MockFileOperations
+    from cloud_drive_sync.drive.mock_client import (
+        MockChangePoller,
+        MockDriveClient,
+        MockFileOperations,
+    )
 
     await _populate_stale_entries(db)
 
