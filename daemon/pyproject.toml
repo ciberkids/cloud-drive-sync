@@ -27,7 +27,11 @@ dropbox = ["dropbox>=12.0.0"]
 onedrive = ["msgraph-sdk>=1.0.0", "azure-identity>=1.15.0"]
 nextcloud = ["nc-py-api>=0.17.0", "httpx>=0.25.0"]
 box = ["box-sdk-gen>=1.0.0"]
-mcp = ["mcp>=1.28.0", "uvicorn>=0.30.0"]
+# Upper bound is deliberate. mcp 2.0.0 removed Server.list_tools, so an
+# unbounded >= let CI float onto a breaking major and go red with no code change
+# — the same failure mode as the unpinned ruff. Moving to 2.x is a migration to
+# do on purpose, not something a release should decide for us.
+mcp = ["mcp>=1.28.0,<2", "uvicorn>=0.30.0"]
 all-providers = ["cloud-drive-sync[dropbox,onedrive,nextcloud,box]"]
 dev = [
     "pytest>=7.4.0",
@@ -39,7 +43,7 @@ dev = [
     "httpx>=0.25.0",
     # The MCP transport tests need the real SDK. CI installs only [dev], so
     # without this the transport layer would go untested there.
-    "mcp>=1.28.0",
+    "mcp>=1.28.0,<2",
     "uvicorn>=0.30.0",
 ]
 
