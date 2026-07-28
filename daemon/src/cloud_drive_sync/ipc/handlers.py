@@ -72,6 +72,10 @@ class RequestHandler:
             "list_local_dirs": self._list_local_dirs,
             "mkdir_local": self._mkdir_local,
             "repair": self._repair,
+            "get_pending_deletions": self._get_pending_deletions,
+            "set_max_deletions": self._set_max_deletions,
+            "get_max_deletions": self._get_max_deletions,
+            "resolve_pending_deletions": self._resolve_pending_deletions,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -140,6 +144,29 @@ class RequestHandler:
             else:
                 raise TypeError("No sync pairs configured")
         return pair_id
+
+    @staticmethod
+    def _engine_pair_id(pair_id: str | int) -> str:
+        """Normalise a client pair id to the engine/database form.
+
+        The client API identifies pairs by list index ("0", "1"), while the engine
+        and the database use "pair_0". Both forms are accepted here so a caller
+        that already has the engine form is not rejected.
+        """
+        text = str(pair_id)
+        return text if text.startswith("pair_") else f"pair_{int(text)}"
+
+    def _pair_by_id(self, pair_id: str | int):
+        """Resolve a client pair id to its SyncPair, raising on a bad index."""
+        text = str(pair_id)
+        raw = text[len("pair_"):] if text.startswith("pair_") else text
+        try:
+            index = int(raw)
+        except (TypeError, ValueError):
+            raise TypeError("Invalid pair_id") from None
+        if index < 0 or index >= len(self._config.sync.pairs):
+            raise TypeError("Invalid pair_id")
+        return self._config.sync.pairs[index]
 
     async def _get_status(self, params: dict) -> dict:
         import datetime
@@ -221,6 +248,97 @@ class RequestHandler:
             "live_transfers": live_transfers,
             "daemon": daemon_info,
             "conflict_strategy": self._config.sync.conflict_strategy,
+        }
+
+    async def _get_max_deletions(self, params: dict) -> dict:
+        """Current delete fail-safe limits: global default and per-pair overrides."""
+        return {
+            "max_deletions_per_sync": self._config.sync.max_deletions_per_sync,
+            "pairs": {
+                f"pair_{i}": p.max_deletions_per_sync
+                for i, p in enumerate(self._config.sync.pairs)
+            },
+        }
+
+    async def _set_max_deletions(self, params: dict) -> dict:
+        """Set the delete fail-safe limit, globally or for one pair.
+
+        ``0`` disables the guard; ``null`` on a pair restores inheritance.
+        """
+        params = params or {}
+        if "max_deletions_per_sync" not in params:
+            raise TypeError("max_deletions_per_sync is required")
+        value = params["max_deletions_per_sync"]
+        pair_id = params.get("pair_id")
+
+        if value is not None:
+            value = int(value)
+            if value < 0:
+                raise TypeError("max_deletions_per_sync cannot be negative")
+
+        if pair_id:
+            pair = self._pair_by_id(pair_id)
+            pair.max_deletions_per_sync = value
+        else:
+            if value is None:
+                raise TypeError("the global limit cannot be null")
+            self._config.sync.max_deletions_per_sync = value
+
+        self._config.save()
+        log.info("Delete fail-safe limit set to %s for %s", value, pair_id or "all pairs")
+        return {"status": "ok", "pair_id": pair_id, "max_deletions_per_sync": value}
+
+    async def _get_pending_deletions(self, params: dict) -> list[dict]:
+        """Deletion batches the fail-safe refused, awaiting a decision (#53)."""
+        db = self._db or (self._engine._db if self._engine else None)
+        if db is None:
+            return []
+        pair_id = (params or {}).get("pair_id")
+        return await db.get_pending_deletions(
+            self._engine_pair_id(pair_id) if pair_id else None
+        )
+
+    async def _resolve_pending_deletions(self, params: dict) -> dict:
+        """Approve or reject a refused deletion batch.
+
+        Approving does not replay the deletions directly — it clears the block and
+        resumes the pair, and the next sync pass re-plans them. Replaying a stored
+        batch would act on a snapshot that may be minutes old; re-planning means
+        the daemon deletes what is actually still missing. If the user meanwhile
+        restored the files, approving deletes nothing, which is the safe outcome.
+        """
+        params = params or {}
+        pair_id = params.get("pair_id")
+        if not pair_id:
+            raise TypeError("pair_id is required")
+        approve = bool(params.get("approve", False))
+        engine_id = self._engine_pair_id(pair_id)
+
+        db = self._db or (self._engine._db if self._engine else None)
+        if db is None:
+            raise RuntimeError("Database not available")
+
+        pending = await db.get_pending_deletions(engine_id)
+        if not pending:
+            return {"status": "not_found", "pair_id": pair_id}
+
+        await db.clear_pending_deletions(engine_id)
+
+        if approve:
+            if self._engine:
+                await self._engine.approve_pending_deletions(engine_id)
+            log.warning(
+                "User approved %d refused deletion batch(es) for %s; sync resumed",
+                len(pending),
+                pair_id,
+            )
+        else:
+            log.info("User rejected the refused deletions for %s; pair stays paused", pair_id)
+
+        return {
+            "status": "approved" if approve else "rejected",
+            "pair_id": pair_id,
+            "batches": len(pending),
         }
 
     async def _database_info(self) -> dict | None:

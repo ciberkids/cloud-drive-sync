@@ -685,6 +685,13 @@ body {
   white-space: nowrap;
 }
 
+/* Inline warning under a settings field whose value weakens a safety guard. */
+.field-warning {
+  color: var(--warning);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
 /* Shown only when a meaningful share of a large database is dead space, so it
    reads as a hint rather than an error the user must act on. */
 .daemon-warn {

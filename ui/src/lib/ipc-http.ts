@@ -11,6 +11,8 @@ import type {
   ConflictRecord,
   LogEntry,
   ConflictResolution,
+  DeleteFailsafeLimits,
+  PendingDeletion,
 } from "./types";
 
 async function get<T>(path: string): Promise<T> {
@@ -298,4 +300,31 @@ export async function setAccountMaxTransfers(
   return put(`accounts/${encodeURIComponent(email)}/max-transfers`, {
     max_concurrent_transfers: maxConcurrentTransfers,
   });
+}
+
+// ── Delete fail-safe (#53) ──────────────────────────────────────────
+
+export async function getMaxDeletions(): Promise<DeleteFailsafeLimits> {
+  return get("settings/max-deletions");
+}
+
+export async function setMaxDeletions(
+  maxDeletionsPerSync: number | null,
+  pairId?: string
+): Promise<{ status: string }> {
+  return put("settings/max-deletions", {
+    max_deletions_per_sync: maxDeletionsPerSync,
+    pair_id: pairId,
+  });
+}
+
+export async function getPendingDeletions(pairId?: string): Promise<PendingDeletion[]> {
+  return get(pairId ? `pending-deletions?pair_id=${encodeURIComponent(pairId)}` : "pending-deletions");
+}
+
+export async function resolvePendingDeletions(
+  pairId: string,
+  approve: boolean
+): Promise<{ status: string; batches: number }> {
+  return post(`pending-deletions/${encodeURIComponent(pairId)}/resolve`, { approve });
 }

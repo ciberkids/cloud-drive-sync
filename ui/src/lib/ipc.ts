@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  DeleteFailsafeLimits,
+  PendingDeletion,
   DaemonStatus,
   SyncPair,
   ConflictRecord,
@@ -246,4 +248,34 @@ export async function setAccountMaxTransfers(
   maxConcurrentTransfers: number
 ): Promise<unknown> {
   return invoke("set_account_max_transfers", { email, maxConcurrentTransfers });
+}
+
+// ── Delete fail-safe (#53) ──────────────────────────────────────────
+
+export async function getMaxDeletions(): Promise<DeleteFailsafeLimits> {
+  return invoke<DeleteFailsafeLimits>("get_max_deletions");
+}
+
+export async function setMaxDeletions(
+  maxDeletionsPerSync: number | null,
+  pairId?: string
+): Promise<{ status: string }> {
+  return invoke<{ status: string }>("set_max_deletions", {
+    maxDeletionsPerSync,
+    pairId,
+  });
+}
+
+export async function getPendingDeletions(pairId?: string): Promise<PendingDeletion[]> {
+  return invoke<PendingDeletion[]>("get_pending_deletions", { pairId });
+}
+
+export async function resolvePendingDeletions(
+  pairId: string,
+  approve: boolean
+): Promise<{ status: string; batches: number }> {
+  return invoke<{ status: string; batches: number }>("resolve_pending_deletions", {
+    pairId,
+    approve,
+  });
 }

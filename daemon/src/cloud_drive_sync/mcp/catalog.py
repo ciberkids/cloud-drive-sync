@@ -39,6 +39,10 @@ NEVER_EXPOSED: dict[str, str] = {
     "get_notification_prefs": "desktop-only concern, no agent value",
     "set_notification_prefs": "desktop-only concern, no agent value",
     "list_local_dirs": "enumerates the host filesystem beyond synced state",
+    "resolve_pending_deletions": (
+        "the delete fail-safe exists to put a human in the loop; letting an "
+        "assistant approve a refused mass deletion defeats its entire purpose"
+    ),
     "mkdir_local": "creates directories anywhere the daemon can write",
 }
 
@@ -122,6 +126,21 @@ READ_TOOLS: tuple[McpTool, ...] = (
         "Sync state of one file: whether it is synced, pending, conflicted or errored, "
         "with its hashes and last-sync time. Use for 'why has this file not synced?'.",
         _schema({"path": {"type": "string", "description": "Path relative to the pair's local root."}}, ["path"]),
+    ),
+    McpTool(
+        "list_pending_deletions",
+        "get_pending_deletions",
+        "Deletion batches the delete fail-safe refused because they looked like "
+        "accidental mass deletion. Each blocks its pair until a human approves or "
+        "rejects it. Report the counts and sample paths and let the user decide — "
+        "do not approve on their behalf.",
+        _schema({"pair_id": _PAIR_ID}),
+    ),
+    McpTool(
+        "get_delete_failsafe_limit",
+        "get_max_deletions",
+        "The delete fail-safe limits: the global maximum deletions per sync pass "
+        "and any per-pair overrides. 0 means the guard is disabled.",
     ),
     McpTool(
         "list_remote_folders",
@@ -268,6 +287,18 @@ WRITE_TOOLS: tuple[McpTool, ...] = (
             "email": {"type": "string"},
             "max_concurrent_transfers": {"type": "integer", "minimum": 1},
         }, ["email", "max_concurrent_transfers"]),
+        writes=True,
+    ),
+    McpTool(
+        "set_delete_failsafe_limit",
+        "set_max_deletions",
+        "Change the maximum deletions allowed per sync pass, globally or for one "
+        "pair. Raising it or setting 0 weakens protection against a wiped local "
+        "disk propagating to the cloud, so confirm the user intends that.",
+        _schema({
+            "max_deletions_per_sync": {"type": "integer", "minimum": 0},
+            "pair_id": _PAIR_ID,
+        }, ["max_deletions_per_sync"]),
         writes=True,
     ),
     McpTool(

@@ -192,3 +192,22 @@ export async function getProxy() { return { http_proxy: "", https_proxy: "", no_
 export async function listRemoteFolders() { return { folders: [{ id: "f1", name: "Documents" }, { id: "f2", name: "Photos" }, { id: "f3", name: "Work" }], parent_id: "root" }; }
 export async function setAccountMaxTransfers() { return {}; }
 export async function mkdirLocal() { return { ok: true }; }
+
+// ── Delete fail-safe (#53) ──────────────────────────────────────────
+
+export async function getMaxDeletions() {
+  return { max_deletions_per_sync: 100, pairs: { pair_0: null, pair_1: null } };
+}
+
+export async function setMaxDeletions(_max: number | null, _pairId?: string) {
+  return { status: "ok" };
+}
+
+export async function getPendingDeletions() {
+  // Empty in demo mode: the healthy state is what screenshots should show.
+  return [];
+}
+
+export async function resolvePendingDeletions(_pairId: string, _approve: boolean) {
+  return { status: "approved", batches: 1 };
+}

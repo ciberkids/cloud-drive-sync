@@ -1,5 +1,20 @@
 export type ConflictStrategy = "keep_both" | "newest_wins" | "ask_user" | "local_wins" | "remote_wins";
 
+export interface PendingDeletion {
+  pair_id: string;
+  direction: "local" | "remote";
+  count: number;
+  tracked: number;
+  limit: number;
+  sample: string[];
+  created_at: string;
+}
+
+export interface DeleteFailsafeLimits {
+  max_deletions_per_sync: number;
+  pairs: Record<string, number | null>;
+}
+
 export interface DatabaseInfo {
   size_bytes: number;
   size_formatted: string;

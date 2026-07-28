@@ -153,6 +153,7 @@ Global sync behavior. All settings here can be overridden per pair where noted.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `poll_interval` | integer | `30` | Seconds between remote change polls |
+| `max_deletions_per_sync` | integer | `100` | Refuse a sync pass deleting more than this many files in one direction, until confirmed. `0` disables the guard — see [Delete Protection](Daemon#delete-protection) |
 | `conflict_strategy` | string | `"keep_both"` | Default conflict resolution strategy (see values below) |
 | `max_concurrent_transfers` | integer | `4` | Parallel upload/download limit |
 | `debounce_delay` | float | `1.0` | Seconds to wait after a local change before syncing |
@@ -190,6 +191,7 @@ One `[[sync.pairs]]` section per sync pair. Multiple pairs are supported.
 | `ignore_hidden` | boolean | `true` | Exclude files and directories whose names start with `.` |
 | `ignore_patterns` | list of strings | `[]` | Glob patterns for files to exclude (see Selective Sync below) |
 | `conflict_strategy` | string | (inherits global) | Per-pair conflict strategy; overrides `[sync].conflict_strategy` if set |
+| `max_deletions_per_sync` | integer | (inherits global) | Per-pair delete cap; `0` disables delete protection for this pair |
 
 #### `sync_mode` values
 

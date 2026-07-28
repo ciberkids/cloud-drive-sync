@@ -222,6 +222,7 @@ export function Settings() {
   };
 
   // Bandwidth limits state
+  const [maxDeletions, setMaxDeletionsState] = useState<number>(100);
   const [bandwidthLimits, setBandwidthLimits] = useState({
     max_upload_kbps: 0,
     max_download_kbps: 0,
@@ -229,7 +230,21 @@ export function Settings() {
 
   useEffect(() => {
     ipc.getBandwidthLimits().then(setBandwidthLimits).catch(() => {});
+    ipc
+      .getMaxDeletions()
+      .then((l) => setMaxDeletionsState(l.max_deletions_per_sync))
+      .catch(() => {});
   }, []);
+
+  const handleMaxDeletionsChange = async (value: number) => {
+    // Optimistic: the input must stay responsive while typing.
+    setMaxDeletionsState(value);
+    try {
+      await ipc.setMaxDeletions(value);
+    } catch (e) {
+      console.error("Failed to set the deletion limit:", e);
+    }
+  };
 
   const handleBandwidthChange = async (
     key: "max_upload_kbps" | "max_download_kbps",
@@ -712,6 +727,33 @@ export function Settings() {
             No accounts configured. Add an account to start syncing.
           </p>
         )}
+      </section>
+
+      <section className="settings-section">
+        <h3>Delete Protection</h3>
+        <p className="settings-hint">
+          Sync is two-way, so deleting files locally deletes them in the cloud too. If a
+          sync pass would delete more than this many files in one direction — a wiped
+          folder, an unmounted drive, a bad <code>rm -rf</code> — nothing is deleted and
+          the pair pauses until you confirm.
+        </p>
+        <div className="field">
+          <label className="field-label">
+            Max deletions per sync (0 = no limit, not recommended)
+          </label>
+          <input
+            type="number"
+            className="input"
+            min={0}
+            value={maxDeletions}
+            onChange={(e) => handleMaxDeletionsChange(parseInt(e.target.value) || 0)}
+          />
+          {maxDeletions === 0 && (
+            <p className="field-warning">
+              ⚠ Delete protection is off. A wiped local folder will empty the cloud copy.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="settings-section">

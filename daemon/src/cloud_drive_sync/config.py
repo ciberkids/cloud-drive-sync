@@ -55,6 +55,9 @@ class SyncPair:
     provider: str = "gdrive"
     sync_rules: SyncRules = field(default_factory=SyncRules)
     conflict_strategy: str = ""  # "" = inherit global default
+    # Delete fail-safe (#53). None inherits sync.max_deletions_per_sync;
+    # 0 disables the guard for this pair.
+    max_deletions_per_sync: int | None = None
 
 
 @dataclass
@@ -71,6 +74,9 @@ class SyncConfig:
     notify_errors: bool = True
     max_upload_kbps: int = 0
     max_download_kbps: int = 0
+    # Delete fail-safe (#53): refuse a sync pass that would delete more than this
+    # many files in one direction, until a human confirms it. 0 disables it.
+    max_deletions_per_sync: int = 100
     pairs: list[SyncPair] = field(default_factory=list)
 
 
@@ -114,6 +120,9 @@ class Config:
             "max_concurrent_transfers", cfg.sync.max_concurrent_transfers
         )
         cfg.sync.debounce_delay = sync.get("debounce_delay", cfg.sync.debounce_delay)
+        cfg.sync.max_deletions_per_sync = sync.get(
+            "max_deletions_per_sync", cfg.sync.max_deletions_per_sync
+        )
         cfg.sync.convert_google_docs = sync.get("convert_google_docs", cfg.sync.convert_google_docs)
         cfg.sync.notify_sync_complete = sync.get("notify_sync_complete", cfg.sync.notify_sync_complete)
         cfg.sync.notify_conflicts = sync.get("notify_conflicts", cfg.sync.notify_conflicts)
@@ -142,6 +151,7 @@ class Config:
                     provider=pair_data.get("provider", "gdrive"),
                     sync_rules=sync_rules,
                     conflict_strategy=pair_data.get("conflict_strategy", ""),
+                    max_deletions_per_sync=pair_data.get("max_deletions_per_sync"),
                 )
             )
 
@@ -193,6 +203,7 @@ class Config:
             "sync": {
                 "poll_interval": self.sync.poll_interval,
                 "conflict_strategy": self.sync.conflict_strategy,
+                "max_deletions_per_sync": self.sync.max_deletions_per_sync,
                 "max_concurrent_transfers": self.sync.max_concurrent_transfers,
                 "debounce_delay": self.sync.debounce_delay,
                 "convert_google_docs": self.sync.convert_google_docs,
@@ -212,6 +223,11 @@ class Config:
                         "account_id": p.account_id,
                         "provider": p.provider,
                         **({"conflict_strategy": p.conflict_strategy} if p.conflict_strategy else {}),
+                        **(
+                            {"max_deletions_per_sync": p.max_deletions_per_sync}
+                            if p.max_deletions_per_sync is not None
+                            else {}
+                        ),
                         "sync_rules": {
                             "max_file_size_mb": p.sync_rules.max_file_size_mb,
                             "include_regex": p.sync_rules.include_regex,

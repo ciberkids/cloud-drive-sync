@@ -646,6 +646,62 @@ See `docker/docker-compose.yml` for a ready-to-use compose file.
 | `CDS_GOOGLE_CLIENT_ID` | (embedded) | Override Google OAuth client ID |
 | `CDS_GOOGLE_CLIENT_SECRET` | (embedded) | Override Google OAuth client secret |
 
+## Delete Protection
+
+Sync is two-way, so deleting files locally deletes them in the cloud too. That is the intended behaviour right up until the deletion was not intended — a bad `rm -rf`, an external drive unmounted while its mountpoint is still a sync path, a disk failure, or a container recreated with an empty volume. The daemon would see thousands of deletions as user intent and faithfully empty the cloud copy, turning the backup into a mirror of the disaster.
+
+The delete fail-safe refuses batches that look like that.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `max_deletions_per_sync` (`[sync]`) | `100` | Global cap per sync pass, per direction |
+| `max_deletions_per_sync` (`[[sync.pairs]]`) | inherit | Per-pair override; `0` disables the guard for that pair |
+
+A pass is also refused when deletions exceed **50% of the files tracked for that pair**, whichever limit trips first. An absolute count catches a large library; the ratio catches a small one, where 90 deletions is under any sensible count but is nearly everything the user has. Batches under 10 files are never gated by ratio alone.
+
+### What happens on a breach
+
+1. **Nothing is deleted.** The whole batch is refused, not trimmed.
+2. The pair is **paused**, so the next poll does not retry it.
+3. The refusal is **written to the database**, so restarting the daemon does not resolve it — otherwise a container restart policy would quietly undo the hold.
+4. It appears in the activity log as `delete_blocked`, and the UI shows a banner with the counts and a sample of paths.
+
+Local and remote deletions are counted separately: a wiped *remote* must not be able to empty the local copy either, and download-only pairs make that reachable.
+
+### Resolving a block
+
+In the web UI, the banner offers **Delete them** or **Keep files**. Via the API:
+
+```bash
+# What is blocked?
+curl -s http://localhost:8080/api/pending-deletions | jq
+
+# Approve — the next pass performs the deletions
+curl -X POST http://localhost:8080/api/pending-deletions/0/resolve \
+  -H 'Content-Type: application/json' -d '{"approve": true}'
+
+# Reject — the pair stays paused and nothing is deleted
+curl -X POST http://localhost:8080/api/pending-deletions/0/resolve \
+  -H 'Content-Type: application/json' -d '{"approve": false}'
+```
+
+Approval is **one-shot**: it lets the next pass through and is then consumed. Approving today's mass delete is not consent for every future one. Approving also does not replay the stored batch — the next pass re-plans, so if you restored the files in the meantime, nothing is deleted.
+
+Changing the limit:
+
+```bash
+curl -X PUT http://localhost:8080/api/settings/max-deletions \
+  -H 'Content-Type: application/json' -d '{"max_deletions_per_sync": 250}'
+
+# Per pair; 0 disables the guard for it
+curl -X PUT http://localhost:8080/api/settings/max-deletions \
+  -H 'Content-Type: application/json' -d '{"max_deletions_per_sync": 0, "pair_id": "0"}'
+```
+
+> Setting `0` disables delete protection. A wiped local folder will then empty the cloud copy with no prompt.
+
+An AI assistant over MCP can *see* blocked batches (`list_pending_deletions`) but cannot approve them — the guard exists to put a human in the loop, so `resolve_pending_deletions` is not exposed as a tool at any permission level.
+
 ## Logging and Disk Usage
 
 The daemon writes to `<data-dir>/cloud-drive-sync.log` and to stderr. Both are bounded, so neither can grow without limit:

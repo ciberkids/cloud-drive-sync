@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from cloud_drive_sync.util.paths import db_path
 
 log = get_logger("database")
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # A full VACUUM rewrites the whole database and blocks startup, so it only runs
 # when a meaningful fraction *and* a meaningful absolute amount is wasted. The
@@ -82,6 +83,17 @@ CREATE TABLE IF NOT EXISTS sync_log (
     status TEXT NOT NULL,
     detail TEXT,
     reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pending_deletions (
+    pair_id TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    tracked INTEGER NOT NULL DEFAULT 0,
+    limit_value INTEGER NOT NULL,
+    sample TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (pair_id, direction)
 );
 
 CREATE TABLE IF NOT EXISTS partial_transfers (
@@ -279,7 +291,18 @@ class Database:
                 try:
                     await self.db.executescript(
                         """
-                        CREATE TABLE IF NOT EXISTS partial_transfers (
+                        CREATE TABLE IF NOT EXISTS pending_deletions (
+    pair_id TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    tracked INTEGER NOT NULL DEFAULT 0,
+    limit_value INTEGER NOT NULL,
+    sample TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (pair_id, direction)
+);
+
+CREATE TABLE IF NOT EXISTS partial_transfers (
                             path TEXT NOT NULL,
                             pair_id TEXT NOT NULL,
                             direction TEXT NOT NULL,
@@ -307,6 +330,26 @@ class Database:
                     log.info("Migrated database to v4: added reason column to sync_log")
                 except Exception as exc:
                     log.debug("v4 migration step skipped: %s", exc)
+            # Migration from v4 -> v5: add pending_deletions table (#53)
+            if current_version < 5:
+                try:
+                    await self.db.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS pending_deletions (
+                            pair_id TEXT NOT NULL,
+                            direction TEXT NOT NULL,
+                            count INTEGER NOT NULL,
+                            tracked INTEGER NOT NULL DEFAULT 0,
+                            limit_value INTEGER NOT NULL,
+                            sample TEXT NOT NULL DEFAULT '[]',
+                            created_at TEXT NOT NULL,
+                            PRIMARY KEY (pair_id, direction)
+                        );
+                        """
+                    )
+                    log.info("Migrated database to v5: added pending_deletions table")
+                except Exception as exc:
+                    log.debug("v5 migration step skipped: %s", exc)
             await self.db.execute(
                 "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
             )
@@ -563,6 +606,76 @@ class Database:
         if count:
             log.info("Cleaned up %d stale partial transfers", count)
         return count
+
+    # ── Pending deletions (delete fail-safe, #53) ───────────────────
+
+    async def record_pending_deletions(
+        self, pair_id: str, direction: str, count: int, tracked: int, limit: int, sample: list[str]
+    ) -> None:
+        """Persist a refused deletion batch awaiting a human decision.
+
+        Stored rather than held in memory so restarting the daemon cannot
+        silently resolve the question — otherwise a container restart policy
+        would quietly undo the safety decision.
+        """
+        await self.db.execute(
+            """INSERT INTO pending_deletions
+               (pair_id, direction, count, tracked, limit_value, sample, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(pair_id, direction) DO UPDATE SET
+                 count=excluded.count,
+                 tracked=excluded.tracked,
+                 limit_value=excluded.limit_value,
+                 sample=excluded.sample,
+                 created_at=excluded.created_at""",
+            (
+                pair_id,
+                direction,
+                count,
+                tracked,
+                limit,
+                json.dumps(sample),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_pending_deletions(self, pair_id: str | None = None) -> list[dict]:
+        """Refused batches awaiting a decision, newest first."""
+        if pair_id:
+            cursor = await self.db.execute(
+                "SELECT * FROM pending_deletions WHERE pair_id = ? ORDER BY created_at DESC",
+                (pair_id,),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT * FROM pending_deletions ORDER BY created_at DESC"
+            )
+        rows = await cursor.fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["sample"] = json.loads(item.get("sample") or "[]")
+            except (TypeError, ValueError):
+                item["sample"] = []
+            item["limit"] = item.pop("limit_value", 0)
+            result.append(item)
+        return result
+
+    async def clear_pending_deletions(self, pair_id: str, direction: str | None = None) -> int:
+        """Drop the record once the user has decided. Returns rows removed."""
+        if direction:
+            cursor = await self.db.execute(
+                "DELETE FROM pending_deletions WHERE pair_id = ? AND direction = ?",
+                (pair_id, direction),
+            )
+        else:
+            cursor = await self.db.execute(
+                "DELETE FROM pending_deletions WHERE pair_id = ?", (pair_id,)
+            )
+        await self.db.commit()
+        return max(cursor.rowcount, 0)
 
     # ── Utility ─────────────────────────────────────────────────────
 

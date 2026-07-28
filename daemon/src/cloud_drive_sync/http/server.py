@@ -73,6 +73,11 @@ class HttpServer:
         r.add_put("/api/settings/proxy", self._set_proxy)
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         r.add_post("/api/repair", self._repair)
+
+        r.add_get("/api/settings/max-deletions", self._get_max_deletions)
+        r.add_put("/api/settings/max-deletions", self._set_max_deletions)
+        r.add_get("/api/pending-deletions", self._get_pending_deletions)
+        r.add_post("/api/pending-deletions/{pair_id}/resolve", self._resolve_pending_deletions)
         # Remote folders
         r.add_get("/api/remote-folders", self._list_remote_folders)
         r.add_post("/api/remote-folders", self._create_remote_folder)
@@ -210,6 +215,21 @@ class HttpServer:
     async def _create_remote_folder(self, req):
         body = await req.json()
         return self._json(await self._rpc("create_remote_folder", body))
+    async def _get_max_deletions(self, req):
+        return self._json(await self._rpc("get_max_deletions"))
+
+    async def _set_max_deletions(self, req):
+        return self._json(await self._rpc("set_max_deletions", await self._body(req)))
+
+    async def _get_pending_deletions(self, req):
+        params = {"pair_id": req.query.get("pair_id")} if req.query.get("pair_id") else {}
+        return self._json(await self._rpc("get_pending_deletions", params))
+
+    async def _resolve_pending_deletions(self, req):
+        body = await self._body(req)
+        body["pair_id"] = req.match_info["pair_id"]
+        return self._json(await self._rpc("resolve_pending_deletions", body))
+
     async def _list_local_dirs(self, req):
         params = {"path": req.query.get("path", "")}
         return self._json(await self._rpc("list_local_dirs", params))

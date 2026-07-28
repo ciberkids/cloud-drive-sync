@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from cloud_drive_sync.local.hasher import md5_hash
 from cloud_drive_sync.local.scanner import DEFAULT_IGNORE_PATTERNS, load_ignore_file, scan_directory
 from cloud_drive_sync.local.watcher import ChangeType, DirectoryWatcher, LocalChange
 from cloud_drive_sync.providers.base import CloudChangePoller, CloudClient, CloudFileOps
+from cloud_drive_sync.sync import failsafe
 from cloud_drive_sync.sync.conflict import ConflictResolver
 from cloud_drive_sync.sync.executor import SyncExecutor
 from cloud_drive_sync.sync.planner import (
@@ -81,6 +83,11 @@ class SyncEngine:
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
         self._notify_callback = None
+        # Pairs whose next pass may delete freely because a user approved a
+        # refused batch. One-shot: consumed by the next _deletions_allowed check,
+        # otherwise approving would loop — the next pass re-plans the same
+        # deletions and the guard blocks them again.
+        self._delete_overrides: set[str] = set()
 
     @property
     def pairs(self) -> dict[str, PairStatus]:
@@ -390,6 +397,8 @@ class SyncEngine:
             deleted_files: list[str] = []
             conflicted_files: list[str] = []
             if ps.executor:
+                if not await self._deletions_allowed(ps, resolved_actions):
+                    return
                 failed = await ps.executor.execute_all(resolved_actions)
                 errors = len(failed)
                 failed_paths = {a.path for a in failed} if failed else set()
@@ -577,11 +586,92 @@ class SyncEngine:
                 actions = apply_strategy_overrides(actions, effective_strategy)
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
+                    if not await self._deletions_allowed(ps, actions):
+                        continue
                     await ps.executor.execute_all(actions)
                     ps.last_sync = datetime.now(UTC)
 
             except Exception:
                 log.exception("Error processing local changes batch (%d changes)", len(changes))
+
+    async def _deletions_allowed(self, ps: PairStatus, actions: list[SyncAction]) -> bool:
+        """Gate a planned batch through the delete fail-safe (#53).
+
+        Returns True when the batch may proceed. On a breach, nothing runs: the
+        pair is paused and the refusal is persisted for a human to confirm or
+        reject. Deliberately fails closed — a daemon with nobody attached must
+        wait rather than assume consent, because waiting costs a delay and
+        guessing costs the data.
+        """
+        if ps.pair_id in self._delete_overrides:
+            self._delete_overrides.discard(ps.pair_id)
+            log.warning(
+                "Delete fail-safe bypassed for %s this pass — a user approved the "
+                "refused deletions",
+                ps.pair_id,
+            )
+            return True
+
+        limit = failsafe.effective_limits(
+            self._config.sync.max_deletions_per_sync,
+            ps.pair.max_deletions_per_sync,
+        )
+        if limit <= 0:
+            return True
+
+        # Only pay for the tracked count when there are deletions to weigh.
+        if not failsafe.only_deletions(actions):
+            return True
+
+        tracked = 0
+        try:
+            counts = await self._db.count_by_state(ps.pair_id)
+            tracked = sum(counts.values())
+        except Exception:
+            log.debug("Could not read tracked count for %s; ratio check skipped", ps.pair_id)
+
+        verdict = failsafe.check(actions, max_deletions=limit, tracked_files=tracked)
+        if not verdict.blocked:
+            return True
+
+        ps.paused = True
+        for breach in verdict.breaches:
+            log.error(
+                "Delete fail-safe blocked %s: %s. Sync is paused for this pair until "
+                "you confirm or reject the deletions.",
+                ps.pair_id,
+                breach.describe(),
+            )
+            try:
+                await self._db.record_pending_deletions(
+                    ps.pair_id,
+                    breach.direction.value,
+                    breach.count,
+                    breach.tracked,
+                    breach.limit,
+                    breach.sample,
+                )
+            except Exception:
+                log.exception("Could not persist the pending deletion decision")
+            await self._db.add_log_entry(
+                SyncLogEntry(
+                    timestamp=datetime.now(UTC),
+                    action="delete_blocked",
+                    path=f"{breach.count} files",
+                    pair_id=ps.pair_id,
+                    status="error",
+                    detail=breach.describe(),
+                    reason="delete fail-safe",
+                )
+            )
+
+        if self._notify_callback:
+            with contextlib.suppress(Exception):
+                await self._notify_callback(
+                    "delete_blocked",
+                    {"pair_id": ps.pair_id, "message": verdict.describe()},
+                )
+        return False
 
     async def _maintenance_loop(self) -> None:
         """Prune old activity rows and hand free database pages back periodically.
@@ -717,9 +807,23 @@ class SyncEngine:
         actions = apply_strategy_overrides(actions, effective_strategy)
         actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
+            if not await self._deletions_allowed(ps, actions):
+                return
             await ps.executor.execute_all(actions)
 
     # ── Public control methods ──────────────────────────────────────
+
+    async def approve_pending_deletions(self, pair_id: str) -> bool:
+        """Let the next pass for ``pair_id`` delete without the fail-safe.
+
+        The approval is consumed by that one pass, not stored as configuration —
+        a user approving today's mass delete has not agreed to every future one.
+        """
+        if pair_id not in self._pairs:
+            return False
+        self._delete_overrides.add(pair_id)
+        await self.resume_pair(pair_id)
+        return True
 
     async def pause_pair(self, pair_id: str) -> bool:
         ps = self._pairs.get(pair_id)

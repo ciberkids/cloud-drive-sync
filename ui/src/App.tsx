@@ -11,6 +11,7 @@ import { About } from "./components/About";
 import { CloudBridges } from "./components/CloudBridges";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
+import type { PendingDeletion } from "./lib/types";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -86,6 +87,82 @@ function NavBar() {
         </li>
       </ul>
     </nav>
+  );
+}
+
+/**
+ * Delete fail-safe block (#53). Separate from DaemonBanner because it must show
+ * even when the daemon is perfectly healthy — a paused pair with pending
+ * deletions is not a connectivity problem, and the user has to decide before
+ * anything syncs again.
+ */
+function DeleteBlockBanner() {
+  const [pending, setPending] = useState<PendingDeletion[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => {
+    ipc
+      .getPendingDeletions()
+      .then(setPending)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (pending.length === 0) return null;
+
+  const total = pending.reduce((n, p) => n + p.count, 0);
+  const pairIds = [...new Set(pending.map((p) => p.pair_id))];
+  const sample = pending.flatMap((p) => p.sample).slice(0, 5);
+
+  const decide = async (approve: boolean) => {
+    setBusy(true);
+    try {
+      for (const pairId of pairIds) {
+        await ipc.resolvePendingDeletions(pairId, approve);
+      }
+      setPending([]);
+    } catch (e) {
+      console.error("Failed to resolve pending deletions:", e);
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="daemon-banner daemon-banner-error">
+      <span className="daemon-banner-icon">&#x26A0;</span>
+      <div className="daemon-banner-text">
+        <span>
+          <strong>Sync paused — {total} deletions blocked.</strong>{" "}
+          {pending
+            .map(
+              (p) =>
+                `${p.count} ${p.direction} file${p.count === 1 ? "" : "s"}` +
+                (p.tracked ? ` (${Math.round((p.count / p.tracked) * 100)}% of tracked)` : "")
+            )
+            .join(", ")}{" "}
+          on {pairIds.join(", ")}. Nothing has been deleted yet.
+        </span>
+        {sample.length > 0 && (
+          <span className="daemon-banner-detail">
+            e.g. {sample.join(", ")}
+            {total > sample.length ? ` … and ${total - sample.length} more` : ""}
+          </span>
+        )}
+      </div>
+      <button className="btn btn-danger" disabled={busy} onClick={() => decide(true)}>
+        Delete them
+      </button>
+      <button className="btn" disabled={busy} onClick={() => decide(false)}>
+        Keep files
+      </button>
+    </div>
   );
 }
 
@@ -192,6 +269,7 @@ export default function App() {
       <div className="app-layout">
         <NavBar />
         <div className="main-wrapper">
+          <DeleteBlockBanner />
           <DaemonBanner />
           <main className="main-content">
             <Routes>

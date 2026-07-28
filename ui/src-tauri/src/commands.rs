@@ -430,6 +430,56 @@ pub async fn get_bandwidth_limits(bridge: State<'_, BridgeState>) -> Result<Valu
     bridge.call("get_bandwidth_limits", None).await
 }
 
+/// Delete fail-safe (#53): current limits, global and per-pair.
+#[tauri::command]
+pub async fn get_max_deletions(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("get_max_deletions", None).await
+}
+
+/// Set the delete fail-safe limit. `pair_id` omitted sets the global default;
+/// `max_deletions_per_sync` of 0 disables the guard.
+#[tauri::command]
+pub async fn set_max_deletions(
+    bridge: State<'_, BridgeState>,
+    max_deletions_per_sync: Option<i64>,
+    pair_id: Option<String>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let mut params = json!({ "max_deletions_per_sync": max_deletions_per_sync });
+    if let Some(id) = pair_id {
+        params["pair_id"] = json!(id);
+    }
+    bridge.call("set_max_deletions", Some(params)).await
+}
+
+/// Deletion batches the fail-safe refused, awaiting a human decision.
+#[tauri::command]
+pub async fn get_pending_deletions(
+    bridge: State<'_, BridgeState>,
+    pair_id: Option<String>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let params = pair_id.map(|id| json!({ "pair_id": id }));
+    bridge.call("get_pending_deletions", params).await
+}
+
+/// Approve or reject a refused deletion batch.
+#[tauri::command]
+pub async fn resolve_pending_deletions(
+    bridge: State<'_, BridgeState>,
+    pair_id: String,
+    approve: bool,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge
+        .call(
+            "resolve_pending_deletions",
+            Some(json!({ "pair_id": pair_id, "approve": approve })),
+        )
+        .await
+}
+
 #[tauri::command]
 pub async fn set_sync_rules(
     bridge: State<'_, BridgeState>,
