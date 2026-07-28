@@ -10,6 +10,13 @@ export interface PendingDeletion {
   created_at: string;
 }
 
+export interface StopState {
+  /** Application-wide emergency stop. */
+  stopped: boolean;
+  /** Per-account stops, keyed by email. */
+  accounts: Record<string, boolean>;
+}
+
 export interface DeleteFailsafeLimits {
   max_deletions_per_sync: number;
   pairs: Record<string, number | null>;

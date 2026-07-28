@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
   DeleteFailsafeLimits,
+  StopState,
   PendingDeletion,
   DaemonStatus,
   SyncPair,
@@ -278,4 +279,23 @@ export async function resolvePendingDeletions(
     pairId,
     approve,
   });
+}
+
+// ── Emergency stop (#54) ────────────────────────────────────────────
+
+export async function getStopState(): Promise<StopState> {
+  return invoke<StopState>("get_stop_state");
+}
+
+export async function emergencyStop(accountId?: string): Promise<{
+  pairs_stopped: number;
+  operations_cancelled: number;
+}> {
+  return invoke("emergency_stop", { accountId });
+}
+
+export async function emergencyResume(accountId?: string): Promise<{
+  pairs_resumed: number;
+}> {
+  return invoke("emergency_resume", { accountId });
 }

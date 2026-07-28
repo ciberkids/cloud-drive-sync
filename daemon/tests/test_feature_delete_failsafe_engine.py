@@ -188,6 +188,9 @@ def test_every_executor_call_site_is_gated():
     local change loop, and the remote change handler. Removing the guard from any
     one of them would leave that path unprotected while every test above still
     passed, so the wiring itself is asserted here.
+
+    ``_may_execute`` is the composed gate: it checks the emergency stop (#54) and
+    then delegates to the delete fail-safe (#53).
     """
     import inspect
     import re
@@ -196,7 +199,7 @@ def test_every_executor_call_site_is_gated():
 
     source = inspect.getsource(engine_module)
     execute_calls = re.findall(r"execute_all\(", source)
-    guard_calls = re.findall(r"_deletions_allowed\(ps,", source)
+    guard_calls = re.findall(r"_may_execute\(ps,", source)
 
     # One execute_all is the executor's own definition reference in this module's
     # imports; count the call sites in the engine and require a guard for each.
@@ -220,12 +223,12 @@ def test_the_guard_precedes_execution_at_every_site():
     source = inspect.getsource(engine_module)
     positions = [
         (m.start(), m.group(0))
-        for m in re.finditer(r"_deletions_allowed\(ps,|execute_all\(", source)
+        for m in re.finditer(r"_may_execute\(ps,|execute_all\(", source)
     ]
     # Walking in order, every execute_all must be preceded by an ungated guard.
     pending_guards = 0
     for _, token in positions:
-        if token.startswith("_deletions_allowed"):
+        if token.startswith("_may_execute"):
             pending_guards += 1
         else:
             assert pending_guards > 0, "an execute_all call is not preceded by a guard"

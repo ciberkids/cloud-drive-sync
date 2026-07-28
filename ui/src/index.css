@@ -685,6 +685,41 @@ body {
   white-space: nowrap;
 }
 
+/* Emergency stop (#54), pinned to the bottom of the sidebar so it is reachable
+   from every screen. mt-auto pushes it below the nav list. */
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 8px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stop-activity {
+  width: 100%;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.stop-activity-stop {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.stop-activity-resume {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+
+.stop-activity-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
 /* Inline warning under a settings field whose value weakens a safety guard. */
 .field-warning {
   color: var(--warning);

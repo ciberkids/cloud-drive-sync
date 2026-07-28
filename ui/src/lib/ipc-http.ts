@@ -12,6 +12,7 @@ import type {
   LogEntry,
   ConflictResolution,
   DeleteFailsafeLimits,
+  StopState,
   PendingDeletion,
 } from "./types";
 
@@ -327,4 +328,23 @@ export async function resolvePendingDeletions(
   approve: boolean
 ): Promise<{ status: string; batches: number }> {
   return post(`pending-deletions/${encodeURIComponent(pairId)}/resolve`, { approve });
+}
+
+// ── Emergency stop (#54) ────────────────────────────────────────────
+
+export async function getStopState(): Promise<StopState> {
+  return get("sync/stop-state");
+}
+
+export async function emergencyStop(accountId?: string): Promise<{
+  pairs_stopped: number;
+  operations_cancelled: number;
+}> {
+  return post("sync/stop", accountId ? { account_id: accountId } : {});
+}
+
+export async function emergencyResume(accountId?: string): Promise<{
+  pairs_resumed: number;
+}> {
+  return post("sync/resume-stopped", accountId ? { account_id: accountId } : {});
 }

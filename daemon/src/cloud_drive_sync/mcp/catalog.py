@@ -137,6 +137,13 @@ READ_TOOLS: tuple[McpTool, ...] = (
         _schema({"pair_id": _PAIR_ID}),
     ),
     McpTool(
+        "get_stop_state",
+        "get_stop_state",
+        "Whether activity is halted by an emergency stop, application-wide and per "
+        "account. A stopped daemon looks idle otherwise, so check this before "
+        "concluding that sync is simply up to date.",
+    ),
+    McpTool(
         "get_delete_failsafe_limit",
         "get_max_deletions",
         "The delete fail-safe limits: the global maximum deletions per sync pass "
@@ -287,6 +294,24 @@ WRITE_TOOLS: tuple[McpTool, ...] = (
             "email": {"type": "string"},
             "max_concurrent_transfers": {"type": "integer", "minimum": 1},
         }, ["email", "max_concurrent_transfers"]),
+        writes=True,
+    ),
+    McpTool(
+        "emergency_stop",
+        "emergency_stop",
+        "Halt all sync activity immediately, cancelling in-flight transfers. Pass "
+        "account_id to stop one account, or omit it to stop everything. Persists "
+        "across restart. Use when something is actively going wrong; prefer "
+        "pause_sync for an orderly stop that lets transfers finish.",
+        _schema({"account_id": {"type": "string", "description": "Account email. Omit for all."}}),
+        writes=True,
+    ),
+    McpTool(
+        "emergency_resume",
+        "emergency_resume",
+        "Resume activity after emergency_stop, for one account or everything. A "
+        "per-account resume cannot override an application-wide stop.",
+        _schema({"account_id": {"type": "string", "description": "Account email. Omit for all."}}),
         writes=True,
     ),
     McpTool(

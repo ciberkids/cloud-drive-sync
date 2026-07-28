@@ -57,6 +57,9 @@ class HttpServer:
         r.add_put("/api/pairs/{pair_id}/conflict-strategy", self._set_pair_conflict_strategy)
         # Sync control
         r.add_post("/api/sync", self._force_sync)
+        r.add_post("/api/sync/stop", self._emergency_stop)
+        r.add_post("/api/sync/resume-stopped", self._emergency_resume)
+        r.add_get("/api/sync/stop-state", self._get_stop_state)
         r.add_post("/api/sync/pause", self._pause_sync)
         r.add_post("/api/sync/resume", self._resume_sync)
         # Conflicts
@@ -215,6 +218,17 @@ class HttpServer:
     async def _create_remote_folder(self, req):
         body = await req.json()
         return self._json(await self._rpc("create_remote_folder", body))
+    async def _emergency_stop(self, req):
+        body = await self._body(req) if req.can_read_body else {}
+        return self._json(await self._rpc("emergency_stop", body))
+
+    async def _emergency_resume(self, req):
+        body = await self._body(req) if req.can_read_body else {}
+        return self._json(await self._rpc("emergency_resume", body))
+
+    async def _get_stop_state(self, req):
+        return self._json(await self._rpc("get_stop_state"))
+
     async def _get_max_deletions(self, req):
         return self._json(await self._rpc("get_max_deletions"))
 

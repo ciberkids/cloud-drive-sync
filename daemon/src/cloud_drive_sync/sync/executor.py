@@ -45,6 +45,9 @@ class SyncExecutor:
         self._mkdir_lock = asyncio.Lock()
         # Live transfer tracking: path -> {bytes, total, speed, direction}
         self._active_transfers: dict[str, dict] = {}
+        # In-flight action tasks, so an emergency stop can cancel them (#54).
+        self._inflight: set[asyncio.Task] = set()
+        self._stopped = False
 
     @property
     def active_count(self) -> int:
@@ -60,12 +63,35 @@ class SyncExecutor:
         if not real_actions:
             return []
 
+        if self._stopped:
+            # Backstop only — the engine gates before calling. Returns an empty
+            # failure list because nothing was attempted: reporting these as
+            # failures would fill ps.errors, and the UI, with hundreds of false
+            # errors from one deliberate stop.
+            log.warning(
+                "Refusing %d actions for %s: activity is stopped",
+                len(real_actions),
+                self._pair_id,
+            )
+            return []
+
         log.info("Executing %d sync actions", len(real_actions))
-        tasks = [self._execute_one(action) for action in real_actions]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Real Tasks rather than bare coroutines, so cancel_all() has something to
+        # cancel. gather() on coroutines wraps them itself and gives us no handle.
+        tasks = [asyncio.create_task(self._execute_one(action)) for action in real_actions]
+        self._inflight.update(tasks)
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            self._inflight.difference_update(tasks)
 
         failed: list[SyncAction] = []
         for action, result in zip(real_actions, results):
+            if isinstance(result, asyncio.CancelledError):
+                # Emergency stop, not a failure. Left unlogged as an error so the
+                # activity log does not fill with noise from one stop press.
+                failed.append(action)
+                continue
             if isinstance(result, Exception):
                 log.error("Action %s on %s failed: %s", action.action.value, action.path, result)
                 failed.append(action)
@@ -88,6 +114,33 @@ class SyncExecutor:
             len(failed),
         )
         return failed
+
+    def stop(self) -> int:
+        """Cancel everything in flight and refuse new work. Returns tasks cancelled.
+
+        Cancellation reaches every awaitable immediately. Provider SDK calls that
+        are already inside ``asyncio.to_thread`` cannot be cancelled — a thread has
+        no such mechanism — so those keep running until they return, and their
+        results are discarded. The byte flow for one in-progress transfer per
+        worker may therefore continue briefly; everything queued behind it stops
+        at once.
+        """
+        self._stopped = True
+        cancelled = 0
+        for task in list(self._inflight):
+            if not task.done():
+                task.cancel()
+                cancelled += 1
+        self._active_transfers.clear()
+        return cancelled
+
+    def resume(self) -> None:
+        """Allow work again after :meth:`stop`."""
+        self._stopped = False
+
+    @property
+    def stopped(self) -> bool:
+        return self._stopped
 
     async def _execute_one(self, action: SyncAction) -> None:
         """Execute a single action under the semaphore."""

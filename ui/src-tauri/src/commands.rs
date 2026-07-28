@@ -430,6 +430,35 @@ pub async fn get_bandwidth_limits(bridge: State<'_, BridgeState>) -> Result<Valu
     bridge.call("get_bandwidth_limits", None).await
 }
 
+/// Emergency stop (#54): halt activity now, optionally for one account.
+#[tauri::command]
+pub async fn emergency_stop(
+    bridge: State<'_, BridgeState>,
+    account_id: Option<String>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let params = account_id.map(|id| json!({ "account_id": id }));
+    bridge.call("emergency_stop", params).await
+}
+
+/// Resume after an emergency stop.
+#[tauri::command]
+pub async fn emergency_resume(
+    bridge: State<'_, BridgeState>,
+    account_id: Option<String>,
+) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    let params = account_id.map(|id| json!({ "account_id": id }));
+    bridge.call("emergency_resume", params).await
+}
+
+/// Whether activity is stopped, application-wide and per account.
+#[tauri::command]
+pub async fn get_stop_state(bridge: State<'_, BridgeState>) -> Result<Value, String> {
+    let bridge = bridge.0.lock().await;
+    bridge.call("get_stop_state", None).await
+}
+
 /// Delete fail-safe (#53): current limits, global and per-pair.
 #[tauri::command]
 pub async fn get_max_deletions(bridge: State<'_, BridgeState>) -> Result<Value, String> {

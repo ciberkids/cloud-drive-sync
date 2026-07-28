@@ -118,6 +118,9 @@ class SyncEngine:
             pair_id = f"pair_{i}"
             await self._start_pair(pair, pair_id)
 
+        # Re-apply any stop that was in force when the daemon last shut down.
+        await self.restore_stop_state()
+
         # One database-wide loop, not one per pair.
         task_maint = asyncio.create_task(self._maintenance_loop())
         self._tasks.append(task_maint)
@@ -397,7 +400,7 @@ class SyncEngine:
             deleted_files: list[str] = []
             conflicted_files: list[str] = []
             if ps.executor:
-                if not await self._deletions_allowed(ps, resolved_actions):
+                if not await self._may_execute(ps, resolved_actions):
                     return
                 failed = await ps.executor.execute_all(resolved_actions)
                 errors = len(failed)
@@ -586,13 +589,26 @@ class SyncEngine:
                 actions = apply_strategy_overrides(actions, effective_strategy)
                 actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
                 if ps.executor:
-                    if not await self._deletions_allowed(ps, actions):
+                    if not await self._may_execute(ps, actions):
                         continue
                     await ps.executor.execute_all(actions)
                     ps.last_sync = datetime.now(UTC)
 
             except Exception:
                 log.exception("Error processing local changes batch (%d changes)", len(changes))
+
+    async def _may_execute(self, ps: PairStatus, actions: list[SyncAction]) -> bool:
+        """Both gates that stand between a plan and the executor.
+
+        Kept separate from ``_deletions_allowed`` because they are different
+        concerns with different consequences: an emergency stop is a deliberate
+        user action that should leave no error trail, while a refused deletion
+        batch is an alarm that must be recorded and confirmed.
+        """
+        if self.is_stopped(ps):
+            log.debug("Skipping %s: activity is stopped", ps.pair_id)
+            return False
+        return await self._deletions_allowed(ps, actions)
 
     async def _deletions_allowed(self, ps: PairStatus, actions: list[SyncAction]) -> bool:
         """Gate a planned batch through the delete fail-safe (#53).
@@ -807,11 +823,142 @@ class SyncEngine:
         actions = apply_strategy_overrides(actions, effective_strategy)
         actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
-            if not await self._deletions_allowed(ps, actions):
+            if not await self._may_execute(ps, actions):
                 return
             await ps.executor.execute_all(actions)
 
     # ── Public control methods ──────────────────────────────────────
+
+    # ── Emergency stop (#54) ────────────────────────────────────────
+
+    def _pairs_for_account(self, account_id: str | None) -> list[PairStatus]:
+        """Pairs in scope for a stop. ``None`` means every pair."""
+        if account_id is None:
+            return list(self._pairs.values())
+        return [ps for ps in self._pairs.values() if ps.pair.account_id == account_id]
+
+    def is_stopped(self, ps: PairStatus) -> bool:
+        """Whether this pair is halted by a global or per-account stop."""
+        if self._config.sync.stopped:
+            return True
+        account = next(
+            (a for a in self._config.accounts if a.email == ps.pair.account_id), None
+        )
+        return bool(account and account.stopped)
+
+    async def emergency_stop(self, account_id: str | None = None) -> dict:
+        """Halt activity now, for one account or everything.
+
+        Cancels in-flight work rather than draining it. Provider SDK calls already
+        inside ``asyncio.to_thread`` cannot be cancelled, so at most one transfer
+        per worker keeps writing until it returns and its result is discarded —
+        everything queued behind it stops immediately.
+
+        The flag is persisted, so a restart does not resume what a user halted.
+        """
+        scope = self._pairs_for_account(account_id)
+        if account_id is None:
+            self._config.sync.stopped = True
+        else:
+            for account in self._config.accounts:
+                if account.email == account_id:
+                    account.stopped = True
+
+        cancelled = 0
+        for ps in scope:
+            ps.paused = True
+            if ps.executor:
+                cancelled += ps.executor.stop()
+            if ps.watcher:
+                with contextlib.suppress(Exception):
+                    await ps.watcher.stop()
+
+        try:
+            self._config.save()
+        except Exception:
+            log.exception("Could not persist the emergency stop — it will not survive a restart")
+
+        log.warning(
+            "EMERGENCY STOP (%s): %d pair(s) halted, %d in-flight operation(s) cancelled",
+            account_id or "all accounts",
+            len(scope),
+            cancelled,
+        )
+        if self._notify_callback:
+            with contextlib.suppress(Exception):
+                await self._notify_callback(
+                    "activity_stopped",
+                    {"account_id": account_id, "pairs": len(scope), "cancelled": cancelled},
+                )
+        return {
+            "scope": account_id or "all",
+            "pairs_stopped": len(scope),
+            "operations_cancelled": cancelled,
+        }
+
+    async def emergency_resume(self, account_id: str | None = None) -> dict:
+        """Undo :meth:`emergency_stop` for one account or everything.
+
+        A per-account resume cannot override a global stop; the global one has to
+        be lifted too, otherwise the button would appear to work and nothing would
+        move.
+        """
+        if account_id is None:
+            self._config.sync.stopped = False
+            for account in self._config.accounts:
+                account.stopped = False
+        else:
+            for account in self._config.accounts:
+                if account.email == account_id:
+                    account.stopped = False
+
+        resumed = 0
+        for ps in self._pairs_for_account(account_id):
+            if self.is_stopped(ps):
+                continue  # still held by a wider stop
+            if ps.executor:
+                ps.executor.resume()
+            ps.paused = False
+            if ps.watcher:
+                with contextlib.suppress(Exception):
+                    await ps.watcher.start()
+            resumed += 1
+
+        try:
+            self._config.save()
+        except Exception:
+            log.exception("Could not persist the resume")
+
+        log.warning("Activity resumed (%s): %d pair(s)", account_id or "all accounts", resumed)
+        if self._notify_callback:
+            with contextlib.suppress(Exception):
+                await self._notify_callback(
+                    "activity_resumed", {"account_id": account_id, "pairs": resumed}
+                )
+        return {"scope": account_id or "all", "pairs_resumed": resumed}
+
+    def stop_state(self) -> dict:
+        """Current stop state, globally and per account."""
+        return {
+            "stopped": self._config.sync.stopped,
+            "accounts": {a.email: a.stopped for a in self._config.accounts},
+        }
+
+    async def restore_stop_state(self) -> None:
+        """Re-apply persisted stops at startup.
+
+        Without this the flag would survive the restart but the daemon would sync
+        anyway, which is the failure the persistence exists to prevent.
+        """
+        for ps in self._pairs.values():
+            if self.is_stopped(ps):
+                ps.paused = True
+                if ps.executor:
+                    ps.executor.stop()
+                log.warning(
+                    "%s starts halted — activity was stopped before the last shutdown",
+                    ps.pair_id,
+                )
 
     async def approve_pending_deletions(self, pair_id: str) -> bool:
         """Let the next pass for ``pair_id`` delete without the fail-safe.

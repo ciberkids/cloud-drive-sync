@@ -153,6 +153,7 @@ Global sync behavior. All settings here can be overridden per pair where noted.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `poll_interval` | integer | `30` | Seconds between remote change polls |
+| `stopped` | boolean | `false` | Emergency stop state; set by the UI/CLI, not meant for hand-editing — see [Emergency Stop](Daemon#emergency-stop) |
 | `max_deletions_per_sync` | integer | `100` | Refuse a sync pass deleting more than this many files in one direction, until confirmed. `0` disables the guard — see [Delete Protection](Daemon#delete-protection) |
 | `conflict_strategy` | string | `"keep_both"` | Default conflict resolution strategy (see values below) |
 | `max_concurrent_transfers` | integer | `4` | Parallel upload/download limit |

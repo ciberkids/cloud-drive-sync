@@ -11,7 +11,7 @@ import { About } from "./components/About";
 import { CloudBridges } from "./components/CloudBridges";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
-import type { PendingDeletion } from "./lib/types";
+import type { PendingDeletion, StopState } from "./lib/types";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -86,7 +86,81 @@ function NavBar() {
           <NavLink to="/about">About</NavLink>
         </li>
       </ul>
+      <StopActivityButton />
     </nav>
+  );
+}
+
+/**
+ * Emergency stop (#54). Lives in the sidebar rather than a settings tab: a
+ * control you reach for when something is going wrong has to be visible from
+ * wherever you happen to be.
+ */
+function StopActivityButton() {
+  const [state, setState] = useState<StopState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => {
+    ipc
+      .getStopState()
+      .then(setState)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  const anyAccountStopped = state
+    ? Object.values(state.accounts).some(Boolean)
+    : false;
+  const stopped = state?.stopped ?? false;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (stopped) {
+        await ipc.emergencyResume();
+      } else {
+        await ipc.emergencyStop();
+      }
+      refresh();
+    } catch (e) {
+      console.error("Failed to change activity state:", e);
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sidebar-footer">
+      <button
+        className={`btn stop-activity ${stopped ? "stop-activity-resume" : "stop-activity-stop"}`}
+        onClick={toggle}
+        disabled={busy}
+        title={
+          stopped
+            ? "Resume all sync activity"
+            : "Stop all sync activity now, cancelling transfers in progress"
+        }
+      >
+        {stopped ? "\u25B6 Resume activity" : "\u25A0 Stop activity"}
+      </button>
+      {stopped && (
+        <span className="stop-activity-note">
+          All activity stopped. Nothing will sync until resumed — this survives a
+          restart.
+        </span>
+      )}
+      {!stopped && anyAccountStopped && (
+        <span className="stop-activity-note">
+          One or more accounts are individually stopped.
+        </span>
+      )}
+    </div>
   );
 }
 

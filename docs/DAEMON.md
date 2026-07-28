@@ -646,6 +646,34 @@ See `docker/docker-compose.yml` for a ready-to-use compose file.
 | `CDS_GOOGLE_CLIENT_ID` | (embedded) | Override Google OAuth client ID |
 | `CDS_GOOGLE_CLIENT_SECRET` | (embedded) | Override Google OAuth client secret |
 
+## Emergency Stop
+
+`pause` stops *starting* new work and lets in-flight transfers finish. When something is actively going wrong — the wrong folder is syncing, deletions are propagating, a provider is misbehaving — that is not what you want. **Stop activity** cancels work already in progress.
+
+Two scopes:
+
+| Scope | UI | CLI | REST |
+|---|---|---|---|
+| Everything | **Stop activity** in the sidebar | `cloud-drive-sync stop-activity` | `POST /api/sync/stop` |
+| One account | per-account control | `cloud-drive-sync stop-activity --account you@example.com` | `POST /api/sync/stop` with `{"account_id": "..."}` |
+
+Resume with the same control, `resume-activity`, or `POST /api/sync/resume-stopped`. Current state: `GET /api/sync/stop-state`.
+
+The stop is **persisted**. A daemon that starts with a stop in force starts halted and logs why — otherwise a container restart policy would quietly undo the thing you did in an emergency.
+
+A per-account resume cannot override an application-wide stop; lift the global one too, or the control appears to work while nothing moves.
+
+### What "immediately" actually guarantees
+
+The limit here is real, so it is worth being precise:
+
+- **Stops at once** — everything queued, every awaiting operation, the directory watchers, and all subsequent passes. This is the overwhelming majority of pending work.
+- **May take a moment** — a provider SDK call already executing inside a worker thread. Python cannot cancel a thread, so an upload already handed to the Box or Dropbox SDK runs until it returns. Its result is then discarded.
+
+At most one transfer per concurrent worker (`max_concurrent_transfers`, default 4) can therefore still be writing briefly after you press stop. Nothing queued behind them starts. Partial uploads are recorded in the resumable-transfer table and are cleaned up or resumed on the next pass rather than being mistaken for real files.
+
+If you need the byte flow to stop with certainty — not merely the daemon's participation in it — stop the daemon process.
+
 ## Delete Protection
 
 Sync is two-way, so deleting files locally deletes them in the cloud too. That is the intended behaviour right up until the deletion was not intended — a bad `rm -rf`, an external drive unmounted while its mountpoint is still a sync path, a disk failure, or a container recreated with an empty volume. The daemon would see thousands of deletions as user intent and faithfully empty the cloud copy, turning the backup into a mirror of the disaster.

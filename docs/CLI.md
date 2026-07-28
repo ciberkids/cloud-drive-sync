@@ -62,6 +62,11 @@ cloud-drive-sync start --foreground
 # Start in demo mode (no real cloud account needed)
 cloud-drive-sync start --demo
 
+# Stop ALL activity immediately, cancelling transfers in progress
+cloud-drive-sync stop-activity
+cloud-drive-sync stop-activity --account you@example.com
+cloud-drive-sync resume-activity
+
 # Start with HTTP REST API and web UI
 cloud-drive-sync start --foreground --http-port 8080
 

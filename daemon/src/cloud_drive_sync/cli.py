@@ -337,6 +337,47 @@ def sync_now(pair_id: str | None):
         sys.exit(1)
 
 
+@cli.command("stop-activity")
+@click.option("--account", "account_id", default=None, help="Stop one account only.")
+def stop_activity(account_id: str | None):
+    """Stop ALL sync activity immediately, cancelling transfers in progress.
+
+    Unlike `pause`, which lets in-flight transfers finish, this cancels them.
+    Persists across restart — use `resume-activity` to undo it.
+    """
+    try:
+        params = {"account_id": account_id} if account_id else {}
+        result = _run_client_call("emergency_stop", params)
+        click.echo(
+            f"Stopped {result.get('pairs_stopped', 0)} pair(s); "
+            f"{result.get('operations_cancelled', 0)} operation(s) cancelled."
+        )
+        click.echo("Transfers already inside a provider call may take a moment to unwind.")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("resume-activity")
+@click.option("--account", "account_id", default=None, help="Resume one account only.")
+def resume_activity(account_id: str | None):
+    """Resume after `stop-activity`."""
+    try:
+        params = {"account_id": account_id} if account_id else {}
+        result = _run_client_call("emergency_resume", params)
+        resumed = result.get("pairs_resumed", 0)
+        if resumed == 0 and account_id:
+            click.echo(
+                "Nothing resumed — activity is stopped application-wide. "
+                "Run `resume-activity` without --account first."
+            )
+        else:
+            click.echo(f"Resumed {resumed} pair(s).")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command()
 @click.argument("pair_id", required=False)
 def pause(pair_id: str | None):

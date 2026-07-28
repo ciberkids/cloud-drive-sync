@@ -30,6 +30,9 @@ class Account:
     provider: str = "gdrive"
     server_url: str = ""  # For self-hosted providers (e.g. Nextcloud)
     max_concurrent_transfers: int = 0  # 0 = use global default
+    # Emergency stop for this account (#54). Persisted so a restart cannot
+    # silently resume activity the user deliberately halted.
+    stopped: bool = False
 
 
 @dataclass
@@ -77,6 +80,8 @@ class SyncConfig:
     # Delete fail-safe (#53): refuse a sync pass that would delete more than this
     # many files in one direction, until a human confirms it. 0 disables it.
     max_deletions_per_sync: int = 100
+    # Application-wide emergency stop (#54). Persisted for the same reason.
+    stopped: bool = False
     pairs: list[SyncPair] = field(default_factory=list)
 
 
@@ -95,12 +100,18 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     accounts: list[Account] = field(default_factory=list)
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
+    # Where this config was loaded from, so save() writes back to the same file.
+    # Without it, `--config /custom/path` loaded from there and saved to the
+    # default location: every setting change went to a file the user was not
+    # using, appeared to work in memory, and vanished on restart.
+    _source_path: Path | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
         """Load config from a TOML file, falling back to defaults."""
         path = path or config_path()
         cfg = cls()
+        cfg._source_path = path
         if not path.exists():
             log.info("No config file at %s, using defaults", path)
             return cfg
@@ -123,6 +134,7 @@ class Config:
         cfg.sync.max_deletions_per_sync = sync.get(
             "max_deletions_per_sync", cfg.sync.max_deletions_per_sync
         )
+        cfg.sync.stopped = sync.get("stopped", cfg.sync.stopped)
         cfg.sync.convert_google_docs = sync.get("convert_google_docs", cfg.sync.convert_google_docs)
         cfg.sync.notify_sync_complete = sync.get("notify_sync_complete", cfg.sync.notify_sync_complete)
         cfg.sync.notify_conflicts = sync.get("notify_conflicts", cfg.sync.notify_conflicts)
@@ -180,6 +192,7 @@ class Config:
                     provider=acct_data.get("provider", "gdrive"),
                     server_url=acct_data.get("server_url", ""),
                     max_concurrent_transfers=acct_data.get("max_concurrent_transfers", 0),
+                    stopped=acct_data.get("stopped", False),
                 )
             )
 
@@ -192,8 +205,13 @@ class Config:
         return cfg
 
     def save(self, path: Path | None = None) -> None:
-        """Persist config to a TOML file."""
-        path = path or config_path()
+        """Persist config to a TOML file.
+
+        Defaults to wherever this config was loaded from, not to the standard
+        location — otherwise ``--config`` would be honoured on read and ignored on
+        write.
+        """
+        path = path or self._source_path or config_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data: dict = {
@@ -204,6 +222,7 @@ class Config:
                 "poll_interval": self.sync.poll_interval,
                 "conflict_strategy": self.sync.conflict_strategy,
                 "max_deletions_per_sync": self.sync.max_deletions_per_sync,
+                "stopped": self.sync.stopped,
                 "max_concurrent_transfers": self.sync.max_concurrent_transfers,
                 "debounce_delay": self.sync.debounce_delay,
                 "convert_google_docs": self.sync.convert_google_docs,
@@ -245,6 +264,7 @@ class Config:
                     "provider": a.provider,
                     **({"server_url": a.server_url} if a.server_url else {}),
                     **({"max_concurrent_transfers": a.max_concurrent_transfers} if a.max_concurrent_transfers else {}),
+                    **({"stopped": True} if a.stopped else {}),
                 }
                 for a in self.accounts
             ],

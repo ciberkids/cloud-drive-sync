@@ -211,3 +211,21 @@ export async function getPendingDeletions() {
 export async function resolvePendingDeletions(_pairId: string, _approve: boolean) {
   return { status: "approved", batches: 1 };
 }
+
+// ── Emergency stop (#54) ────────────────────────────────────────────
+
+let demoStopped = false;
+
+export async function getStopState() {
+  return { stopped: demoStopped, accounts: { "demo@example.com": false } };
+}
+
+export async function emergencyStop(_accountId?: string) {
+  demoStopped = true;
+  return { pairs_stopped: 2, operations_cancelled: 3 };
+}
+
+export async function emergencyResume(_accountId?: string) {
+  demoStopped = false;
+  return { pairs_resumed: 2 };
+}

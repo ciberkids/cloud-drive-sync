@@ -76,6 +76,9 @@ class RequestHandler:
             "set_max_deletions": self._set_max_deletions,
             "get_max_deletions": self._get_max_deletions,
             "resolve_pending_deletions": self._resolve_pending_deletions,
+            "emergency_stop": self._emergency_stop,
+            "emergency_resume": self._emergency_resume,
+            "get_stop_state": self._get_stop_state,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -249,6 +252,35 @@ class RequestHandler:
             "daemon": daemon_info,
             "conflict_strategy": self._config.sync.conflict_strategy,
         }
+
+    async def _emergency_stop(self, params: dict) -> dict:
+        """Halt all activity immediately (#54).
+
+        Scope is application-wide unless ``account_id`` is given. Cancels in-flight
+        work rather than draining it; provider calls already inside a thread cannot
+        be cancelled, so at most one transfer per worker finishes writing before
+        stopping, with its result discarded.
+        """
+        engine = self._require_engine()
+        account_id = (params or {}).get("account_id")
+        return await engine.emergency_stop(account_id)
+
+    async def _emergency_resume(self, params: dict) -> dict:
+        """Resume after an emergency stop, for one account or everything."""
+        engine = self._require_engine()
+        account_id = (params or {}).get("account_id")
+        return await engine.emergency_resume(account_id)
+
+    async def _get_stop_state(self, params: dict) -> dict:
+        """Whether activity is stopped, globally and per account."""
+        if self._engine is None:
+            # Report the persisted intent even before the engine exists, so the UI
+            # does not show "running" on a daemon that starts halted.
+            return {
+                "stopped": self._config.sync.stopped,
+                "accounts": {a.email: a.stopped for a in self._config.accounts},
+            }
+        return self._engine.stop_state()
 
     async def _get_max_deletions(self, params: dict) -> dict:
         """Current delete fail-safe limits: global default and per-pair overrides."""
