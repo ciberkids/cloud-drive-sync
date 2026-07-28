@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'README.md'
+      - '.github/workflows/wiki-sync.yml'
 
 permissions:
   contents: write
@@ -23,11 +24,81 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Configure git
+          # Single source of truth for the wiki: page name -> docs/ source. The
+          # copied pages, the sidebar and the validation are all generated from
+          # this one mapping.
+          #
+          # Previously the copy list and the sidebar were maintained separately
+          # and drifted, so five Getting Started pages were linked but never
+          # uploaded (issue #46). GitHub renders a link to a missing wiki page as
+          # an *edit* link, so readers got "You do not have permission to update
+          # this wiki" rather than a 404 — it read like an account problem — and
+          # the job still exited 0, so nothing surfaced it for months.
+          declare -A PAGES=(
+            [Installation]=docs/Installation.md
+            [Docker]=docs/Docker.md
+            [Quadlet]=docs/Quadlet.md
+            [Provider-Setup]=docs/Provider-Setup.md
+            [Configuration]=docs/Configuration.md
+            [Cross-Cloud-Sync]=docs/Cross-Cloud-Sync.md
+            [CLI]=docs/CLI.md
+            [Daemon]=docs/DAEMON.md
+            [API-Reference]=docs/API.md
+            [Architecture]=docs/ARCHITECTURE.md
+            [UI]=docs/UI.md
+            [Contributing]=docs/CONTRIBUTING.md
+          )
+
+          # Sidebar layout: "Section:Page1,Page2". Every page name must be a key
+          # of PAGES — enforced below.
+          SIDEBAR_SECTIONS=(
+            "Getting Started:Installation,Docker,Quadlet,Provider-Setup,Configuration,Cross-Cloud-Sync"
+            "Reference:CLI,Daemon,API-Reference,Architecture,UI,Contributing"
+          )
+
+          # ── Validate before touching the wiki ──────────────────────
+          # Fail the job on drift, so a missing page breaks the build at the
+          # commit that introduced it instead of shipping a broken sidebar.
+          errors=0
+
+          for page in "${!PAGES[@]}"; do
+            if [ ! -f "${PAGES[$page]}" ]; then
+              echo "::error::Wiki page '$page' maps to ${PAGES[$page]}, which does not exist"
+              errors=$((errors + 1))
+            fi
+          done
+
+          for section in "${SIDEBAR_SECTIONS[@]}"; do
+            IFS=',' read -ra entries <<< "${section#*:}"
+            for name in "${entries[@]}"; do
+              if [ -z "${PAGES[$name]+set}" ]; then
+                echo "::error::Sidebar links '$name' but PAGES has no such entry — that link would render as an uneditable 'create page' prompt"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          # Surface docs/ pages absent from the mapping, so new documentation
+          # cannot be silently missing from the wiki. Warning only: some docs/
+          # files are deliberately not wiki pages.
+          for f in docs/*.md; do
+            found=0
+            for page in "${!PAGES[@]}"; do
+              [ "${PAGES[$page]}" = "$f" ] && found=1 && break
+            done
+            if [ "$found" = "0" ]; then
+              echo "::warning::$f is not published to the wiki (add it to PAGES if it should be)"
+            fi
+          done
+
+          if [ "$errors" -gt 0 ]; then
+            echo "Wiki mapping is inconsistent ($errors problem(s)); refusing to sync."
+            exit 1
+          fi
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Clone the wiki repo using HTTPS with token auth
           wiki_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.wiki.git"
 
           if ! git clone "$wiki_url" wiki-repo 2>/dev/null; then
@@ -36,53 +107,60 @@ jobs:
             exit 0
           fi
 
-          # Generate wiki pages from docs/ (single source of truth)
-          # Map docs filenames to wiki page names
-          cp docs/ARCHITECTURE.md    wiki-repo/Architecture.md
-          cp docs/API.md             wiki-repo/API-Reference.md
-          cp docs/CONTRIBUTING.md    wiki-repo/Contributing.md
-          cp docs/CLI.md             wiki-repo/CLI.md
-          cp docs/DAEMON.md          wiki-repo/Daemon.md
-          cp docs/UI.md              wiki-repo/UI.md
-          cp docs/Installation.md    wiki-repo/Installation.md
-          cp docs/Docker.md          wiki-repo/Docker.md
-          cp docs/Quadlet.md         wiki-repo/Quadlet.md
-          cp docs/Provider-Setup.md  wiki-repo/Provider-Setup.md
-          cp docs/Configuration.md   wiki-repo/Configuration.md
-          cp docs/Cross-Cloud-Sync.md wiki-repo/Cross-Cloud-Sync.md
+          # ── Generate pages from the mapping ────────────────────────
+          for page in "${!PAGES[@]}"; do
+            cp "${PAGES[$page]}" "wiki-repo/${page}.md"
+          done
 
-          # Generate Home page from README (strip first line header, adjust links)
-          sed 's|\(docs/screenshots/\)|https://raw.githubusercontent.com/${{ github.repository }}/main/\1|g' README.md > wiki-repo/Home.md
+          # Home page from README (rewrite relative screenshot paths to raw URLs)
+          sed 's|\(docs/screenshots/\)|https://raw.githubusercontent.com/${{ github.repository }}/main/\1|g' \
+            README.md > wiki-repo/Home.md
 
-          # Generate sidebar navigation
-          cat > wiki-repo/_Sidebar.md << 'SIDEBAR'
-          **Cloud Drive Sync**
+          # ── Sidebar, from the same mapping ─────────────────────────
+          {
+            echo "**Cloud Drive Sync**"
+            echo
+            echo "- [[Home]]"
+            for section in "${SIDEBAR_SECTIONS[@]}"; do
+              echo
+              echo "**${section%%:*}**"
+              IFS=',' read -ra entries <<< "${section#*:}"
+              for name in "${entries[@]}"; do
+                # Render Foo-Bar as [[Foo Bar|Foo-Bar]] so the label reads naturally.
+                label="${name//-/ }"
+                if [ "$label" = "$name" ]; then
+                  echo "- [[${name}]]"
+                else
+                  echo "- [[${label}|${name}]]"
+                fi
+              done
+            done
+          } > wiki-repo/_Sidebar.md
 
-          - [[Home]]
-
-          **Getting Started**
-          - [[Installation]]
-          - [[Docker]]
-          - [[Quadlet]]
-          - [[Provider Setup|Provider-Setup]]
-          - [[Configuration]]
-          - [[Cross-Cloud Sync|Cross-Cloud-Sync]]
-
-          **Reference**
-          - [[CLI]]
-          - [[Daemon]]
-          - [[API Reference|API-Reference]]
-          - [[Architecture]]
-          - [[UI]]
-          - [[Contributing]]
-          SIDEBAR
-
-          # Generate footer
           cat > wiki-repo/_Footer.md << 'FOOTER'
           [Cloud Drive Sync](https://github.com/${{ github.repository }}) | [Report an Issue](https://github.com/${{ github.repository }}/issues) | [Releases](https://github.com/${{ github.repository }}/releases)
           FOOTER
 
-          # Commit and push if there are changes
+          # ── Post-generation check on the real output ───────────────
+          # Belt and braces against the exact #46 symptom, measured on what was
+          # generated rather than trusted from the inputs.
+          missing=0
+          while read -r target; do
+            [ -z "$target" ] && continue
+            if [ ! -f "wiki-repo/${target}.md" ]; then
+              echo "::error::_Sidebar.md links [[${target}]] but wiki-repo/${target}.md was not generated"
+              missing=$((missing + 1))
+            fi
+          done < <(grep -oE '\[\[[^]]+\]\]' wiki-repo/_Sidebar.md \
+                   | sed 's/^\[\[//; s/\]\]$//; s/^.*|//')
+
+          if [ "$missing" -gt 0 ]; then
+            echo "Refusing to push a sidebar with $missing dead link(s)."
+            exit 1
+          fi
+
+          echo "Validated ${#PAGES[@]} pages; every sidebar link resolves."
+
           cd wiki-repo
           git add -A
           if git diff --cached --quiet; then
