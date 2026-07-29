@@ -15,6 +15,7 @@ import contextlib
 import json
 from typing import Any
 
+from cloud_drive_sync.http import auth as auth_mod
 from cloud_drive_sync.mcp.catalog import ToolNotAvailable, dispatch, tools_for
 from cloud_drive_sync.util.logging import get_logger
 
@@ -74,11 +75,13 @@ class McpServer:
         port: int = 8081,
         allow_writes: bool = False,
         allowed_hosts: tuple[str, ...] | None = None,
+        auth_token: str | None = None,
     ) -> None:
         self._handler = handler
         self._host = host
         self._port = port
         self._allow_writes = allow_writes
+        self._auth_token = auth_token or None
         self._allowed_hosts = tuple(allowed_hosts) if allowed_hosts else DEFAULT_ALLOWED_HOSTS
         self._uvicorn: Any = None
         self._task: asyncio.Task | None = None
@@ -182,14 +185,51 @@ class McpServer:
             "read/write" if self._allow_writes else "read-only",
             len(tools_for(self._allow_writes)),
         )
+        auth_mod.warn_if_exposed(
+            name="MCP endpoint",
+            host=self._host,
+            port=self._port,
+            token=self._auth_token,
+        )
         # stateless: each request is self-contained, so there is no session state
         # to lose across a daemon restart and no event store to configure.
-        return self._build_mcp_app().streamable_http_app(
+        app = self._build_mcp_app().streamable_http_app(
             streamable_http_path="/mcp",
             stateless_http=True,
             transport_security=security,
             host=self._host,
         )
+        return self._with_auth(app)
+
+    def _with_auth(self, app: Any) -> Any:
+        """Wrap the app so every request must carry the shared token.
+
+        Applied outside the SDK's app rather than via its token_verifier hook: that
+        hook is shaped for OAuth, and a shared secret is what this daemon has. No
+        token configured leaves the app untouched.
+        """
+        if self._auth_token is None:
+            return app
+
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.responses import JSONResponse
+
+        expected = self._auth_token
+
+        class _TokenMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                if auth_mod.is_authorised(
+                    expected, authorization=request.headers.get("Authorization")
+                ):
+                    return await call_next(request)
+                return JSONResponse(
+                    {"error": "unauthorized", "detail": "A bearer token is required."},
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer realm="cloud-drive-sync-mcp"'},
+                )
+
+        app.add_middleware(_TokenMiddleware)
+        return app
 
     # ── Lifecycle ───────────────────────────────────────────────────
 

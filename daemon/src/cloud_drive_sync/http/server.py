@@ -6,6 +6,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+from cloud_drive_sync.http import auth
 from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 from cloud_drive_sync.util.logging import get_logger
 
@@ -13,15 +14,113 @@ log = get_logger("http.server")
 
 WEBUI_DIR = Path(__file__).parent / "webui"
 
+LOGIN_PATH = "/login"
+
+# Deliberately dependency-free and self-contained: it has to render before the
+# React bundle is trusted to load, and it must not leak anything about the token.
+_LOGIN_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Cloud Drive Sync — sign in</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#1c1c1e;color:#f5f5f7;
+      display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+ form{background:#2c2c2e;padding:28px;border-radius:8px;min-width:320px}
+ h1{font-size:16px;margin:0 0 4px}
+ p{color:#98989d;font-size:13px;margin:0 0 16px}
+ input{width:100%;padding:9px;border-radius:6px;border:1px solid #38383a;
+       background:#1c1c1e;color:#f5f5f7;box-sizing:border-box}
+ button{width:100%;margin-top:12px;padding:9px;border:0;border-radius:6px;
+        background:#2997ff;color:#fff;font-weight:600;cursor:pointer}
+ .err{color:#ff6b6b;margin:10px 0 0}
+</style></head>
+<body><form method="post" action="/login">
+ <h1>Cloud Drive Sync</h1>
+ <p>This daemon requires an access token.</p>
+ <input type="password" name="token" placeholder="Access token" autofocus>
+ <button type="submit">Sign in</button>
+ <!--ERROR-->
+</form></body></html>
+"""
+
 
 class HttpServer:
-    def __init__(self, handler, host: str = "0.0.0.0", port: int = 8080) -> None:
+    def __init__(
+        self,
+        handler,
+        host: str = "0.0.0.0",
+        port: int = 8080,
+        auth_token: str | None = None,
+    ) -> None:
         self._handler = handler
         self._host = host
         self._port = port
-        self._app = web.Application(middlewares=[self._cors_middleware])
+        self._auth_token = auth_token or None
+        # Auth runs before CORS so an unauthorised request is rejected without the
+        # handler being reached at all.
+        self._app = web.Application(
+            middlewares=[self._auth_middleware, self._cors_middleware]
+        )
         self._runner: web.AppRunner | None = None
         self._setup_routes()
+
+    @web.middleware
+    async def _auth_middleware(self, request, handler):
+        """Require the shared token when one is configured.
+
+        Disabled entirely without a token, which is the default and preserves the
+        previous behaviour — see :mod:`cloud_drive_sync.http.auth` for why.
+        """
+        if self._auth_token is None:
+            return await handler(request)
+
+        path = request.path
+        # Preflight carries no credentials by design.
+        if request.method == "OPTIONS":
+            return await handler(request)
+        # The login form and the static bundle are not sensitive; the data behind
+        # /api is. Serving the shell unauthenticated is what lets the SPA render a
+        # login prompt at all.
+        if path == LOGIN_PATH or path.startswith("/assets"):
+            return await handler(request)
+
+        if auth.is_authorised(
+            self._auth_token,
+            authorization=request.headers.get("Authorization"),
+            cookie=request.cookies.get(auth.COOKIE_NAME),
+        ):
+            return await handler(request)
+
+        if path.startswith("/api/"):
+            # 401 with the scheme, so a CLI or script knows what to send.
+            return web.json_response(
+                {"error": "unauthorized", "detail": "A token is required."},
+                status=401,
+                headers={"WWW-Authenticate": 'Bearer realm="cloud-drive-sync"'},
+            )
+        return web.Response(text=_LOGIN_PAGE, content_type="text/html", status=401)
+
+    async def _login(self, request):
+        """Exchange a token for a cookie, so the browser UI can authenticate."""
+        data = await request.post()
+        presented = str(data.get("token", ""))
+        if not auth.matches(self._auth_token or "", presented):
+            # No detail about which part was wrong, and no logging of the value.
+            return web.Response(
+                text=_LOGIN_PAGE.replace(
+                    "<!--ERROR-->", '<p class="err">That token was not accepted.</p>'
+                ),
+                content_type="text/html",
+                status=401,
+            )
+        response = web.HTTPFound("/")
+        response.set_cookie(
+            auth.COOKIE_NAME,
+            presented,
+            httponly=True,
+            samesite="Strict",
+            max_age=60 * 60 * 24 * 30,
+            path="/",
+        )
+        raise response
 
     @web.middleware
     async def _cors_middleware(self, request, handler):
@@ -76,6 +175,10 @@ class HttpServer:
         r.add_put("/api/settings/proxy", self._set_proxy)
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         r.add_post("/api/repair", self._repair)
+
+        # Only useful when a token is configured; harmless otherwise.
+        r.add_post(LOGIN_PATH, self._login)
+        r.add_get(LOGIN_PATH, self._login_page)
 
         r.add_get("/api/settings/max-deletions", self._get_max_deletions)
         r.add_put("/api/settings/max-deletions", self._set_max_deletions)
@@ -229,6 +332,9 @@ class HttpServer:
     async def _get_stop_state(self, req):
         return self._json(await self._rpc("get_stop_state"))
 
+    async def _login_page(self, req):
+        return web.Response(text=_LOGIN_PAGE, content_type="text/html")
+
     async def _get_max_deletions(self, req):
         return self._json(await self._rpc("get_max_deletions"))
 
@@ -264,6 +370,12 @@ class HttpServer:
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
         log.info("HTTP server listening on http://%s:%d", self._host, self._port)
+        auth.warn_if_exposed(
+            name="HTTP API and web UI",
+            host=self._host,
+            port=self._port,
+            token=self._auth_token,
+        )
 
     async def stop(self) -> None:
         if self._runner:

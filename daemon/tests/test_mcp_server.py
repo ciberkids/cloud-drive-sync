@@ -251,3 +251,84 @@ def test_allowed_origins_are_derived_as_urls_not_reused_as_hosts():
     assert mw._validate_origin("https://127.0.0.1:8081") is True
     # A foreign origin must still be refused.
     assert mw._validate_origin("http://evil.example:8081") is False
+
+
+# ── Token authentication (opt-in) ───────────────────────────────────
+
+
+async def test_mcp_without_a_token_is_open():
+    """Default behaviour, unchanged — enabling auth by default would break every
+    existing MCP client configuration on upgrade."""
+    running = await _serve(BASE_PORT + 3)
+    try:
+        async with (
+            streamable_http_client(running.url) as (r, w),
+            ClientSession(r, w) as session,
+        ):
+            assert (await session.initialize()).server_info.name == "cloud-drive-sync"
+    finally:
+        await running.server.stop()
+
+
+async def test_mcp_with_a_token_refuses_anonymous_clients():
+    """An unauthenticated MCP endpoint exposes the same write surface as the REST
+    API, including switching off delete protection when writes are enabled."""
+    import httpx2 as httpx
+
+    running = await _serve(BASE_PORT + 4, auth_token="mcp-secret")
+    try:
+        async with httpx.AsyncClient() as http:
+            resp = await http.post(
+                running.url,
+                json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+        assert resp.status_code == 401
+        assert "Bearer" in resp.headers.get("WWW-Authenticate", "")
+        assert running.handler.calls == []
+    finally:
+        await running.server.stop()
+
+
+async def test_mcp_accepts_the_correct_token():
+    running = await _serve(BASE_PORT + 5, auth_token="mcp-secret")
+    try:
+        import httpx2
+
+        # 2.x takes a prepared client rather than headers, so credentials go on the
+        # client itself.
+        async with (
+            httpx2.AsyncClient(
+            headers={"Authorization": "Bearer mcp-secret"}
+        ) as authed, streamable_http_client(running.url, http_client=authed) as (r, w),
+            ClientSession(r, w) as session,
+        ):
+            listed = await session.list_tools()
+            assert listed.tools, "authorised client got no tools"
+    finally:
+        await running.server.stop()
+
+
+async def test_mcp_refuses_a_wrong_token():
+    import httpx2 as httpx
+
+    running = await _serve(BASE_PORT + 6, auth_token="mcp-secret")
+    try:
+        async with httpx.AsyncClient() as http:
+            resp = await http.post(
+                running.url,
+                json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Authorization": "Bearer wrong",
+                },
+            )
+        assert resp.status_code == 401
+    finally:
+        await running.server.stop()
+
+
+def test_an_empty_mcp_token_counts_as_none():
+    """An unset environment variable arrives as "", which must not enable auth with
+    a secret that every request satisfies."""
+    assert McpServer(FakeHandler(), auth_token="")._auth_token is None

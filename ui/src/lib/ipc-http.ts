@@ -16,8 +16,22 @@ import type {
   PendingDeletion,
 } from "./types";
 
+/**
+ * Send the browser to the login page when the daemon requires a token.
+ *
+ * Every /api/* call goes through the helpers below, so one check here covers the
+ * whole app. Without it a token-protected daemon would render an empty UI full of
+ * "API error: Unauthorized" with no way to sign in.
+ */
+function redirectIfUnauthorised(res: Response): void {
+  if (res.status === 401 && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api/${path}`);
+  redirectIfUnauthorised(res);
   if (!res.ok) throw new Error(`API error: ${res.statusText}`);
   return res.json();
 }
@@ -28,6 +42,7 @@ async function post<T>(path: string, body?: Record<string, unknown>): Promise<T>
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  redirectIfUnauthorised(res);
   if (!res.ok) throw new Error(`API error: ${res.statusText}`);
   return res.json();
 }
@@ -38,12 +53,14 @@ async function put<T>(path: string, body: Record<string, unknown>): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  redirectIfUnauthorised(res);
   if (!res.ok) throw new Error(`API error: ${res.statusText}`);
   return res.json();
 }
 
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`/api/${path}`, { method: "DELETE" });
+  redirectIfUnauthorised(res);
   if (!res.ok) throw new Error(`API error: ${res.statusText}`);
   return res.json();
 }

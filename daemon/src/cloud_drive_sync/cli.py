@@ -38,6 +38,24 @@ def cli(ctx: click.Context, config_path: Path | None, log_level: str | None) -> 
 @click.option("--demo", is_flag=True, help="Run in demo mode with mock Google Drive (no credentials needed)")
 @click.option("--http-port", type=int, default=0, help="Enable HTTP REST API on this port (0 = disabled)")
 @click.option(
+    "--http-host",
+    default="0.0.0.0",
+    envvar="CDS_HTTP_HOST",
+    help="Address the HTTP server binds to. Use 127.0.0.1 to restrict it to this machine.",
+)
+@click.option(
+    "--http-token",
+    default=None,
+    envvar="CDS_HTTP_TOKEN",
+    help="Require this token on /api/* and the web UI. Without one the port is unauthenticated.",
+)
+@click.option(
+    "--mcp-token",
+    default=None,
+    envvar="CDS_MCP_TOKEN",
+    help="Require this bearer token on the MCP endpoint.",
+)
+@click.option(
     "--mcp-port",
     type=int,
     default=0,
@@ -70,6 +88,9 @@ def start(
     foreground: bool,
     demo: bool,
     http_port: int,
+    http_host: str,
+    http_token: str | None,
+    mcp_token: str | None,
     mcp_port: int,
     mcp_host: str,
     mcp_allow_writes: bool,
@@ -87,6 +108,9 @@ def start(
         log_level=ctx.obj["log_level"],
         demo=demo,
         http_port=http_port,
+        http_host=http_host,
+        http_token=http_token,
+        mcp_token=mcp_token,
         mcp_port=mcp_port,
         mcp_host=mcp_host,
         mcp_allow_writes=mcp_allow_writes,
@@ -335,6 +359,14 @@ def sync_now(pair_id: str | None):
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
+
+
+@cli.command("gen-token")
+def gen_token():
+    """Print a strong random token for --http-token or --mcp-token."""
+    from cloud_drive_sync.http.auth import generate_token
+
+    click.echo(generate_token())
 
 
 @cli.group("deletions")

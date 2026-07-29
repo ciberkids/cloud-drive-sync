@@ -67,6 +67,10 @@ cloud-drive-sync deletions list
 cloud-drive-sync deletions approve 0
 cloud-drive-sync deletions reject 0
 
+# Generate a token, then require it on the API and web UI
+cloud-drive-sync gen-token
+cloud-drive-sync start --foreground --http-port 8080 --http-token "$TOKEN"
+
 # Stop ALL activity immediately, cancelling transfers in progress
 cloud-drive-sync stop-activity
 cloud-drive-sync stop-activity --account you@example.com
@@ -84,6 +88,9 @@ cloud-drive-sync --log-level debug start --foreground
 
 | Flag | Description |
 |------|-------------|
+| `--http-host ADDR` | Address the HTTP server binds to. Default `0.0.0.0`; use `127.0.0.1` to restrict to this machine. Env: `CDS_HTTP_HOST`. |
+| `--http-token TOKEN` | Require this token on `/api/*` and the web UI. Without one the port is unauthenticated. Env: `CDS_HTTP_TOKEN`. |
+| `--mcp-token TOKEN` | Require this bearer token on the MCP endpoint. Env: `CDS_MCP_TOKEN`. |
 | `--http-port PORT` | Enable HTTP REST API and web UI on the given port. Default 0 (disabled). Docker containers default to port 8080. |
 | `--mcp-port PORT` | Enable the MCP server for AI assistants. Default 0 (disabled), containers included. Env: `CDS_MCP_PORT`. |
 | `--mcp-host ADDR` | Address the MCP server binds to. Default `0.0.0.0`; use `127.0.0.1` to restrict to this machine. Env: `CDS_MCP_HOST`. |

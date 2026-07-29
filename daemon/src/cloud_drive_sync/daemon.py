@@ -33,6 +33,9 @@ class Daemon:
         log_level: str | None = None,
         demo: bool = False,
         http_port: int = 0,
+        http_host: str = "0.0.0.0",
+        http_token: str | None = None,
+        mcp_token: str | None = None,
         mcp_port: int = 0,
         mcp_host: str = "0.0.0.0",
         mcp_allow_writes: bool = False,
@@ -42,6 +45,9 @@ class Daemon:
         self._log_level_override = log_level
         self._demo = demo
         self._http_port = http_port
+        self._http_host = http_host
+        self._http_token = http_token or None
+        self._mcp_token = mcp_token or None
         self._mcp_port = mcp_port
         self._mcp_host = mcp_host
         self._mcp_allow_writes = mcp_allow_writes
@@ -197,7 +203,12 @@ class Daemon:
             # Start HTTP REST API server if port specified
             if self._http_port > 0:
                 from cloud_drive_sync.http.server import HttpServer
-                self._http_server = HttpServer(handler, port=self._http_port)
+                self._http_server = HttpServer(
+                    handler,
+                    host=self._http_host,
+                    port=self._http_port,
+                    auth_token=self._http_token,
+                )
                 await self._http_server.start()
 
             # Start MCP server for AI assistants if port specified
@@ -253,6 +264,7 @@ class Daemon:
             port=self._mcp_port,
             allow_writes=self._mcp_allow_writes,
             allowed_hosts=self._mcp_allowed_hosts or None,
+            auth_token=self._mcp_token,
         )
         try:
             await self._mcp_server.start()

@@ -339,13 +339,42 @@ Confirm it came up — the daemon logs the bound address on startup:
 
 ### Security
 
-> ⚠️ **The HTTP server has no authentication and listens on all interfaces.** Anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, and change where data syncs to.
+> ⚠️ **Authentication is off unless you set a token.** Without one, anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, change where data syncs, and **switch off delete protection**.
 
-Three specifics worth knowing before you expose it:
+### Requiring a token
 
-- **It binds `0.0.0.0`,** and there is currently no option to change the bind address. Restricting exposure has to happen outside the daemon.
-- **There is no login.** No token, no password, no session — every endpoint is open to whoever connects.
-- **CORS is `Access-Control-Allow-Origin: *`.** If the port is reachable from a machine running a browser, a web page open in that browser can issue requests to the API.
+```bash
+cloud-drive-sync gen-token                       # prints a strong random token
+cloud-drive-sync start --foreground --http-port 8080 --http-token "$TOKEN"
+# in a container:  -e CDS_HTTP_TOKEN=...
+```
+
+With a token set:
+
+- `/api/*` requires `Authorization: Bearer <token>`
+- the web UI shows a sign-in page, then stores the token in an `HttpOnly`, `SameSite=Strict` cookie
+- the MCP endpoint takes its own token via `--mcp-token` / `CDS_MCP_TOKEN`
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/status
+```
+
+It is **opt-in on purpose.** Turning it on by default would lock every existing deployment out of its own web UI on upgrade — people bookmark `http://nas:8080`. That is a real compromise, so the daemon logs a prominent warning at startup whenever a port is reachable beyond loopback without a token. If you see that warning, it applies to you.
+
+### Restricting the bind address
+
+`--http-host` (default `0.0.0.0`, which containers need) controls who can connect at all:
+
+```bash
+cloud-drive-sync start --foreground --http-port 8080 --http-host 127.0.0.1
+```
+
+Bound to loopback only this machine can reach it, and running without a token there is unremarkable — the daemon says so rather than warning.
+
+### Remaining specifics
+
+- **CORS is `Access-Control-Allow-Origin: *`.** With a token required this matters much less: a page on another origin cannot read the token, and the cookie is `SameSite=Strict` so it is not sent cross-site. Without a token, any web page in a browser that can reach the port can drive the API.
+- **The token is a shared secret, not a user account.** No roles, no per-user auditing. That is the right shape for a single-owner daemon and the wrong shape for multi-tenant access.
 
 Recommended deployments:
 
@@ -558,7 +587,9 @@ Without the flag these are not advertised at all, rather than offered and refuse
 
 ### Security
 
-> ⚠️ **Like the HTTP API, the MCP endpoint has no authentication.** Anyone who can reach the port can use every enabled tool.
+> ⚠️ **The MCP endpoint is unauthenticated unless you set `--mcp-token`.** Without one, anyone who can reach the port can use every enabled tool.
+
+Set a token with `--mcp-token` / `CDS_MCP_TOKEN`; clients then send `Authorization: Bearer <token>`. It is separate from the HTTP token so an assistant can be given access without handing over the web UI credential.
 
 It is safer by default than `--http-port` in two respects, and you should keep it that way:
 
