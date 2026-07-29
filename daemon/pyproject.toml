@@ -56,6 +56,11 @@ packages = ["src/cloud_drive_sync"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Container-backed tests are excluded by default. Declaring the marker alone does
+# not filter anything, so before this the Nextcloud integration tests ran on every
+# `pytest tests/` — spinning up containers and taking minutes. Opt in explicitly:
+#   pytest tests/ -m nextcloud
+addopts = "-m 'not nextcloud'"
 markers = [
     "integration: integration tests using demo mode (no real Google credentials)",
     "nextcloud: integration tests that spin up a real Nextcloud container (requires docker/podman)",
