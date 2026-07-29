@@ -171,6 +171,6 @@ systemctl --user restart cloud-drive-sync-daemon
 
 Then open `http://<server-ip>:8080`. The bare `ExecStart=` is required — it clears the original value, and systemd refuses a service with two `ExecStart` lines.
 
-> ⚠️ The web UI has **no authentication** and binds all interfaces. Firewall the port, or reach it through an SSH tunnel (`ssh -L 8080:localhost:8080 user@server`) rather than exposing it. See [Security](Daemon#security).
+> ⚠️ The web UI binds all interfaces and is **unauthenticated until you give it a token**. Generate one with `cloud-drive-sync gen-token` and add `--http-token <token>` to the `ExecStart` line — or set `CDS_HTTP_TOKEN` in the unit, which keeps it out of the process list. Without a token, anyone who can reach the port can add or remove cloud accounts, change where data syncs, and switch off delete protection. Alternatively bind it to loopback and reach it through an SSH tunnel (`ssh -L 8080:localhost:8080 user@server`). See [Authentication](Daemon#authentication).
 
 If you would rather run headless in a container, [Docker](Docker) and [Quadlet](Quadlet) have the HTTP UI switched on out of the box.

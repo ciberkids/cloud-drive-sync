@@ -53,7 +53,7 @@ The HTTP front-end serves the same compiled React UI as the desktop app, from in
 
 The MCP front-end maps handler methods to tools. It is read-only by default and its state-changing tools require `--mcp-allow-writes`; a few handler methods (`shutdown`, the OAuth code exchange, proxy configuration, host filesystem browsing) are never exposed at any level. The tool catalogue and its gating live in `cloud_drive_sync/mcp/catalog.py` and deliberately import no MCP SDK, so the permission logic is testable without the optional extra installed; only `mcp/server.py` needs it. See [MCP Server](Daemon#mcp-server-for-ai-assistants).
 
-> Neither the HTTP nor the MCP front-end has authentication, and both bind all interfaces. See [Security](Daemon#security).
+> The HTTP and MCP front-ends each take an optional shared token (`--http-token` / `--mcp-token`); both are unauthenticated without one, and both bind all interfaces. See [Authentication](Daemon#authentication).
 
 ## Component Breakdown
 

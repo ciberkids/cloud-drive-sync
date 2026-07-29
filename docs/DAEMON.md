@@ -337,7 +337,7 @@ Confirm it came up — the daemon logs the bound address on startup:
 [INFO] HTTP server listening on http://0.0.0.0:8080
 ```
 
-### Security
+### Authentication
 
 > ⚠️ **Authentication is off unless you set a token.** Without one, anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, change where data syncs, and **switch off delete protection**.
 
@@ -585,7 +585,7 @@ Without the flag these are not advertised at all, rather than offered and refuse
 
 `shutdown` (an assistant stopping the daemon is never the intent), `start_auth` / `exchange_auth_code` (interactive OAuth, and the code is a secret), `get_proxy` / `set_proxy` (proxy URLs can embed credentials), `list_local_dirs` / `mkdir_local` (host filesystem access beyond synced state).
 
-### Security
+### MCP Authentication
 
 > ⚠️ **The MCP endpoint is unauthenticated unless you set `--mcp-token`.** Without one, anyone who can reach the port can use every enabled tool.
 
