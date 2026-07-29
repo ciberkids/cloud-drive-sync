@@ -292,12 +292,30 @@ Make sure all four files (`.container` and the three `.volume` files) are in the
 
 **Container exits immediately / permission errors on volumes**
 
-Check that `PUID` and `PGID` match your host user's actual IDs (`id -u` / `id -g`). If the named volumes were previously created as root, you may need to remove and recreate them:
+First check which kind of unit you are running, because the fix is opposite in each.
+
+*Rootful* (`/etc/containers/systemd/`): check that `PUID` and `PGID` match your host user's actual IDs (`id -u` / `id -g`). If the named volumes were previously created as root, you may need to remove and recreate them:
 
 ```bash
 podman volume rm cloud-drive-sync-config cloud-drive-sync-data cloud-drive-sync-run
 systemctl [--user] start cloud-drive-sync
 ```
+
+*Rootless* (`~/.config/containers/systemd/`): **remove `PUID` and `PGID` entirely** and add `UserNS=keep-id` instead. Your host user is already the container's root there, so setting those IDs points the daemon at a subordinate UID that does not own your bind-mounted folders — the container starts, then cannot write to the directories you asked it to sync. Matching them to `id -u` is the right answer for a rootful unit and the wrong one here.
+
+**The container starts but nothing syncs, or writes fail on a mounted folder**
+
+Usually the rootless case immediately above. Confirm what the daemon is running as and what it sees:
+
+```bash
+podman exec cloud-drive-sync sh -c 'grep ^Uid /proc/1/status; ls -ldn /data/*'
+```
+
+If the mounted directory is owned by `0` while the process runs as some other UID, that is the mismatch.
+
+**Container exits with `Permission denied: '/root/.config/cloud-drive-sync'`**
+
+Fixed in v2.4.0 — `/root` was not traversable by the remapped user, so any unit setting `PUID`/`PGID` crashed on startup. Pull a current image.
 
 **Port 8080 is already in use**
 
