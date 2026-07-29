@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from cloud_drive_sync.providers.base import CloudChangePoller
@@ -56,15 +57,25 @@ MAX_CONSECUTIVE_FAILURES = 5
 CAPABILITIES_PATH = "/ocs/v2.php/cloud/capabilities"
 
 
-async def discover_push_endpoint(
+@dataclass(frozen=True)
+class PushEndpoints:
+    """What the server advertises for notify_push."""
+
+    websocket: str
+    #: URL that issues short-lived, single-use auth tokens. Absent on older
+    #: versions of the app, in which case password auth is the only option.
+    pre_auth: str | None = None
+
+
+async def discover_push_endpoints(
     server_url: str,
     username: str,
     password: str,
     *,
     session: Any = None,
     timeout: float = 15.0,
-) -> str | None:
-    """Return the ``notify_push`` WebSocket URL, or ``None`` if unsupported.
+) -> PushEndpoints | None:
+    """Return the advertised ``notify_push`` endpoints, or ``None`` if unsupported.
 
     Discovery doubles as the feature test: an instance without the app simply does
     not advertise the capability, so there is nothing else to probe.
@@ -91,19 +102,76 @@ async def discover_push_endpoint(
         if owns_session:
             await session.close()
 
-    endpoint = (
+    endpoints = (
         payload.get("ocs", {})
         .get("data", {})
         .get("capabilities", {})
         .get("notify_push", {})
         .get("endpoints", {})
-        .get("websocket")
     )
-    if not endpoint:
+    websocket = endpoints.get("websocket")
+    if not websocket:
         log.info("Nextcloud does not advertise notify_push; using ETag polling")
         return None
-    log.info("Nextcloud advertises notify_push at %s", endpoint)
-    return endpoint
+    log.info("Nextcloud advertises notify_push at %s", websocket)
+    return PushEndpoints(websocket=websocket, pre_auth=endpoints.get("pre_auth") or None)
+
+
+async def discover_push_endpoint(
+    server_url: str,
+    username: str,
+    password: str,
+    *,
+    session: Any = None,
+    timeout: float = 15.0,
+) -> str | None:
+    """Just the WebSocket URL, for callers that need nothing else."""
+    found = await discover_push_endpoints(
+        server_url, username, password, session=session, timeout=timeout
+    )
+    return found.websocket if found else None
+
+
+async def fetch_pre_auth_token(
+    pre_auth_url: str,
+    username: str,
+    password: str,
+    *,
+    session: Any = None,
+    timeout: float = 15.0,
+) -> str | None:
+    """Exchange the account password for a short-lived push token.
+
+    Preferred over sending the app password across the WebSocket on every connect.
+    Verified against notify_push 1.3.5: the endpoint is POST-only (GET returns 405),
+    authenticates with the account credentials, and returns the token as a bare
+    string rather than JSON.
+
+    **Tokens are single-use.** Presenting the same one twice is rejected with
+    ``err: Invalid credentials``, so this is called fresh for every connection
+    attempt, including every reconnect — caching one would break reconnection.
+    """
+    import aiohttp
+
+    owns_session = session is None
+    if owns_session:
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout))
+    try:
+        async with session.post(
+            pre_auth_url, auth=aiohttp.BasicAuth(username, password)
+        ) as resp:
+            if resp.status != 200:
+                log.debug("pre_auth returned %s; falling back to password auth", resp.status)
+                return None
+            token = (await resp.text()).strip()
+    except Exception as exc:
+        log.debug("Could not obtain a pre_auth token (%s); using password auth", exc)
+        return None
+    finally:
+        if owns_session:
+            await session.close()
+
+    return token or None
 
 
 class NextcloudPushPoller(CloudChangePoller):
@@ -134,6 +202,7 @@ class NextcloudPushPoller(CloudChangePoller):
         self._failures = 0
         self._task: asyncio.Task | None = None
         self._endpoint: str | None = None
+        self._pre_auth_url: str | None = None
         # None means "never reconciled", which forces a walk on the first poll —
         # correct after a restart, since notifications sent while down were missed.
         self._last_reconcile: float | None = None
@@ -222,13 +291,15 @@ class NextcloudPushPoller(CloudChangePoller):
         if self._force_polling:
             log.info("notify_push disabled by configuration; using ETag polling")
             return
-        self._endpoint = await discover_push_endpoint(
+        found = await discover_push_endpoints(
             self._client._server_url,
             self._client._username,
             self._client._app_password,
         )
-        if not self._endpoint:
+        if not found:
             return
+        self._endpoint = found.websocket
+        self._pre_auth_url = found.pre_auth
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
@@ -277,31 +348,50 @@ class NextcloudPushPoller(CloudChangePoller):
         """One connection lifetime: authenticate, listen, dispatch messages."""
         import aiohttp
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.ws_connect(self._endpoint, heartbeat=30) as ws,
-        ):
-            await ws.send_str(self._client._username)
-            await ws.send_str(self._client._app_password)
+        async with aiohttp.ClientSession() as session:
+            # A fresh single-use token per attempt. Sending the account password
+            # over the socket works, but this avoids putting a long-lived
+            # credential on the wire on every reconnect.
+            user, secret = self._client._username, self._client._app_password
+            if self._pre_auth_url:
+                token = await fetch_pre_auth_token(
+                    self._pre_auth_url, user, secret, session=session
+                )
+                if token:
+                    # An empty username is how notify_push distinguishes a token
+                    # from a password.
+                    user, secret = "", token
 
-            greeting = await ws.receive_str()
-            if greeting.strip() != "authenticated":
-                raise RuntimeError(f"notify_push refused authentication: {greeting!r}")
+            async with session.ws_connect(self._endpoint, heartbeat=30) as ws:
+                await ws.send_str(user)
+                await ws.send_str(secret)
 
-            # Opt into file-ID granularity. Without this the server sends only the
-            # coarse notify_file, which tells us something changed but not what —
-            # forcing a full walk on every notification and defeating the purpose.
-            await ws.send_str("listen notify_file_id")
+                greeting = await ws.receive_str()
+                if greeting.strip() != "authenticated":
+                    raise RuntimeError(f"notify_push refused authentication: {greeting!r}")
 
-            self._connected = True
-            self._failures = 0
-            log.info("notify_push connected — directory walks now happen only for reconciliation")
+                # Opt into file-ID granularity. Without this the server sends only
+                # the coarse notify_file, which says something changed but not
+                # what — forcing a full walk per notification and defeating the
+                # purpose.
+                await ws.send_str("listen notify_file_id")
 
-            async for message in ws:
-                if message.type is aiohttp.WSMsgType.TEXT:
-                    self._handle_message(message.data)
-                elif message.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                    break
+                self._connected = True
+                self._failures = 0
+                log.info(
+                    "notify_push connected via %s — directory walks now happen only "
+                    "for reconciliation",
+                    "pre_auth token" if not user else "password",
+                )
+
+                async for message in ws:
+                    if message.type is aiohttp.WSMsgType.TEXT:
+                        self._handle_message(message.data)
+                    elif message.type in (
+                        aiohttp.WSMsgType.CLOSED,
+                        aiohttp.WSMsgType.ERROR,
+                    ):
+                        break
 
     def _handle_message(self, raw: str) -> None:
         """Interpret one push message.

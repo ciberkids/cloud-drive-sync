@@ -583,3 +583,173 @@ def test_the_factory_passes_force_polling_through():
 
     assert make_change_poller(FakeClient(), force_polling=True)._force_polling is True
     assert make_change_poller(FakeClient())._force_polling is False
+
+
+# ── pre_auth tokens instead of the account password ─────────────────
+#
+# Observed against notify_push 1.3.5: the endpoint is POST-only (GET is 405),
+# authenticates with the account credentials, returns a bare token string, and the
+# token is SINGLE USE — presenting it twice gives "err: Invalid credentials". That
+# last point is why a token must be fetched per connection attempt rather than
+# cached; caching one would break every reconnect.
+
+
+class FakePreAuthSession:
+    """Serves pre_auth POSTs and records how it was called."""
+
+    def __init__(self, token: str = "tok-123", status: int = 200) -> None:
+        self._token = token
+        self._status = status
+        self.posts: list[str] = []
+
+    def post(self, url, **kwargs):
+        self.posts.append(url)
+        token, status = self._token, self._status
+
+        class _Resp:
+            def __init__(self):
+                self.status = status
+
+            async def text(self):
+                return token + "\n"
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Resp()
+
+
+async def test_discovery_returns_both_endpoints():
+    session = FakeSession(
+        FakeResponse(
+            200,
+            {
+                "ocs": {"data": {"capabilities": {"notify_push": {"endpoints": {
+                    "websocket": "wss://x/ws",
+                    "pre_auth": "https://x/apps/notify_push/pre_auth",
+                }}}}}
+            },
+        )
+    )
+    from cloud_drive_sync.providers.nextcloud.push import discover_push_endpoints
+
+    found = await discover_push_endpoints("https://x", "a", "p", session=session)
+
+    assert found.websocket == "wss://x/ws"
+    assert found.pre_auth == "https://x/apps/notify_push/pre_auth"
+
+
+async def test_discovery_tolerates_a_server_without_pre_auth():
+    """Older versions of the app advertise only the websocket."""
+    session = FakeSession(FakeResponse(200, _capabilities("wss://x/ws")))
+    from cloud_drive_sync.providers.nextcloud.push import discover_push_endpoints
+
+    found = await discover_push_endpoints("https://x", "a", "p", session=session)
+
+    assert found.websocket == "wss://x/ws"
+    assert found.pre_auth is None
+
+
+async def test_pre_auth_returns_the_token_stripped():
+    from cloud_drive_sync.providers.nextcloud.push import fetch_pre_auth_token
+
+    session = FakePreAuthSession(token="abc123")
+
+    token = await fetch_pre_auth_token("https://x/pre_auth", "a", "p", session=session)
+
+    assert token == "abc123", "trailing newline was not stripped"
+    assert session.posts == ["https://x/pre_auth"]
+
+
+async def test_pre_auth_failure_returns_none_so_password_auth_can_be_used():
+    from cloud_drive_sync.providers.nextcloud.push import fetch_pre_auth_token
+
+    session = FakePreAuthSession(status=403)
+
+    assert await fetch_pre_auth_token("https://x/pre_auth", "a", "p", session=session) is None
+
+
+async def test_the_handshake_uses_a_pre_auth_token_when_available(monkeypatch):
+    """Empty username plus token is how notify_push tells a token from a password.
+
+    The account password must not appear on the wire at all in this path.
+    """
+    ws = FakeWS()
+    session = FakeWSSession(ws)
+    _patch_session(monkeypatch, session)
+    monkeypatch.setattr(
+        "cloud_drive_sync.providers.nextcloud.push.fetch_pre_auth_token",
+        lambda *a, **k: _async_value("fresh-token"),
+    )
+    poller, _ = _poller()
+    poller._endpoint = "wss://x/ws"
+    poller._pre_auth_url = "https://x/pre_auth"
+
+    await poller._connect_once()
+
+    assert ws.sent == ["", "fresh-token", "listen notify_file_id"]
+    assert "app-pw" not in ws.sent, "the account password was sent despite a token"
+
+
+async def test_the_handshake_falls_back_to_the_password_without_pre_auth(monkeypatch):
+    ws = FakeWS()
+    _patch_session(monkeypatch, FakeWSSession(ws))
+    poller, _ = _poller()
+    poller._endpoint = "wss://x/ws"
+    poller._pre_auth_url = None
+
+    await poller._connect_once()
+
+    assert ws.sent == ["alice", "app-pw", "listen notify_file_id"]
+
+
+async def test_the_handshake_falls_back_when_pre_auth_fails(monkeypatch):
+    """A pre_auth endpoint that errors must not take push down with it."""
+    ws = FakeWS()
+    _patch_session(monkeypatch, FakeWSSession(ws))
+    monkeypatch.setattr(
+        "cloud_drive_sync.providers.nextcloud.push.fetch_pre_auth_token",
+        lambda *a, **k: _async_none(),
+    )
+    poller, _ = _poller()
+    poller._endpoint = "wss://x/ws"
+    poller._pre_auth_url = "https://x/pre_auth"
+
+    await poller._connect_once()
+
+    assert ws.sent == ["alice", "app-pw", "listen notify_file_id"]
+
+
+async def test_a_fresh_token_is_fetched_for_every_connection(monkeypatch):
+    """Tokens are single-use, so reusing one would break reconnection entirely."""
+    calls = 0
+
+    async def _counting(*a, **k):
+        nonlocal calls
+        calls += 1
+        return f"token-{calls}"
+
+    monkeypatch.setattr(
+        "cloud_drive_sync.providers.nextcloud.push.fetch_pre_auth_token", _counting
+    )
+    poller, _ = _poller()
+    poller._endpoint = "wss://x/ws"
+    poller._pre_auth_url = "https://x/pre_auth"
+
+    sent: list[list[str]] = []
+    for _ in range(3):
+        ws = FakeWS()
+        _patch_session(monkeypatch, FakeWSSession(ws))
+        await poller._connect_once()
+        sent.append(list(ws.sent))
+
+    assert calls == 3, "the token was cached instead of refetched"
+    tokens = [s[1] for s in sent]
+    assert tokens == ["token-1", "token-2", "token-3"]
+
+
+async def _async_value(value):
+    return value

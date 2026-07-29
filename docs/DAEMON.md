@@ -748,6 +748,17 @@ force_polling = true
 
 This skips the capabilities request entirely, so it is also a way to avoid that request on a fragile instance.
 
+### How the WebSocket authenticates
+
+The push protocol authenticates by sending credentials over the socket itself. Sending your app password there would mean transmitting a long-lived credential on every connect and every reconnect, so the daemon avoids it where it can:
+
+1. If the server advertises a `pre_auth` endpoint, the daemon exchanges the app password for a **short-lived, single-use token** over HTTPS and presents that instead. The app password never crosses the WebSocket.
+2. If it does not — older versions of the app — the daemon falls back to sending the app password, since that is the only credential the socket accepts.
+
+A fresh token is fetched for **every** connection attempt, because tokens are single-use: reusing one is refused, so a cached token would authenticate the first connection and then fail every reconnect after it. That failure mode is invisible in normal operation — a refused push connection just falls back to polling — which is why it is [asserted against a real server](https://github.com/ciberkids/cloud-drive-sync/blob/main/daemon/tests/test_integration_notify_push.py) rather than only against fakes.
+
+Either way, use an **app password** rather than your account password (Settings → Security → Devices & sessions), so the credential can be revoked on its own.
+
 ### Server requirements
 
 `notify_push` needs Redis, a push daemon process and ideally a reverse proxy — see its [README](https://github.com/nextcloud/notify_push). Many instances do not have it, which is why detection is automatic rather than assumed. Nothing breaks without it; the daemon simply keeps polling.

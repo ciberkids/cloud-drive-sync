@@ -17,6 +17,8 @@ way:
 2. the handshake (username, password, expect ``authenticated``) is accepted
 3. ``listen notify_file_id`` is accepted, rather than only the coarse event
 4. a real file change produces a notification carrying real file IDs
+5. the ``pre_auth`` endpoint issues tokens the websocket then accepts — and that a
+   second connection works, which is the only way to catch the single-use rule
 
 Requires a container runtime and several minutes. Skipped automatically without
 one, and never part of the default run.
@@ -263,6 +265,70 @@ async def test_a_real_change_produces_real_file_ids(push_server):
         assert all(i.isdigit() for i in poller._pending_ids), poller._pending_ids
     finally:
         task.cancel()
+
+
+async def test_the_real_server_issues_pre_auth_tokens(push_server):
+    """Assumption 5a: the endpoint exists and behaves as we call it.
+
+    The shape here was not documented and had to be established empirically: it is
+    POST-only (GET answers 405) and returns a bare token string, not JSON. A unit
+    test asserts our parsing; only a real server can confirm what is being parsed.
+    """
+    from cloud_drive_sync.providers.nextcloud.push import (
+        discover_push_endpoints,
+        fetch_pre_auth_token,
+    )
+
+    url, user, password = push_server
+
+    found = await discover_push_endpoints(url, user, password)
+    assert found is not None
+    assert found.pre_auth, "the server advertises no pre_auth endpoint"
+
+    token = await fetch_pre_auth_token(found.pre_auth, user, password)
+
+    assert token, "pre_auth was advertised but issued no token"
+    assert password not in token
+
+
+async def test_connecting_twice_with_pre_auth_succeeds_both_times(push_server):
+    """Assumption 5b: tokens are single-use, so each connect needs a fresh one.
+
+    This is the test that earns its runtime. Tokens are single-use — presenting one
+    twice is refused — so a cached token would authenticate the first connection and
+    fail every reconnect after it. Since a failed push connection falls back to
+    polling silently, that bug would look like "push works" in any single-connection
+    test and like nothing at all in production.
+    """
+    import asyncio
+
+    from cloud_drive_sync.providers.nextcloud.push import (
+        NextcloudPushPoller,
+        discover_push_endpoints,
+    )
+
+    url, user, password = push_server
+    found = await discover_push_endpoints(url, user, password)
+    assert found and found.pre_auth
+
+    poller = NextcloudPushPoller(_Client(url, user, password), _NoFallback())
+    poller._endpoint = found.websocket
+    poller._pre_auth_url = found.pre_auth
+
+    for attempt in (1, 2):
+        task = asyncio.create_task(poller._connect_once())
+        try:
+            for _ in range(80):
+                await asyncio.sleep(0.25)
+                if poller._connected:
+                    break
+            assert poller._connected, (
+                f"connection {attempt} was refused; a reused token fails exactly here"
+            )
+        finally:
+            task.cancel()
+            poller._connected = False
+            await asyncio.sleep(0.3)
 
 
 def test_the_fixture_actually_configured_push(push_server):
