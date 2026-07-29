@@ -189,7 +189,14 @@ class SyncEngine:
                     log.error("Unknown provider %s for pair %s, skipping", provider_name, pair_id)
                     return
                 _provider_ops = _entry.ops_cls(client)
-                _provider_poller = _entry.poller_cls(client)
+                # Nextcloud's factory accepts the per-pair force_polling escape
+                # hatch (#56); other providers take the client alone.
+                try:
+                    _provider_poller = _entry.poller_cls(
+                        client, force_polling=getattr(pair, "force_polling", False)
+                    )
+                except TypeError:
+                    _provider_poller = _entry.poller_cls(client)
             ops = self._ops or _provider_ops
             poller = self._poller or _provider_poller
         else:
@@ -1032,8 +1039,23 @@ class SyncEngine:
                 "last_sync": ps.last_sync.isoformat() if ps.last_sync else None,
                 "active_transfers": ps.executor.active_count if ps.executor else 0,
                 "errors": ps.errors[-5:],
+                "change_detection": self._change_mechanism(ps),
             }
         return result
+
+    @staticmethod
+    def _change_mechanism(ps: PairStatus) -> str:
+        """How this pair learns about remote changes.
+
+        Worth surfacing because the difference is large and invisible otherwise:
+        push costs nothing per poll, while the ETag walk costs one PROPFIND per
+        directory every interval (#56).
+        """
+        poller = ps.poller
+        describe = getattr(poller, "describe_mechanism", None)
+        if callable(describe):
+            return describe()
+        return "polling"
 
     def get_active_transfers(self) -> list[dict]:
         """Get live transfer info across all pairs."""

@@ -64,6 +64,8 @@ export interface PairCount {
   account_id: string;
   provider: string;
   local_path: string;
+  /** How this pair learns about remote changes — "push (notify_push)" or a polling variant. */
+  change_detection?: string;
 }
 
 export interface SyncCompleteFiles {

@@ -234,6 +234,7 @@ class RequestHandler:
                     "account_id": pair_cfg.account_id or "",
                     "provider": pair_cfg.provider or "gdrive",
                     "local_path": pair_cfg.local_path or "",
+                    "change_detection": pairs.get(pair_id, {}).get("change_detection", ""),
                 })
 
         # Live transfer info

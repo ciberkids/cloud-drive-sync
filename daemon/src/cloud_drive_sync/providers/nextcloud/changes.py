@@ -84,7 +84,12 @@ def _build_etag_map(nc: Any, path: str = "/") -> dict[str, dict[str, Any]]:
 
 
 class NextcloudChangePoller(CloudChangePoller):
-    """Detects remote changes by comparing ETag snapshots."""
+    """Detects remote changes by comparing ETag snapshots.
+
+    Costs one PROPFIND per directory per poll. ``NextcloudPushPoller`` wraps this
+    and avoids most of those calls when the server has notify_push (issue #56);
+    this remains the fallback and the reconciliation pass.
+    """
 
     def __init__(self, client: NextcloudClient) -> None:
         self._client = client

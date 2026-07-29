@@ -195,6 +195,7 @@ One `[[sync.pairs]]` section per sync pair. Multiple pairs are supported.
 | `conflict_strategy` | string | (inherits global) | Per-pair conflict strategy; overrides `[sync].conflict_strategy` if set |
 | `max_deletions_per_sync` | integer | (inherits global) | Per-pair delete cap; `0` disables delete protection for this pair |
 | `deletion_window_seconds` | integer | (inherits global) | Per-pair window for the delete cap |
+| `force_polling` | boolean | `false` | Nextcloud only: skip `notify_push` and always walk the tree — see [Nextcloud Change Detection](Daemon#nextcloud-change-detection) |
 
 #### `sync_mode` values
 

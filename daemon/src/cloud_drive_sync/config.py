@@ -63,6 +63,9 @@ class SyncPair:
     max_deletions_per_sync: int | None = None
     # Window the per-pair limit is counted over. None inherits the global value.
     deletion_window_seconds: int | None = None
+    # Force ETag polling even when the server advertises notify_push (#56). The
+    # mechanism is chosen automatically; this exists for when that choice is wrong.
+    force_polling: bool = False
 
 
 @dataclass
@@ -173,6 +176,7 @@ class Config:
                     conflict_strategy=pair_data.get("conflict_strategy", ""),
                     max_deletions_per_sync=pair_data.get("max_deletions_per_sync"),
                     deletion_window_seconds=pair_data.get("deletion_window_seconds"),
+                    force_polling=pair_data.get("force_polling", False),
                 )
             )
 
@@ -262,6 +266,7 @@ class Config:
                             if p.deletion_window_seconds is not None
                             else {}
                         ),
+                        **({"force_polling": True} if p.force_polling else {}),
                         "sync_rules": {
                             "max_file_size_mb": p.sync_rules.max_file_size_mb,
                             "include_regex": p.sync_rules.include_regex,

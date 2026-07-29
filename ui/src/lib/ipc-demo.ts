@@ -23,7 +23,9 @@ const DEMO_STATUS: DaemonStatus = {
     { pair_id: "pair_0", files_synced: 148, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Documents" },
     { pair_id: "pair_1", files_synced: 63, account_id: "alice@gmail.com", provider: "gdrive", local_path: "/home/user/Photos" },
     { pair_id: "pair_2", files_synced: 36, account_id: "bob@company.com", provider: "dropbox", local_path: "/home/user/Work" },
-    { pair_id: "pair_3", files_synced: 36, account_id: "bob@nextcloud.example.com", provider: "nextcloud", local_path: "/home/user/Work" },
+    // Only Nextcloud reports a change-detection mechanism; the others poll a
+    // provider changes API and have nothing interesting to say about it.
+    { pair_id: "pair_3", files_synced: 36, account_id: "bob@nextcloud.example.com", provider: "nextcloud", local_path: "/home/user/Work", change_detection: "push (notify_push)" },
   ],
   active_transfers: 0,
   live_transfers: [],

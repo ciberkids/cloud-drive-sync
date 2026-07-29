@@ -672,6 +672,53 @@ At most one transfer per concurrent worker (`max_concurrent_transfers`, default 
 
 If you need the byte flow to stop with certainty — not merely the daemon's participation in it — stop the daemon process.
 
+## Nextcloud Change Detection
+
+WebDAV has no delta API, so detecting remote changes on Nextcloud means walking the tree and comparing ETags — **one PROPFIND per directory, every poll interval**. On a large tree that is expensive for the server, and it is why [#44](https://github.com/ciberkids/cloud-drive-sync/issues/44), [#47](https://github.com/ciberkids/cloud-drive-sync/issues/47) and [#50](https://github.com/ciberkids/cloud-drive-sync/issues/50) were damaging rather than merely wasteful: each was a per-property cost multiplied across every directory, repeated every 30 seconds.
+
+If your server has the [`notify_push`](https://github.com/nextcloud/notify_push) app — the same one the official Nextcloud desktop client uses — the daemon uses it instead, and most of those requests disappear.
+
+**No configuration is needed.** On startup the daemon asks the server whether it advertises `notify_push`; if so it opens a WebSocket and subscribes to file-ID notifications, and if not it keeps polling. The Status dashboard shows which mechanism each pair is using — **⚡ push** or **↻ polling**.
+
+### What changes when push is active
+
+| | Polling | Push |
+|---|---|---|
+| Cost of an idle poll | one PROPFIND per directory | nothing — no request at all |
+| Cost of a change | full tree walk | one lookup per changed file |
+| Full walk frequency | every `poll_interval` (30s) | every 15 minutes, for reconciliation |
+
+Push reports the specific `oc:fileid` values that changed, which is the identifier the sync database is already keyed on — so a notification maps directly onto known state with no translation.
+
+### Polling never goes away
+
+`notify_push` is explicitly best-effort. Upstream states that "updates might happen without a notification being sent and a notification can be sent even if no update has actually happened." So the ETag walk is retained as a **reconciliation pass every 15 minutes**, which covers any notification that was never sent.
+
+The daemon also falls back to a full walk when:
+
+- the server sends the coarse `notify_file` event, meaning it could not determine which files changed
+- a notified file ID no longer resolves — that is a deletion, and the ID alone does not give the path, so the walk derives it by diffing
+- the WebSocket drops; after 5 consecutive failures it stops retrying and polls for the rest of the session
+
+The first poll after a restart always reconciles, since notifications sent while the daemon was down were missed.
+
+### Forcing polling
+
+If push behaves badly on your instance, disable it per pair:
+
+```toml
+[[sync.pairs]]
+local_path = "/home/you/Documents"
+provider = "nextcloud"
+force_polling = true
+```
+
+This skips the capabilities request entirely, so it is also a way to avoid that request on a fragile instance.
+
+### Server requirements
+
+`notify_push` needs Redis, a push daemon process and ideally a reverse proxy — see its [README](https://github.com/nextcloud/notify_push). Many instances do not have it, which is why detection is automatic rather than assumed. Nothing breaks without it; the daemon simply keeps polling.
+
 ## Delete Protection
 
 Sync is two-way, so deleting files locally deletes them in the cloud too. That is the intended behaviour right up until the deletion was not intended — a bad `rm -rf`, an external drive unmounted while its mountpoint is still a sync path, a disk failure, or a container recreated with an empty volume. The daemon would see thousands of deletions as user intent and faithfully empty the cloud copy, turning the backup into a mirror of the disaster.

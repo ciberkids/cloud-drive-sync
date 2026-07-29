@@ -235,6 +235,22 @@ export function SyncStatus() {
                 <div className="pair-bridge-remote">
                   <span className="pair-bridge-pill" style={{ background: color }}>{label}</span>
                   {accountShort && <span className="pair-bridge-account" title={pc.account_id}>{accountShort}</span>}
+                  {/* Only shown when the provider reports it — currently Nextcloud,
+                      where push vs polling is a large difference in server load. */}
+                  {pc.change_detection && (
+                    <span
+                      className={`pair-bridge-mechanism${
+                        pc.change_detection.startsWith("push") ? " pair-bridge-mechanism-push" : ""
+                      }`}
+                      title={
+                        pc.change_detection.startsWith("push")
+                          ? "Changes arrive by push — no directory scanning"
+                          : `Changes found by scanning: ${pc.change_detection}`
+                      }
+                    >
+                      {pc.change_detection.startsWith("push") ? "\u26A1 push" : "\u21BB polling"}
+                    </span>
+                  )}
                 </div>
                 <div className="pair-bridge-count">
                   <span className="pair-bridge-count-value">{pc.files_synced.toLocaleString()}</span>

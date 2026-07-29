@@ -4,7 +4,21 @@ from cloud_drive_sync.providers.nextcloud.auth import NextcloudAuth
 from cloud_drive_sync.providers.nextcloud.changes import NextcloudChangePoller
 from cloud_drive_sync.providers.nextcloud.client import NextcloudClient
 from cloud_drive_sync.providers.nextcloud.operations import NextcloudFileOps
+from cloud_drive_sync.providers.nextcloud.push import NextcloudPushPoller
 from cloud_drive_sync.providers.registry import register
+
+
+def make_change_poller(client, *, force_polling: bool = False) -> NextcloudPushPoller:
+    """Build the change poller for a Nextcloud pair.
+
+    Always returns the push-preferring poller. It discovers notify_push support at
+    runtime and degrades to the ETag walk when the server does not advertise it,
+    so this is safe for every instance and needs no user configuration (#56).
+    ``force_polling`` is the escape hatch for when the automatic choice is wrong.
+    """
+    return NextcloudPushPoller(
+        client, NextcloudChangePoller(client), force_polling=force_polling
+    )
 
 # Check if nc-py-api is available
 _available = True
@@ -24,7 +38,7 @@ register(
     "nextcloud",
     client_cls=NextcloudClient,
     ops_cls=NextcloudFileOps,
-    poller_cls=NextcloudChangePoller,
+    poller_cls=make_change_poller,
     auth_cls=NextcloudAuth,
     available=_available,
     display_name="Nextcloud",
@@ -36,4 +50,6 @@ __all__ = [
     "NextcloudChangePoller",
     "NextcloudClient",
     "NextcloudFileOps",
+    "NextcloudPushPoller",
+    "make_change_poller",
 ]
