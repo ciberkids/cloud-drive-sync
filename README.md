@@ -115,13 +115,14 @@ Authentication in headless mode works without a local browser — the daemon pri
 |----------|--------|-------------|----------------|-------|
 | Google Drive | ✅ Tested | OAuth 2.0 (browser) | MD5 | Shared Drives, Google Docs conversion |
 | Nextcloud | ✅ Tested | App password | MD5 | Self-hosted, WebDAV, ETag polling |
-| Dropbox | 🧪 Needs testing | OAuth 2.0 PKCE | Content hash (SHA-256 blocks) | Code complete — community testing welcome |
-| OneDrive | 🧪 Needs testing | Azure AD (device code / browser) | QuickXorHash | Code complete — community testing welcome |
-| Box | 🧪 Needs testing | OAuth 2.0 | SHA-1 | Code complete — community testing welcome |
+| Dropbox | 🧪 Needs testing | OAuth 2.0 PKCE | Content hash (SHA-256 blocks) | Chunked upload covered by tests; no live-account validation |
+| OneDrive | 🧪 Needs testing | Azure AD (device code / browser) | QuickXorHash | Chunked upload covered by tests; no live-account validation |
+| Box | 🧪 Needs testing | OAuth 2.0 | SHA-1 | Chunked upload covered by tests; no live-account validation |
 | Proton Drive | 🔜 Planned Q2 2026+ | N/A | N/A | No public API yet |
 
 > **Tested** means we actively run it in production and bugs are caught quickly.
 > **Needs testing** means the provider implementation is complete but has not been validated end-to-end by the maintainers.
+> The status is deliberately unchanged by the upload tests added in v2.4.0: those cover the chunking and offset arithmetic against fake SDKs, which is not the same as having run a sync against a real Dropbox, OneDrive, or Box account.
 > If you use Dropbox, OneDrive, or Box — please try it and [open an issue](https://github.com/ciberkids/cloud-drive-sync/issues) if anything breaks. Your reports directly improve coverage for everyone.
 
 **Pre-built packages (DEB, RPM, AppImage, Flatpak, DMG, MSI) and the Docker image include all providers out of the box** — no extra steps needed. If you install from PyPI, providers other than Google Drive require optional dependencies:

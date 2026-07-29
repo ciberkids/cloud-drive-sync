@@ -763,6 +763,31 @@ Either way, use an **app password** rather than your account password (Settings 
 
 `notify_push` needs Redis, a push daemon process and ideally a reverse proxy — see its [README](https://github.com/nextcloud/notify_push). Many instances do not have it, which is why detection is automatic rather than assumed. Nothing breaks without it; the daemon simply keeps polling.
 
+## Large File Uploads
+
+Files above a per-provider threshold are uploaded in chunks over an upload session rather than in one request, so a failure costs one chunk instead of the whole transfer.
+
+| Provider | Single request up to | Chunk size |
+|---|---|---|
+| Dropbox | 150 MB | 8 MB |
+| Box | 50 MB | Chosen by the server per session |
+| OneDrive | 4 MB | 10 MB |
+| Google Drive | — | Resumable upload, chunked by the SDK |
+
+Chunks are read with async file I/O. That is not a detail: a 10 MB blocking read on the event loop would stall **every other sync pair** once per chunk, so a single large upload used to make an otherwise idle daemon look frozen.
+
+### If a file changes while it is being uploaded
+
+The size is measured once, before the first chunk. If the file is **truncated** after that — a download still in flight, a log rotated, an application rewriting in place — the remaining bytes never arrive, and the upload fails with:
+
+```
+/path/to/file shrank during upload: expected 524288000 bytes but the file ended at 104857600
+```
+
+This is a normal, retryable failure. The transfer is retried up to three times, re-measuring the file each time, so a file that has settled at its new size uploads on the next attempt.
+
+If the file **grows** instead, the upload sends the size it measured and stops there. The cloud copy is a prefix of the local file, and the next scan sees the newer modification time and uploads again.
+
 ## Delete Protection
 
 Sync is two-way, so deleting files locally deletes them in the cloud too. That is the intended behaviour right up until the deletion was not intended — a bad `rm -rf`, an external drive unmounted while its mountpoint is still a sync path, a disk failure, or a container recreated with an empty volume. The daemon would see thousands of deletions as user intent and faithfully empty the cloud copy, turning the backup into a mirror of the disaster.

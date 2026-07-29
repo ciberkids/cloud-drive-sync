@@ -351,6 +351,16 @@ class OneDriveClient(CloudClient):
             async with aiofiles.open(content_path, "rb") as f:
                 while offset < file_size:
                     chunk = await f.read(chunk_size)
+                    if not chunk:
+                        # Same hazard as the Box chunked path: a zero-length read
+                        # does not advance `offset`, so the loop cannot end. Here
+                        # the malformed `bytes N-{N-1}` range would make Graph
+                        # reject it, but failing on our side gives an error that
+                        # names the actual cause and lets the retry re-stat.
+                        raise OSError(
+                            f"{content_path} shrank during upload: expected "
+                            f"{file_size} bytes but the file ended at {offset}"
+                        )
                     end = offset + len(chunk) - 1
                     headers = {
                         "Content-Range": f"bytes {offset}-{end}/{file_size}",

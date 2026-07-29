@@ -337,6 +337,19 @@ class BoxClient(CloudClient):
             offset = 0
             while offset < file_size:
                 chunk = await f.read(part_size)
+                if not chunk:
+                    # The file was truncated after its size was measured, so the
+                    # remaining bytes this loop is waiting for will never arrive.
+                    # Bailing out matters more than it looks: a zero-length read
+                    # leaves `offset` unchanged, so the loop condition stays true
+                    # and it would upload empty parts forever — each with an
+                    # inverted `bytes N-{N-1}` range — never reaching the commit.
+                    # Raising instead lets @async_retry re-stat the file and
+                    # upload whatever size it has actually settled at.
+                    raise OSError(
+                        f"{file_path} shrank during upload: expected {file_size} "
+                        f"bytes but the file ended at {offset}"
+                    )
                 sha1.update(chunk)
                 chunk_size = len(chunk)
                 content_range = f"bytes {offset}-{offset + chunk_size - 1}/{file_size}"

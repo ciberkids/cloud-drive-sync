@@ -157,7 +157,7 @@ Global sync behavior. All settings here can be overridden per pair where noted.
 | `max_deletions_per_sync` | integer | `100` | Refuse deletions exceeding this many files in one direction within `deletion_window_seconds`, until confirmed. `0` disables the guard — see [Delete Protection](Daemon#delete-protection) |
 | `deletion_window_seconds` | integer | `60` | Sliding window the deletion cap is counted over, across sync passes. `0` = per pass only |
 | `conflict_strategy` | string | `"keep_both"` | Default conflict resolution strategy (see values below) |
-| `max_concurrent_transfers` | integer | `4` | Parallel upload/download limit |
+| `max_concurrent_transfers` | integer | `4` | Parallel upload/download limit — see [Large File Uploads](Daemon#large-file-uploads) for how big files are chunked |
 | `debounce_delay` | float | `1.0` | Seconds to wait after a local change before syncing |
 | `convert_google_docs` | boolean | `true` | Export Google Docs/Sheets/Slides to Office formats on download |
 | `notify_sync_complete` | boolean | `true` | Desktop notification when a sync cycle completes |
