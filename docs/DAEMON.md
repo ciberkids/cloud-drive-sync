@@ -513,6 +513,8 @@ When setting several hosts through the environment variable, **separate them wit
 
 If `--mcp-port` is set but the optional dependency is missing, the daemon logs an error and carries on without MCP rather than failing to start. Install it with `pip install 'cloud-drive-sync[mcp]'`.
 
+The `mcp` extra requires SDK **2.x**. The dependency is bounded to one major version on purpose: 2.0 replaced the handler API outright, and an unbounded requirement let CI resolve a breaking major with no code change on our side.
+
 ### Connecting an assistant
 
 ```json

@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from collections.abc import AsyncIterator
 from typing import Any
 
 from cloud_drive_sync.mcp.catalog import ToolNotAvailable, dispatch, tools_for
@@ -87,44 +86,74 @@ class McpServer:
     # ── MCP protocol surface ────────────────────────────────────────
 
     def _build_mcp_app(self) -> Any:
-        from mcp import types
+        """Build the protocol server.
+
+        mcp 2.x takes the handlers as constructor callbacks; the 1.x decorator API
+        (``@server.list_tools()``) was removed, which is what broke CI when an
+        unbounded ``mcp>=1.28.0`` floated onto 2.0.0.
+        """
+        import mcp.types as types
         from mcp.server.lowlevel import Server as LowLevelServer
 
-        # Without an explicit version the SDK reports its own, so an assistant
-        # would tell the user their daemon is version 1.28.1.
-        server = LowLevelServer(SERVER_NAME, version=_daemon_version(), instructions=INSTRUCTIONS)
         allow_writes = self._allow_writes
         handler = self._handler
 
-        @server.list_tools()
-        async def _list_tools() -> list[types.Tool]:
-            return [
-                types.Tool(
-                    name=tool.name,
-                    description=tool.description,
-                    inputSchema=tool.input_schema,
-                )
-                for tool in tools_for(allow_writes)
-            ]
+        async def _on_list_tools(_ctx: Any, _params: Any) -> Any:
+            return types.ListToolsResult(
+                tools=[
+                    types.Tool(
+                        name=tool.name,
+                        description=tool.description,
+                        input_schema=tool.input_schema,
+                    )
+                    for tool in tools_for(allow_writes)
+                ]
+            )
 
-        @server.call_tool()
-        async def _call_tool(name: str, arguments: dict | None) -> list[types.ContentBlock]:
+        async def _on_call_tool(_ctx: Any, params: Any) -> Any:
+            # 2.x wants an explicit result with is_error rather than letting an
+            # exception propagate, so failures are reported rather than raised.
             try:
-                result = await dispatch(handler, name, arguments, allow_writes=allow_writes)
+                result = await dispatch(
+                    handler, params.name, params.arguments, allow_writes=allow_writes
+                )
             except ToolNotAvailable as exc:
-                # Raised so the SDK marks the result isError rather than the agent
-                # having to detect failure from prose.
-                raise ValueError(str(exc)) from exc
-            text = json.dumps(result, indent=2, default=str)
-            return [types.TextContent(type="text", text=text)]
+                return self._error_result(types, str(exc))
+            except Exception as exc:
+                log.exception("MCP tool %s failed", params.name)
+                return self._error_result(types, str(exc))
 
-        return server
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text", text=json.dumps(result, indent=2, default=str)
+                    )
+                ]
+            )
+
+        # Without an explicit version the SDK reports its own, so an assistant
+        # would tell the user their daemon is version 2.0.0.
+        return LowLevelServer(
+            SERVER_NAME,
+            version=_daemon_version(),
+            instructions=INSTRUCTIONS,
+            on_list_tools=_on_list_tools,
+            on_call_tool=_on_call_tool,
+        )
+
+    @staticmethod
+    def _error_result(types: Any, message: str) -> Any:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=message)], is_error=True
+        )
 
     def _build_asgi_app(self) -> Any:
-        from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+        """The Starlette app for Streamable HTTP.
+
+        mcp 2.x builds this itself, including the session manager and its lifespan
+        — which in 1.x had to be wired by hand and failed per-request if forgotten.
+        """
         from mcp.server.transport_security import TransportSecuritySettings
-        from starlette.applications import Starlette
-        from starlette.routing import Mount
 
         # Origin headers are full URLs, Host headers are bare host:port. Passing
         # the host patterns straight through as origins means no Origin can ever
@@ -146,32 +175,21 @@ class McpServer:
                 allowed_origins=origins,
             )
 
+        log.info(
+            "MCP server listening on http://%s:%d/mcp (%s, %d tools)",
+            self._host,
+            self._port,
+            "read/write" if self._allow_writes else "read-only",
+            len(tools_for(self._allow_writes)),
+        )
         # stateless: each request is self-contained, so there is no session state
         # to lose across a daemon restart and no event store to configure.
-        manager = StreamableHTTPSessionManager(
-            app=self._build_mcp_app(),
-            stateless=True,
-            security_settings=security,
+        return self._build_mcp_app().streamable_http_app(
+            streamable_http_path="/mcp",
+            stateless_http=True,
+            transport_security=security,
+            host=self._host,
         )
-
-        async def _handle(scope, receive, send) -> None:
-            await manager.handle_request(scope, receive, send)
-
-        @contextlib.asynccontextmanager
-        async def lifespan(_app: Starlette) -> AsyncIterator[None]:
-            # Required: the manager's task group is created here, and without it
-            # every request fails individually instead of failing at startup.
-            async with manager.run():
-                log.info(
-                    "MCP server listening on http://%s:%d/mcp (%s, %d tools)",
-                    self._host,
-                    self._port,
-                    "read/write" if self._allow_writes else "read-only",
-                    len(tools_for(self._allow_writes)),
-                )
-                yield
-
-        return Starlette(lifespan=lifespan, routes=[Mount("/mcp", app=_handle)])
 
     # ── Lifecycle ───────────────────────────────────────────────────
 
