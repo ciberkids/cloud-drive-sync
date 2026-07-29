@@ -21,6 +21,17 @@ if [ "$PUID" != "0" ] || [ "$PGID" != "0" ]; then
         useradd -u "$PUID" -g "$PGID" -d /root -M -s /bin/sh syncuser
     fi
 
+    # /root is 0700 in the base image, so the remapped user cannot traverse it to
+    # reach the config and data directories underneath — the daemon died on its
+    # first path lookup with "Permission denied: /root/.config/cloud-drive-sync",
+    # before opening a single file. Chowning those directories (below) is not
+    # enough on its own when the parent cannot be entered.
+    #
+    # o+x grants traversal only. The contents of /root stay unlistable, which is
+    # what 0700 was protecting; everything the daemon needs below it is already
+    # 0755 and gets its ownership fixed next.
+    chmod o+x /root
+
     # Fix ownership on all directories the daemon writes to.
     chown -R "${PUID}:${PGID}" \
         /root/.config/cloud-drive-sync \

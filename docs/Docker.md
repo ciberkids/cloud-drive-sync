@@ -49,7 +49,7 @@ The container runs the daemon headless, and the daemon itself serves that UI ove
 > ```bash
 > docker run -d --name cloud-drive-sync \
 >   -p 8080:8080 \
->   -e CDS_HTTP_TOKEN="$(openssl rand -base64 32)" \
+>   -e CDS_HTTP_TOKEN="$(openssl rand -hex 32)" \
 >   ...
 > ```
 >

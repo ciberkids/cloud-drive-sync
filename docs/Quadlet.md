@@ -56,6 +56,8 @@ System-wide installation runs the container as root (or a dedicated service acco
      id -g   # PGID
      ```
 
+     > This applies to a **rootful** unit in `/etc/containers/systemd/`, where those IDs mean the same thing inside the container as outside. In a **rootless** unit (`~/.config/containers/systemd/`) your host user is already the container's root, so leave `PUID`/`PGID` unset and add `UserNS=keep-id` instead — setting them there points the daemon at a subordinate UID that does not own your bind-mounted folders.
+
    - Uncomment and edit the `Volume=` lines for your sync folders (see [Customising Volume Mounts](#customising-volume-mounts) below).
 
 3. **Reload systemd** so it picks up the new unit:
@@ -156,7 +158,7 @@ Although this is a headless deployment with no desktop session, you still get th
 >
 > ```bash
 > install -m 600 /dev/null ~/.config/cloud-drive-sync/secrets.env
-> echo "CDS_HTTP_TOKEN=$(openssl rand -base64 32)" > ~/.config/cloud-drive-sync/secrets.env
+> echo "CDS_HTTP_TOKEN=$(openssl rand -hex 32)" > ~/.config/cloud-drive-sync/secrets.env
 > ```
 >
 > The daemon logs a warning on every start where the port is reachable off-box without a token, so an unprotected deployment is not silent.
