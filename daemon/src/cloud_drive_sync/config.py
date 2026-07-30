@@ -101,6 +101,16 @@ class GeneralConfig:
 
 
 @dataclass
+class HttpConfig:
+    """Settings for the HTTP front-end (web UI + REST API)."""
+
+    #: Shared token required on ``/api/*`` and the web UI. Empty means no
+    #: authentication. Generated on a fresh install; left alone on upgrade, so an
+    #: existing deployment is never locked out of a bookmarked URL by an update.
+    token: str = ""
+
+
+@dataclass
 class Config:
     """Top-level configuration."""
 
@@ -108,6 +118,7 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     accounts: list[Account] = field(default_factory=list)
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
+    http: HttpConfig = field(default_factory=HttpConfig)
     # Where this config was loaded from, so save() writes back to the same file.
     # Without it, `--config /custom/path` loaded from there and saved to the
     # default location: every setting change went to a file the user was not
@@ -130,6 +141,10 @@ class Config:
         # General section
         general = data.get("general", {})
         cfg.general.log_level = general.get("log_level", cfg.general.log_level)
+
+        # HTTP section
+        http = data.get("http", {})
+        cfg.http.token = http.get("token", cfg.http.token)
 
         # Sync section
         sync = data.get("sync", {})
@@ -231,6 +246,9 @@ class Config:
             "general": {
                 "log_level": self.general.log_level,
             },
+            # Omitted entirely when unset, so an upgraded config does not gain an
+            # empty token line that looks like a setting someone cleared.
+            **({"http": {"token": self.http.token}} if self.http.token else {}),
             "sync": {
                 "poll_interval": self.sync.poll_interval,
                 "conflict_strategy": self.sync.conflict_strategy,

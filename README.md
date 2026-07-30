@@ -76,7 +76,9 @@ The HTTP server (web UI + REST API) starts with `--http-port 8080`. Docker conta
 
 An **MCP server** for AI assistants (Claude Desktop, Claude Code, any MCP client) starts with `--mcp-port 8081`, or `CDS_MCP_PORT=8081` in a container. It is off by default and read-only unless you add `--mcp-allow-writes`, so an assistant can answer "is sync healthy?" or "why hasn't this file uploaded?" without being able to change anything. See [MCP Server](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#mcp-server-for-ai-assistants).
 
-> ⚠️ The web UI and the MCP endpoint are unauthenticated **unless you set a token** (`--http-token` / `--mcp-token`, or `CDS_HTTP_TOKEN` / `CDS_MCP_TOKEN`), and both bind all interfaces. Run `cloud-drive-sync gen-token` for one. If you publish either port, read [Authentication](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#authentication) first.
+> 🔑 A **new install** generates a web UI access token on first start and prints it to the log. An install that already has a config file is left as it was, so an upgrade cannot lock you out — it stays unauthenticated until you set `--http-token` / `CDS_HTTP_TOKEN` or `[http] token`.
+>
+> ⚠️ The **MCP endpoint** is always unauthenticated unless you set `--mcp-token` / `CDS_MCP_TOKEN`. Both ports bind all interfaces. If you publish either, read [Authentication](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#authentication) first.
 
 **What's next:** the ordered [Feature Queue](https://github.com/ciberkids/cloud-drive-sync/wiki/ROADMAP) lists what is being built and in what order — currently a delete fail-safe, an emergency stop control, and a spike on replacing the Nextcloud WebDAV bridge.
 

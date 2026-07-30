@@ -62,10 +62,77 @@ class Daemon:
         self._http_server = None
         self._shutdown_event = asyncio.Event()
 
+    def _resolve_http_token(self, first_run: bool) -> None:
+        """Settle which token the HTTP front-end requires, generating one if new.
+
+        Precedence is ``--http-token`` / ``CDS_HTTP_TOKEN``, then the config file.
+        On a **fresh install** with neither, a token is generated and stored, so a
+        new deployment is protected by default.
+
+        Upgrades are deliberately untouched. Turning auth on for an existing install
+        would lock people out of a web UI they have bookmarked, with no way to learn
+        the new token except reading the logs of a service they can no longer reach
+        through the UI. Those keep the previous behaviour and the startup warning.
+        """
+        if self._http_token:
+            return  # an explicit flag or environment variable always wins
+
+        if self._config.http.token:
+            self._http_token = self._config.http.token
+            return
+
+        if not first_run or self._demo:
+            # Demo mode is excluded because it shares the real config file, and
+            # writing a token there as a side effect of a demo run is a surprise.
+            return
+
+        from cloud_drive_sync.http.auth import generate_token
+
+        token = generate_token()
+        self._config.http.token = token
+        try:
+            self._config.save()
+        except Exception as exc:
+            # Keep the token for this session rather than starting unprotected, but
+            # be explicit that it will differ after a restart.
+            log.warning(
+                "Generated an access token but could not save it (%s); it will "
+                "change when the daemon restarts",
+                exc,
+            )
+        self._http_token = token
+
+        if self._http_port > 0:
+            # Printed as a block because for a container user this log line is the
+            # only place the token exists.
+            log.warning(
+                "\n"
+                "  ┌─ First run: an access token was generated ───────────────\n"
+                "  │\n"
+                "  │    %s\n"
+                "  │\n"
+                "  │  Open http://<host>:%d and paste it in to sign in.\n"
+                "  │  Stored in your config file under [http] token.\n"
+                "  └──────────────────────────────────────────────────────────",
+                token,
+                self._http_port,
+            )
+        else:
+            log.info(
+                "First run: generated an access token and stored it under [http] "
+                "token, ready for whenever the HTTP port is enabled"
+            )
+
     async def run(self) -> None:
         """Main entry point: initialize all components and run the event loop."""
         self._loop = asyncio.get_running_loop()
         ensure_dirs()
+
+        # Whether this is a fresh install has to be decided before anything writes a
+        # config, and Config.load deliberately does not create the file when absent.
+        from cloud_drive_sync.util.paths import config_path as _config_path
+
+        first_run = not (self._config_path or _config_path()).exists()
 
         # Load config
         self._config = Config.load(self._config_path)
@@ -76,6 +143,8 @@ class Daemon:
             log.info("cloud-drive-sync daemon starting in DEMO mode")
         else:
             log.info("cloud-drive-sync daemon starting")
+
+        self._resolve_http_token(first_run)
 
         # Write PID file
         pid_file = pid_path()

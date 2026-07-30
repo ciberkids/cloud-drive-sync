@@ -234,13 +234,81 @@ jobs:
           sys.exit('world-readable: ' + ', '.join(bad) if bad else 0)
           "
 
-      - name: Without a token the daemon warns instead of staying silent
+      - name: Every provider's credentials are encrypted, not plaintext
+        run: |
+          docker exec cds-ci python -c "
+          import pathlib, sys, tempfile
+          d = pathlib.Path(tempfile.mkdtemp())
+          from cloud_drive_sync.auth import credentials as C
+          C._get_machine_id = lambda: b'ci-probe'
+          from cloud_drive_sync.providers.onedrive import auth as od
+          from cloud_drive_sync.providers.box import auth as bx
+          from cloud_drive_sync.providers.nextcloud import auth as nc
+          od.CREDS_DIR = d/'a'; bx._BOX_CREDENTIALS_DIR = d/'b'; nc._CREDS_DIR = d/'c'
+          cases = [
+            ('onedrive', od.OneDriveAuth.__new__(od.OneDriveAuth),
+             {'token':'SECRET','client_id':'c'}, d/'a'/'onedrive_x.json'),
+            ('box', bx.BoxAuth.__new__(bx.BoxAuth),
+             {'access_token':'SECRET'}, d/'b'/'x.json'),
+            ('nextcloud', nc.NextcloudAuth.__new__(nc.NextcloudAuth),
+             {'server_url':'u','username':'u','app_password':'SECRET'},
+             d/'c'/'x'/'nextcloud_creds.json'),
+          ]
+          bad = []
+          for name, inst, creds, path in cases:
+              inst.save_credentials(creds, 'x')
+              if b'SECRET' in path.read_bytes(): bad.append(name + ':plaintext')
+              if path.stat().st_mode & 0o077: bad.append(name + ':world-readable')
+              if inst.load_credentials('x') != creds: bad.append(name + ':roundtrip')
+          sys.exit('; '.join(bad) if bad else 0)
+          "
+
+      # First-run token generation, and the upgrade path it must not disturb. These
+      # replaced a single check that a token-less container warns — with generation
+      # in place a *fresh* container has a token, so that assertion would now fail
+      # on correct behaviour. The warning still matters, but only for an upgrade.
+      - name: A fresh install generates a token and prints it
         run: |
           docker rm -f cds-ci >/dev/null
-          docker run -d --name cds-ci-noauth -p 8081:8080 cds:ci
+          docker run -d --name cds-ci-fresh -p 8081:8080 cds:ci
           sleep 12
-          docker logs cds-ci-noauth 2>&1 | grep -q "NO AUTHENTICATION"
+          docker logs cds-ci-fresh 2>&1 | grep -q "First run"
+          docker logs cds-ci-fresh 2>&1 | grep -q "access token was generated"
+          # Protected without anyone setting anything.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8081/api/status)
+          echo "fresh install, anonymous -> $code"
+          [ "$code" = "401" ]
+
+      - name: The printed token actually works
+        run: |
+          tok=$(docker logs cds-ci-fresh 2>&1 | grep -A2 "access token was generated" \
+                | tail -1 | tr -d ' │')
+          test -n "$tok"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+            -H "Authorization: Bearer $tok" http://127.0.0.1:8081/api/status)
+          echo "token from the log -> $code"
+          [ "$code" = "200" ]
+
+      - name: An upgrade is not locked out, and still warns
+        run: |
+          # A config that already exists means an existing deployment. It must keep
+          # working without a token, because turning auth on during an update would
+          # lock people out of a URL they have bookmarked.
+          docker volume create cds-ci-upgrade >/dev/null
+          docker run --rm -v cds-ci-upgrade:/root/.config/cloud-drive-sync cds:ci \
+            sh -c 'printf "[general]\nlog_level = \"info\"\n" > /root/.config/cloud-drive-sync/config.toml'
+          docker run -d --name cds-ci-upgrade -p 8082:8080 \
+            -v cds-ci-upgrade:/root/.config/cloud-drive-sync cds:ci
+          sleep 12
+          docker logs cds-ci-upgrade 2>&1 | grep -q "NO AUTHENTICATION"
+          docker logs cds-ci-upgrade 2>&1 | grep -q "First run" && exit 1 || true
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8082/api/status)
+          echo "upgrade, anonymous -> $code (expected 200: unchanged behaviour)"
+          [ "$code" = "200" ]
 
       - name: Container logs on failure
         if: failure()
-        run: docker logs cds-ci 2>&1 || docker logs cds-ci-noauth 2>&1 || true
+        run: |
+          for c in cds-ci cds-ci-fresh cds-ci-upgrade; do
+            echo "=== $c ==="; docker logs "$c" 2>&1 || true
+          done

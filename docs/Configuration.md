@@ -146,6 +146,16 @@ server_url = "https://cloud.company.com"
 
 ---
 
+### `[http]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `token` | string | generated on a fresh install | Shared token required on `/api/*` and the web UI. Empty or absent means no authentication. `--http-token` / `CDS_HTTP_TOKEN` override it — see [Authentication](Daemon#authentication) |
+
+A **new** install generates this on first start and prints it to the log; an existing install is left alone, so an upgrade cannot lock you out. Delete the value to disable authentication again.
+
+---
+
 ### `[sync]`
 
 Global sync behavior. All settings here can be overridden per pair where noted.

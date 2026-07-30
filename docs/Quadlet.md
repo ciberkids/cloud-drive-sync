@@ -147,7 +147,9 @@ http://<server-ip>:8080
 
 Although this is a headless deployment with no desktop session, you still get the complete graphical interface: the daemon serves the web UI itself over HTTP, and no separate web server is involved. The container's default command is `start --foreground --http-port 8080`, so it is enabled without any configuration on your part — the `PublishPort=8080:8080` line in the Quadlet file is all that is needed to reach it. It is the same UI as the desktop app and is backed by the same request handler, so the browser, the CLI and the desktop app all act on one daemon. Full details and the endpoint reference: [HTTP Server (Web UI + REST API)](Daemon#http-server-web-ui--rest-api).
 
-> ⚠️ **This UI is unauthenticated until you give it a token**, and `PublishPort=8080:8080` exposes it on every interface of the server — which matters more here than on a laptop, since this is typically a machine other people can reach. Without a token, anyone who opens that address can add or remove cloud accounts, change where your data syncs, and switch off delete protection.
+> 🔑 **A new deployment generates its own access token on first start and prints it.** Read it with `journalctl [--user] -u cloud-drive-sync | grep -A3 "First run"`, then paste it into the sign-in page. It is stored in the config volume and survives restarts.
+>
+> ⚠️ **A deployment whose config volume already exists is left alone** — no token — and `PublishPort=8080:8080` exposes it on every interface of the server, which matters more here than on a laptop, since this is typically a machine other people can reach. Anyone who opens that address can add or remove cloud accounts, change where your data syncs, and switch off delete protection. The daemon logs a `NO AUTHENTICATION` warning on every start when that applies to you.
 >
 > Set one in the Quadlet file. Keep it in a separate file rather than inline, so the secret is not world-readable alongside the unit:
 >

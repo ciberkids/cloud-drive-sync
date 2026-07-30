@@ -359,7 +359,39 @@ With a token set:
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/status
 ```
 
-It is **opt-in on purpose.** Turning it on by default would lock every existing deployment out of its own web UI on upgrade — people bookmark `http://nas:8080`. That is a real compromise, so the daemon logs a prominent warning at startup whenever a port is reachable beyond loopback without a token. If you see that warning, it applies to you.
+### New installs get a token automatically
+
+As of v2.4.3, a **fresh install** generates its own token on first start and prints it:
+
+```
+  ┌─ First run: an access token was generated ───────────────
+  │
+  │    xY3k…                                                
+  │
+  │  Open http://<host>:8080 and paste it in to sign in.
+  │  Stored in your config file under [http] token.
+  └──────────────────────────────────────────────────────────
+```
+
+In a container that log line is the only copy, so grab it with `docker logs cloud-drive-sync`. It is also written to your config file, so it survives restarts:
+
+```toml
+[http]
+token = "…"
+```
+
+Change it by editing that value, or override it entirely with `--http-token` / `CDS_HTTP_TOKEN`, which take precedence. Delete the value to go back to no authentication.
+
+"Fresh install" means **no config file existed yet**. That is the whole distinction:
+
+| | Behaviour |
+|---|---|
+| New install | Token generated, stored, printed. Protected by default |
+| Existing install (config file present) | Unchanged. No token, no lock-out, and the startup warning still fires |
+| `--http-token` or `CDS_HTTP_TOKEN` set | That token is used; nothing is generated or written |
+| `--demo` | Nothing generated, because demo mode shares your real config file |
+
+**Upgrades are deliberately left alone.** Turning auth on for a deployment that already exists would lock people out of a web UI they have bookmarked, and the only place the new token would exist is the log of a service they can no longer reach through the UI. So an existing install keeps the previous behaviour, and the daemon logs a prominent warning at startup whenever a port is reachable beyond loopback without a token. If you see that warning, it applies to you — set a token as above.
 
 ### Restricting the bind address
 

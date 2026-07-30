@@ -89,7 +89,7 @@ cloud-drive-sync --log-level debug start --foreground
 | Flag | Description |
 |------|-------------|
 | `--http-host ADDR` | Address the HTTP server binds to. Default `0.0.0.0`; use `127.0.0.1` to restrict to this machine. Env: `CDS_HTTP_HOST`. |
-| `--http-token TOKEN` | Require this token on `/api/*` and the web UI. Without one the port is unauthenticated. Env: `CDS_HTTP_TOKEN`. |
+| `--http-token TOKEN` | Require this token on `/api/*` and the web UI. Overrides `[http] token` in the config. A new install generates one automatically; an existing install without one is unauthenticated. Env: `CDS_HTTP_TOKEN`. |
 | `--mcp-token TOKEN` | Require this bearer token on the MCP endpoint. Env: `CDS_MCP_TOKEN`. |
 | `--http-port PORT` | Enable HTTP REST API and web UI on the given port. Default 0 (disabled). Docker containers default to port 8080. |
 | `--mcp-port PORT` | Enable the MCP server for AI assistants. Default 0 (disabled), containers included. Env: `CDS_MCP_PORT`. |

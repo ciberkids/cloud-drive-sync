@@ -42,7 +42,9 @@ Then open **http://localhost:8080** in your browser — that's the web managemen
 
 The container runs the daemon headless, and the daemon itself serves that UI over HTTP — there is no separate web server involved. The image's default command is `start --foreground --http-port 8080`, so it is on already and you only need to publish the port. It is the same interface as the desktop app, backed by the same request handler, so the browser, the CLI and the desktop app all drive one daemon identically. Full details and the endpoint reference: [HTTP Server (Web UI + REST API)](Daemon#http-server-web-ui--rest-api).
 
-> ⚠️ **The UI is unauthenticated until you give it a token.** `-p 8080:8080` publishes it on every interface of your host, and without a token anyone who reaches it can add or remove cloud accounts, change where your data syncs, and switch off delete protection.
+> 🔑 **A new container generates its own access token on first start and prints it.** Find it with `docker logs cloud-drive-sync`, then paste it into the sign-in page. It is stored in the config volume, so it survives restarts.
+>
+> ⚠️ **A container that already has a config volume is left alone** — no token, and `-p 8080:8080` publishes it on every interface of your host, where anyone who reaches it can add or remove cloud accounts, change where your data syncs, and switch off delete protection. That is deliberate: turning auth on during an upgrade would lock you out of a URL you have bookmarked. The daemon logs a `NO AUTHENTICATION` warning on every start when that applies to you.
 >
 > Set one with an environment variable — no change to the command the image runs:
 >
