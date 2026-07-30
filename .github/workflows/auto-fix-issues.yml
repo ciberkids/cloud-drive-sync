@@ -1,38 +1,74 @@
 name: Auto-fix new issues with Claude Code
 
+# Opens a pull request for a newly filed issue. It used to push straight to main
+# and tag a release, which meant filing an issue was enough to ship code with no
+# review — including changes to credential storage, where a mistake locks users out
+# of their cloud accounts.
+#
+# Three things changed, all reversible by restoring the block quoted below:
+#   * label-gated, so filing an issue is not by itself a trigger
+#   * works on a branch in a throwaway clone, not the live working tree — the old
+#     `working-directory` pointed at a checkout a human may be using at the time
+#   * opens a PR instead of pushing to main, and does not tag a release
+#
+# To restore the previous behaviour: drop the `labels` condition, set
+# working-directory back to the local checkout, and replace steps 5-6 of the prompt
+# with "Commit with 'Fixes #N', push to main" and "Tag the next patch release".
+
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 jobs:
   fix:
-    name: Fix issue #${{ github.event.issue.number }}
+    # Gate on a label rather than every new issue. Add `auto-fix` to an issue when
+    # you want an attempt at it; filing one no longer starts an agent by itself.
+    if: contains(github.event.issue.labels.*.name, 'auto-fix')
+    name: Draft a fix for issue #${{ github.event.issue.number }}
     runs-on: self-hosted
     timeout-minutes: 30
     permissions:
       contents: write
       issues: write
+      pull-requests: write
 
     steps:
-      - name: Fix issue with Claude Code
-        working-directory: /home/matteo/Documents/projects/personal/gdrive-sync
+      # A fresh clone under the runner's workspace. The previous version ran in
+      # /home/matteo/Documents/projects/personal/gdrive-sync, so an agent could be
+      # committing and switching branches in a tree someone was working in.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ISSUE_FIX_TOKEN }}
+
+      - name: Draft a fix with Claude Code
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.ISSUE_FIX_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          claude --dangerously-skip-permissions -p "
-          GitHub issue #${ISSUE_NUMBER} was just opened: \"${ISSUE_TITLE}\"
+          git config user.name "cloud-drive-sync bot"
+          git config user.email "noreply@github.com"
+          git switch -c "auto-fix/issue-${ISSUE_NUMBER}"
 
-          Fix it following the standard workflow:
+          claude --dangerously-skip-permissions -p "
+          GitHub issue #${ISSUE_NUMBER} was just labelled auto-fix: \"${ISSUE_TITLE}\"
+
+          Propose a fix as a pull request. You are on branch auto-fix/issue-${ISSUE_NUMBER}
+          in a throwaway clone. Do NOT push to main and do NOT tag a release — a human
+          reviews and merges.
+
           1. Read the full issue: curl -s -H \"Authorization: Bearer \$GITHUB_TOKEN\" https://api.github.com/repos/ciberkids/cloud-drive-sync/issues/${ISSUE_NUMBER}
           2. Investigate root cause in the codebase
           3. Apply the fix
-          4. Write tests for the fix
-          5. Run CI gate: cd daemon && python -m pytest tests/ -x -q && .venv/bin/ruff check src/ tests/ && cd ../ui/src-tauri && cargo check && cd ../ui && npx tsc --noEmit
-          6. Commit with 'Fixes #${ISSUE_NUMBER}', push to main
-          7. Comment on the issue with root cause, fix, and prevention
-          8. Tag the next patch release (check: git tag --sort=-version:refname | head -1), push the tag
-          9. Poll for the pipeline release, then update the release notes
+          4. Write tests for the fix. Confirm they fail before it and pass after — a
+             test that passes either way proves nothing
+          5. Run the CI gate: cd daemon && python -m pytest tests/ -x -q && .venv/bin/ruff check src/ tests/ && cd ../ui/src-tauri && cargo check && cd ../ui && npx tsc --noEmit
+          6. Commit, push the branch, and open a PR with 'Fixes #${ISSUE_NUMBER}' in the
+             body. Say in the PR what you verified and what you did not
+          7. If the change touches credentials, authentication, or deletion, say so
+             prominently in the PR — those need a careful human read
+          8. If the fix is not clearly correct, open the PR as a draft and explain
+             what is uncertain rather than guessing
           "
