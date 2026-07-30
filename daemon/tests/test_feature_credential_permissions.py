@@ -146,6 +146,62 @@ def test_an_existing_loose_salt_is_tightened(store):
     assert salt_path.stat().st_mode & 0o777 == 0o600
 
 
+@posix_only
+def test_a_token_refresh_repairs_a_pre_fix_file(store, monkeypatch):
+    """The mechanism that actually fixes existing installs.
+
+    Refreshing an expired token re-saves the credentials, which routes through
+    ``_write_private`` and tightens both files. Since Google access tokens last
+    about an hour, a running daemon repairs itself without anyone intervening —
+    which is why there is no permission sweep at startup. That would mean chmod-ing
+    files the daemon may no longer own after a PUID change, and a failure there
+    would crash startup, trading a bounded exposure for an unbounded outage.
+
+    Pinned because it is load-bearing for that decision: if the refresh path ever
+    stopped re-saving, pre-fix files would silently stay world-readable forever.
+    """
+    from unittest import mock
+
+    path = store / "credentials.enc"
+    C.save_credentials(_creds("old"), path)
+    path.chmod(0o644)
+    C._salt_path().chmod(0o644)
+
+    def _refresh(self, request):
+        self.token = "refreshed"
+
+    with mock.patch.object(Credentials, "expired", True), \
+         mock.patch.object(Credentials, "refresh", _refresh):
+        loaded = C.load_credentials(path)
+
+    assert loaded.token == "refreshed"
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert C._salt_path().stat().st_mode & 0o777 == 0o600
+
+
+@posix_only
+def test_a_valid_token_does_not_rewrite_the_file(store):
+    """The other half, stated so the exposure window is not a surprise.
+
+    No refresh means no re-save, so a pre-fix file keeps its mode until the token
+    expires. That bounds the window at roughly one token lifetime of daemon
+    runtime, rather than closing it instantly.
+    """
+    from unittest import mock
+
+    path = store / "credentials.enc"
+    C.save_credentials(_creds(), path)
+    path.chmod(0o644)
+
+    with mock.patch.object(Credentials, "expired", False):
+        assert C.load_credentials(path) is not None
+
+    assert path.stat().st_mode & 0o777 == 0o644, (
+        "a valid token now triggers a rewrite — if that is intended, the exposure "
+        "window closes sooner and this test should be updated to expect 0o600"
+    )
+
+
 # ── Round trip ──────────────────────────────────────────────────────────
 
 
