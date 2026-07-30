@@ -9,7 +9,8 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 1 | [Delete fail-safe](#1--delete-fail-safe) | Data safety | [#53](https://github.com/ciberkids/cloud-drive-sync/issues/53) | ✅ Done |
 | 2 | [Emergency stop button](#2--emergency-stop-button) | Data safety / control | [#54](https://github.com/ciberkids/cloud-drive-sync/issues/54) | ✅ Done |
 | 3 | [Nextcloud backend research spike](#3--nextcloud-backend-research-spike) | Spike | [#55](https://github.com/ciberkids/cloud-drive-sync/issues/55) | ✅ Done — see [findings](Spike-Nextcloud-Backend) |
-| 4 | Nextcloud push-based change detection | Feature | [#56](https://github.com/ciberkids/cloud-drive-sync/issues/56) | ✅ Done — unreleased; not yet validated against a live `notify_push` server |
+| 4 | Nextcloud push-based change detection | Feature | [#56](https://github.com/ciberkids/cloud-drive-sync/issues/56) | ✅ Done — shipped in v2.3.0, validated against a live `notify_push` server |
+| 5 | Token authentication for the HTTP and MCP ports | Security | — | ✅ Done — shipped in v2.4.0, opt-in |
 
 ---
 
