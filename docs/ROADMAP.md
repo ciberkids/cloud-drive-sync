@@ -11,8 +11,9 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 3 | [Nextcloud backend research spike](#3--nextcloud-backend-research-spike) | Spike | [#55](https://github.com/ciberkids/cloud-drive-sync/issues/55) | ✅ Done — see [findings](Spike-Nextcloud-Backend) |
 | 4 | Nextcloud push-based change detection | Feature | [#56](https://github.com/ciberkids/cloud-drive-sync/issues/56) | ✅ Done — shipped in v2.3.0, validated against a live `notify_push` server |
 | 5 | Token authentication for the HTTP and MCP ports | Security | — | ✅ Done — shipped in v2.4.0, opt-in |
-| 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — shipped in v2.4.1 |
-| 7 | Authentication on by default for new installs | Security | — | 🔜 Next — generate a token on first run; keep upgrades untouched |
+| 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — v2.4.1 (Google), v2.4.2 (every provider) |
+| 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
+| 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
 
 ---
 
@@ -95,6 +96,16 @@ Token auth shipped in v2.4.0 as **opt-in**, so a deployment is unprotected until
 **Why this and not the alternative.** Refusing to bind to a non-loopback address without a token fails closed, which sounds stronger, but it would stop every existing Docker deployment from starting on upgrade — worse than the problem it solves.
 
 **The part that needs care** is how a headless user finds the token. It has to be obvious in `docker logs`, and getting it wrong locks someone out of their own daemon, so this wants its own release rather than a ride-along on a patch.
+
+**Shipped in v2.4.3** as described. See [Authentication](Daemon#authentication). One thing worth recording: the whole feature rests on `Config.load` not creating a file when none exists. If that ever changes, every install looks like an upgrade and this silently stops working — no error, just deployments open again — so there is a test pinning that behaviour.
+
+---
+
+## 8 — Encrypt OneDrive, Box and Nextcloud credentials
+
+Those three stored credentials as plaintext JSON while the README claimed encryption at rest; Nextcloud's was an app password, the credential itself. **Shipped in v2.4.3** ([#57](https://github.com/ciberkids/cloud-drive-sync/issues/57)).
+
+The non-obvious part, recorded so it is not "tidied up" later: their salt is written **beside each credential file** rather than in the shared data directory. They live under the config directory while the shared salt lives under data — separate volumes in a container — so a shared salt would let the ciphertext and its only key be restored apart, and salt creation mints a new salt rather than failing. That would turn a config-only restore into silent, permanent loss of every account. See [Authentication](Architecture#authentication).
 
 ## Adding to the queue
 
