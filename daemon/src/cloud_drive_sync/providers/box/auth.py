@@ -107,20 +107,26 @@ class BoxAuth(AuthProvider):
     def save_credentials(self, creds: Any, account_id: str) -> None:
         _BOX_CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
         creds_path = _BOX_CREDENTIALS_DIR / f"{account_id}.json"
-        # Owner-only *before* the token is written; write-then-chmod left a window
-        # where these were world-readable. Stored as plaintext JSON, so the mode is
-        # the only protection; see
-        # https://github.com/ciberkids/cloud-drive-sync/issues/57
-        from cloud_drive_sync.auth.credentials import _write_private
+        # Encrypted and owner-only, with the salt beside the credentials rather than
+        # in the shared data directory — these live under the config directory, a
+        # separate volume in a container, so a shared salt could be restored apart
+        # from the ciphertext it is the only key for.
+        from cloud_drive_sync.auth.credentials import write_encrypted_json
 
-        _write_private(creds_path, json.dumps(creds, indent=2).encode())
+        write_encrypted_json(creds_path, creds, creds_path.with_suffix(".salt"))
         log.info("Saved Box credentials for account %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:
         creds_path = _BOX_CREDENTIALS_DIR / f"{account_id}.json"
-        if not creds_path.exists():
-            return None
-        return json.loads(creds_path.read_text())
+        # Also upgrades a pre-encryption plaintext file on read, since
+        # save_credentials only runs when an account is added.
+        from cloud_drive_sync.auth.credentials import read_encrypted_json
+
+        return read_encrypted_json(
+            creds_path,
+            creds_path.with_suffix(".salt"),
+            label=f"Box credentials for {account_id}",
+        )
 
     async def create_client(self, creds: Any) -> CloudClient:
         from box_sdk_gen import BoxClient as SdkBoxClient

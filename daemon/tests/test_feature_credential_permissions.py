@@ -499,3 +499,212 @@ def test_every_provider_repairs_an_existing_loose_file(tmp_path, monkeypatch, in
 
     mode = path.stat().st_mode & 0o777
     assert mode == 0o600, f"{name}: a pre-existing 0644 file stayed {oct(mode)}"
+
+
+# ── Encryption for the three plaintext providers (issue #57) ────────────
+#
+# OneDrive, Box and Nextcloud stored credentials as plaintext JSON. Encrypting them
+# needs a read-side upgrade, because for these providers ``save_credentials`` only
+# runs when an account is added — nothing rewrites the file afterwards, so a
+# migration hung off saving would never fire for an existing user.
+#
+# The salt for these lives *beside* each credential file rather than in the shared
+# data directory. They are stored under the config directory, and in a container
+# that is a different volume from the data directory — so a shared salt would mean
+# the ciphertext and its only key are in separate volumes. Restoring just the config
+# volume would then mint a fresh salt (``_ensure_salt`` creates one rather than
+# failing) and every account would be silently unrecoverable. Today that restore
+# works, because the files are plaintext.
+
+
+def _encrypted_providers(tmp_path, monkeypatch):
+    """``(name, save, load, path, salt_path)`` for each newly-encrypted provider."""
+    monkeypatch.setattr(C, "_get_machine_id", lambda: b"test-machine-id")
+
+    from cloud_drive_sync.providers.box import auth as bx
+    from cloud_drive_sync.providers.nextcloud import auth as nc
+    from cloud_drive_sync.providers.onedrive import auth as od
+
+    monkeypatch.setattr(od, "CREDS_DIR", tmp_path / "od")
+    monkeypatch.setattr(bx, "_BOX_CREDENTIALS_DIR", tmp_path / "bx")
+    monkeypatch.setattr(nc, "_CREDS_DIR", tmp_path / "nc")
+
+    odi = od.OneDriveAuth.__new__(od.OneDriveAuth)
+    bxi = bx.BoxAuth.__new__(bx.BoxAuth)
+    nci = nc.NextcloudAuth.__new__(nc.NextcloudAuth)
+
+    return [
+        (
+            "onedrive",
+            {"token": "SECRET-OD", "client_id": "c"},
+            odi.save_credentials,
+            odi.load_credentials,
+            tmp_path / "od" / "onedrive_acct.json",
+            tmp_path / "od" / "onedrive_acct.salt",
+        ),
+        (
+            "box",
+            {"access_token": "SECRET-BX", "refresh_token": "r"},
+            bxi.save_credentials,
+            bxi.load_credentials,
+            tmp_path / "bx" / "acct.json",
+            tmp_path / "bx" / "acct.salt",
+        ),
+        (
+            "nextcloud",
+            {"server_url": "https://nc", "username": "u", "app_password": "SECRET-NC"},
+            nci.save_credentials,
+            nci.load_credentials,
+            tmp_path / "nc" / "acct" / "nextcloud_creds.json",
+            tmp_path / "nc" / "acct" / "nextcloud_creds.salt",
+        ),
+    ]
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_the_secret_is_not_readable_in_the_file(tmp_path, monkeypatch, index):
+    """The point of #57. These were `json.dumps(creds)` straight to disk."""
+    name, creds, save, _load, path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    secret = next(v for v in creds.values() if v.startswith("SECRET"))
+
+    save(creds, "acct")
+
+    assert secret.encode() not in path.read_bytes(), f"{name}: credential is plaintext"
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_credentials_round_trip_through_encryption(tmp_path, monkeypatch, index):
+    _name, creds, save, load, _path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+
+    save(creds, "acct")
+
+    assert load("acct") == creds
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_an_existing_plaintext_file_still_loads(tmp_path, monkeypatch, index):
+    """The upgrade path. Anyone with an account already has a plaintext file, and
+    refusing it would silently disconnect them."""
+    _name, creds, _save, load, path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(creds))
+
+    assert load("acct") == creds
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_reading_a_plaintext_file_encrypts_it(tmp_path, monkeypatch, index):
+    """Migration happens on read, because nothing else rewrites these files."""
+    name, creds, _save, load, path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    secret = next(v for v in creds.values() if v.startswith("SECRET"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(creds))
+
+    load("acct")
+
+    assert secret.encode() not in path.read_bytes(), f"{name}: still plaintext after read"
+    assert load("acct") == creds, "the re-encrypted file does not load back"
+
+
+@posix_only
+@pytest.mark.parametrize("index", range(3))
+def test_the_upgraded_file_and_its_salt_are_owner_only(tmp_path, monkeypatch, index):
+    _name, creds, _save, load, path, salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(creds))
+    path.chmod(0o644)
+
+    load("acct")
+
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert salt.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_the_salt_sits_beside_the_credentials_not_in_the_data_dir(
+    tmp_path, monkeypatch, index
+):
+    """The cross-volume guard.
+
+    These credentials live under the config directory; the shared salt lives under
+    the data directory, which is a separate Docker volume. If the key came from that
+    shared salt, restoring only the config volume would mint a fresh salt and lose
+    every account. So each credential file carries its own salt.
+    """
+    name, creds, save, _load, _path, salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    shared = tmp_path / "elsewhere" / "token_salt"
+    monkeypatch.setattr(C, "_salt_path", lambda: shared)
+
+    save(creds, "acct")
+
+    assert salt.exists(), f"{name}: no salt beside the credentials"
+    assert not shared.exists(), f"{name}: fell back to the shared data-dir salt"
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_credentials_survive_a_config_only_restore(tmp_path, monkeypatch, index):
+    """The scenario the sibling salt exists for: the data directory is gone."""
+    _name, creds, save, load, _path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    save(creds, "acct")
+
+    monkeypatch.setattr(C, "_salt_path", lambda: tmp_path / "wiped" / "token_salt")
+
+    assert load("acct") == creds
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_a_missing_salt_is_reported_loudly(tmp_path, monkeypatch, index, caplog):
+    """Otherwise "all my accounts disappeared" has no diagnostic."""
+    _name, creds, save, load, _path, salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    save(creds, "acct")
+    salt.unlink()
+
+    with caplog.at_level("ERROR"):
+        assert load("acct") is None
+
+    assert "salt" in caplog.text.lower()
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_a_failed_upgrade_still_returns_the_credentials(tmp_path, monkeypatch, index):
+    """A read-only filesystem must not take every account offline.
+
+    Same trade as declining a permission sweep at startup: the credentials were read
+    successfully, so a failure to rewrite them is cosmetic and must not propagate.
+    """
+    _name, creds, _save, load, path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(creds))
+
+    def _boom(*a, **kw):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(C, "write_encrypted_json", _boom)
+
+    assert load("acct") == creds
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_corrupt_credentials_return_none(tmp_path, monkeypatch, index):
+    _name, creds, save, load, path, _salt = _encrypted_providers(tmp_path, monkeypatch)[index]
+    save(creds, "acct")
+    path.write_bytes(b"not a fernet token")
+
+    assert load("acct") is None
+
+
+def test_nextcloud_still_rejects_an_incomplete_credential_set(tmp_path, monkeypatch):
+    """Nextcloud validated its fields and returned None when they were missing.
+
+    Routing through a shared reader must not drop that: without it a truncated file
+    becomes a KeyError inside create_client instead of a clean None.
+    """
+    from cloud_drive_sync.providers.nextcloud import auth as nc
+
+    monkeypatch.setattr(nc, "_CREDS_DIR", tmp_path / "nc")
+    monkeypatch.setattr(C, "_get_machine_id", lambda: b"test-machine-id")
+    inst = nc.NextcloudAuth.__new__(nc.NextcloudAuth)
+
+    inst.save_credentials({"server_url": "https://nc", "username": "u"}, "acct")
+
+    assert inst.load_credentials("acct") is None

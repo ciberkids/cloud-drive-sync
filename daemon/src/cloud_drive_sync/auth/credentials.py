@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -113,6 +114,111 @@ def _ensure_salt() -> bytes:
     salt = os.urandom(16)
     _write_private(sp, salt)
     return salt
+
+
+def _ensure_salt_at(path: Path) -> bytes:
+    """Return the salt stored at ``path``, creating it if absent.
+
+    A variant of :func:`_ensure_salt` for credentials that do **not** live in the
+    data directory. OneDrive, Box and Nextcloud store theirs under the *config*
+    directory, and in a container those are two separate volumes:
+
+        -v cloud-drive-sync-config:/root/.config/cloud-drive-sync
+        -v cloud-drive-sync-data:/root/.local/share/cloud-drive-sync
+
+    Encrypting those against the shared data-directory salt would mean the
+    ciphertext and the only key to it live in different volumes. Restoring just the
+    config volume — the intuitive thing to back up, since that is where the
+    credentials are — would then hit ``_ensure_salt``, which *mints a new salt*
+    rather than failing, leaving the old ciphertext permanently unreadable and
+    every account silently gone. Today that restore works, because those files are
+    plaintext, so introducing the dependency would be a regression.
+
+    Keeping the salt beside the ciphertext removes the coupling and keeps the
+    property that matters: the key is still PBKDF2 over the machine id, so a copy
+    of the whole directory is not enough to decrypt it elsewhere.
+    """
+    if path.exists():
+        if os.name == "posix" and path.stat().st_mode & 0o077:
+            path.chmod(0o600)
+        return path.read_bytes()
+    salt = os.urandom(16)
+    _write_private(path, salt)
+    return salt
+
+
+def write_encrypted_json(path: Path, payload: Any, salt_path: Path | None = None) -> None:
+    """Encrypt ``payload`` as JSON and write it owner-only.
+
+    ``salt_path`` selects which salt derives the key — pass one beside ``path`` for
+    credentials outside the data directory; omit it to use the shared salt.
+    """
+    salt = _ensure_salt_at(salt_path) if salt_path is not None else _ensure_salt()
+    fernet = _get_fernet(salt)
+    _write_private(path, fernet.encrypt(json.dumps(payload).encode()))
+
+
+def read_encrypted_json(
+    path: Path,
+    salt_path: Path | None = None,
+    *,
+    label: str = "credentials",
+) -> Any | None:
+    """Read a credential file, transparently upgrading a plaintext one.
+
+    Returns ``None`` when the file is absent or cannot be recovered.
+
+    Files written before these credentials were encrypted are plaintext JSON.
+    Refusing them would silently disconnect every existing account, so they are
+    read, re-written encrypted, and returned. The upgrade has to happen here rather
+    than on save, because for these providers ``save_credentials`` is only called
+    when an account is added — nothing rewrites the file afterwards, so a plaintext
+    file would otherwise stay plaintext forever.
+
+    Plaintext is detected by trying to parse first: a Fernet token is url-safe
+    base64 and cannot parse as a JSON object, so there is no ambiguity.
+    """
+    if not path.exists():
+        return None
+
+    raw = path.read_bytes()
+
+    # Plaintext from before encryption landed.
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        data = None
+    if isinstance(data, dict):
+        log.info("Upgrading %s at %s to encrypted storage", label, path)
+        try:
+            write_encrypted_json(path, data, salt_path)
+        except Exception as exc:
+            # The credentials were read fine; only the upgrade failed — a read-only
+            # filesystem, or ownership changed by a PUID remap. Returning them
+            # keeps the account working. Raising here would turn a cosmetic upgrade
+            # into every account failing to load.
+            log.warning("Could not re-encrypt %s at %s (%s); leaving as-is", label, path, exc)
+        return data
+
+    sp = salt_path if salt_path is not None else _salt_path()
+    if not sp.exists():
+        # Loud, because the silent version of this is "all my accounts vanished".
+        log.error(
+            "%s at %s is encrypted but its salt %s is missing, so it cannot be "
+            "decrypted — restore the salt or re-add the account",
+            label,
+            path,
+            sp,
+        )
+        return None
+
+    try:
+        return json.loads(_get_fernet(sp.read_bytes()).decrypt(raw))
+    except Exception:
+        log.error(
+            "Failed to decrypt %s at %s, may need to re-authenticate", label, path
+        )
+        return None
 
 
 def save_credentials(creds: Credentials, path: Path | None = None) -> None:

@@ -7,7 +7,6 @@ is created via nc-py-api.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -93,33 +92,36 @@ class NextcloudAuth(AuthProvider):
 
         creds_file = creds_dir / "nextcloud_creds.json"
 
-        # Owner-only before writing, which this already did — but via the shared
-        # helper, which additionally repairs a file that already exists with looser
-        # permissions (touch(exist_ok=True) leaves an existing mode alone). The app
-        # password is stored in the clear, so the mode is the only protection; see
-        # https://github.com/ciberkids/cloud-drive-sync/issues/57
-        from cloud_drive_sync.auth.credentials import _write_private
+        # Encrypted and owner-only. This stores the app password itself rather than a
+        # refresh token, so it is the credential, not a handle to one. The salt goes
+        # beside it rather than in the shared data directory, which is a separate
+        # volume in a container — the ciphertext and its only key should not be
+        # restorable apart from each other.
+        from cloud_drive_sync.auth.credentials import write_encrypted_json
 
-        _write_private(creds_file, json.dumps(creds, indent=2).encode())
+        write_encrypted_json(creds_file, creds, creds_file.with_suffix(".salt"))
         log.info("Saved Nextcloud credentials for account: %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:
         """Load Nextcloud credentials for a specific account."""
         creds_file = _CREDS_DIR / account_id / "nextcloud_creds.json"
-        if not creds_file.exists():
-            log.debug("No credentials found for account: %s", account_id)
+        # Decrypts, and upgrades a pre-encryption plaintext file on read.
+        from cloud_drive_sync.auth.credentials import read_encrypted_json
+
+        data = read_encrypted_json(
+            creds_file,
+            creds_file.with_suffix(".salt"),
+            label=f"Nextcloud credentials for {account_id}",
+        )
+        if data is None:
             return None
 
-        try:
-            data = json.loads(creds_file.read_text())
-            # Ensure all required fields are present
-            if not all(k in data for k in ("server_url", "username", "app_password")):
-                log.warning("Incomplete credentials for account: %s", account_id)
-                return None
-            return data
-        except (json.JSONDecodeError, OSError) as e:
-            log.error("Failed to load credentials for %s: %s", account_id, e)
+        # Kept from before the shared reader: an incomplete set must come back as
+        # None, or the missing key surfaces as a KeyError inside create_client.
+        if not all(k in data for k in ("server_url", "username", "app_password")):
+            log.warning("Incomplete credentials for account: %s", account_id)
             return None
+        return data
 
     async def create_client(self, creds: Any) -> CloudClient:
         """Create a NextcloudClient from stored credentials."""

@@ -165,7 +165,7 @@ cloud-drive-sync account add --provider gdrive --headless
 
 1. For OAuth providers (Google, Dropbox, OneDrive, Box): opens your browser for sign-in
 2. For Nextcloud: prompts for server URL, username, and app password
-3. Credentials are stored per-account, readable only by your user (`0600`). Google Drive and Dropbox are also encrypted at rest; OneDrive, Box and Nextcloud are stored as plaintext JSON for now, so the file permissions are the protection ([#57](https://github.com/ciberkids/cloud-drive-sync/issues/57))
+3. Credentials are encrypted at rest and stored per-account, readable only by your user (`0600`). A file written by an older version is upgraded to encrypted storage the first time it is read
 4. The account appears in `account list` and can be assigned to sync pairs
 
 **Docker usage:** When running in a container, use `docker exec` with `--headless`:

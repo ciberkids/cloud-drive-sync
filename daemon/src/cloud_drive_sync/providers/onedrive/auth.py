@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -104,27 +103,31 @@ class OneDriveAuth(AuthProvider):
     def save_credentials(self, creds: Any, account_id: str) -> None:
         """Save OneDrive credentials to disk."""
         creds_path = CREDS_DIR / f"onedrive_{account_id}.json"
-        # Owner-only *before* the token is written. The previous order — write, then
-        # chmod — left the credentials briefly world-readable. Note these are stored
-        # as plaintext JSON, so the file mode is the only thing protecting them; see
-        # https://github.com/ciberkids/cloud-drive-sync/issues/57
-        from cloud_drive_sync.auth.credentials import _write_private
+        # Encrypted and owner-only. The salt is written beside the credentials
+        # rather than in the shared data directory: these live under the config
+        # directory, which is a separate volume in a container, and a shared salt
+        # would mean the ciphertext and its only key could be restored apart.
+        from cloud_drive_sync.auth.credentials import write_encrypted_json
 
-        _write_private(creds_path, json.dumps(creds, indent=2).encode())
+        write_encrypted_json(creds_path, creds, creds_path.with_suffix(".salt"))
         log.info("Saved OneDrive credentials for %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:
         """Load OneDrive credentials from disk."""
         creds_path = CREDS_DIR / f"onedrive_{account_id}.json"
-        if not creds_path.exists():
-            return None
-        try:
-            data = json.loads(creds_path.read_text())
+        # Reads an encrypted file, and transparently upgrades one written before
+        # encryption landed — the upgrade has to happen on read, because
+        # save_credentials only runs when an account is added.
+        from cloud_drive_sync.auth.credentials import read_encrypted_json
+
+        data = read_encrypted_json(
+            creds_path,
+            creds_path.with_suffix(".salt"),
+            label=f"OneDrive credentials for {account_id}",
+        )
+        if data is not None:
             log.debug("Loaded OneDrive credentials for %s", account_id)
-            return data
-        except (json.JSONDecodeError, OSError) as e:
-            log.warning("Failed to load credentials for %s: %s", account_id, e)
-            return None
+        return data
 
     async def create_client(self, creds: Any) -> CloudClient:
         """Create an OneDriveClient from saved credentials."""

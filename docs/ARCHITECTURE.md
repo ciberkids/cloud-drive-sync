@@ -323,7 +323,19 @@ Activity log of all sync operations.
 - Encryption key is derived from a machine ID: `/etc/machine-id` on Linux, `IOPlatformUUID` via `ioreg` on macOS, `MachineGuid` from the Windows registry
 - **Both files are `0600`** (owner only), as of v2.4.1. This is the control that actually matters, because the machine ID is not itself a secret — `/etc/machine-id` is world-readable by design — so a readable salt would be enough to derive the key
 
-> **What machine binding does and does not give you.** On a desktop install, copying `credentials.enc` and `token_salt` to another machine is not enough to decrypt them: the third input is that machine's ID. **Inside the Docker image there is no `/etc/machine-id`**, so a published fallback constant is used instead, and the tokens are bound to nothing. For container deployments, treat the config volume as containing live credentials — encrypted, but decryptable by anyone who obtains it. Back it up accordingly, and do not commit it or share it in a bug report.
+**Every provider is encrypted** as of v2.4.3. Where the ciphertext lives determines where its salt lives, and the two must not be separable:
+
+| Provider | Credentials | Salt |
+|---|---|---|
+| Google Drive | `<data>/credentials-*.enc` | shared `<data>/token_salt` |
+| Dropbox | `<data>/dropbox-credentials-*.enc` | shared `<data>/token_salt` |
+| OneDrive, Box, Nextcloud | `<config>/…` | **beside each file**, `*.salt` |
+
+The last row is not an inconsistency. Those three store credentials under the *config* directory while the shared salt lives under the *data* directory — separate volumes in a container. Encrypting them against the shared salt would put the ciphertext and its only key in different volumes, and restoring just the config volume would then hit salt creation, which mints a new salt rather than failing, leaving every account silently unrecoverable. A salt beside each file keeps them together while preserving the machine binding.
+
+Credential files written before encryption are **upgraded on read**, not on save: for these providers `save_credentials` only runs when an account is added, so a migration hung off saving would never fire for an existing user. If the re-encrypt fails — read-only filesystem, ownership changed by a `PUID` remap — the credentials are still returned, because failing there would take every account offline to fix a storage detail.
+
+> **What machine binding does and does not give you.** On a desktop install, copying the credential files to another machine is not enough to decrypt them: the third input is that machine's ID. **Inside the Docker image there is no `/etc/machine-id`**, so a published fallback constant is used instead, and the tokens are bound to nothing. For container deployments, treat the volumes as containing live credentials — encrypted, but decryptable by anyone who obtains them. Back them up accordingly, and do not commit them or share them in a bug report.
 
 > **Headless auth:** All providers support headless authentication via `--headless` flag. Google Drive uses console flow, OneDrive uses device code flow, others print authorization URLs for manual completion.
 
