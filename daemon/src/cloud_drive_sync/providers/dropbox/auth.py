@@ -93,12 +93,20 @@ class DropboxAuth(AuthProvider):
         path = self._credentials_path(account_id)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        from cloud_drive_sync.auth.credentials import _ensure_salt, _get_fernet
+        from cloud_drive_sync.auth.credentials import (
+            _ensure_salt,
+            _get_fernet,
+            _write_private,
+        )
 
         salt = _ensure_salt()
         fernet = _get_fernet(salt)
         encrypted = fernet.encrypt(json.dumps(creds).encode())
-        path.write_bytes(encrypted)
+        # Owner-only, via the shared helper rather than a bare write_bytes. This
+        # file was 0644, and while the salt being 0600 keeps the key out of reach
+        # on a desktop, that is not something to depend on — in a container the key
+        # is a published constant, so the ciphertext mode is the only control left.
+        _write_private(path, encrypted)
         log.info("Dropbox credentials saved for account %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:

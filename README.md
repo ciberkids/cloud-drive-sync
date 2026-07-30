@@ -104,7 +104,7 @@ Authentication in headless mode works without a local browser — the daemon pri
 - **Native desktop UI** — Tauri + React app for configuration and monitoring
 - **Daemon architecture** — runs as a background service (systemd on Linux, sidecar on macOS/Windows)
 - **XDG compliance** — config, data, and runtime files follow the XDG Base Directory spec
-- **Encrypted credentials** — OAuth2 tokens stored encrypted on disk (per-account)
+- **Protected credentials** — stored per-account, owner-readable only (`0600`). Google Drive and Dropbox tokens are additionally encrypted at rest; OneDrive, Box and Nextcloud are not yet, so file permissions are what protects them ([#57](https://github.com/ciberkids/cloud-drive-sync/issues/57))
 - **Demo mode** — test the full UI and sync flow without any cloud account
 
 ---

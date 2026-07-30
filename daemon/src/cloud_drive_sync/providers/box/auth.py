@@ -107,8 +107,13 @@ class BoxAuth(AuthProvider):
     def save_credentials(self, creds: Any, account_id: str) -> None:
         _BOX_CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
         creds_path = _BOX_CREDENTIALS_DIR / f"{account_id}.json"
-        creds_path.write_text(json.dumps(creds, indent=2))
-        creds_path.chmod(0o600)
+        # Owner-only *before* the token is written; write-then-chmod left a window
+        # where these were world-readable. Stored as plaintext JSON, so the mode is
+        # the only protection; see
+        # https://github.com/ciberkids/cloud-drive-sync/issues/57
+        from cloud_drive_sync.auth.credentials import _write_private
+
+        _write_private(creds_path, json.dumps(creds, indent=2).encode())
         log.info("Saved Box credentials for account %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:

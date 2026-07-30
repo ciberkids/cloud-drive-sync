@@ -11,11 +11,20 @@ key was readable by every local user: read the salt, read the machine id, derive
 the key, decrypt the tokens. Encryption at rest that any local account can undo
 is not protecting much.
 
-It reads as an oversight rather than a decision, because the rest of the codebase
-already does this properly — ``providers/box/auth.py``, ``providers/onedrive/auth.py``
-and ``providers/nextcloud/auth.py`` all write their credential files ``0600``, and
-``ipc/server.py`` chmods the socket. This one path, the oldest and the shared one,
-was the exception.
+It reads as an oversight rather than a decision, because other paths already did it
+— ``providers/box/auth.py``, ``providers/onedrive/auth.py`` and
+``providers/nextcloud/auth.py`` write ``0600``, and ``ipc/server.py`` chmods the
+socket.
+
+Auditing the rest afterwards found the same bug in ``providers/dropbox/auth.py``,
+which encrypted and then wrote with a bare ``write_bytes``; and that OneDrive, Box
+and Nextcloud store credentials as **plaintext JSON**, so their file mode is the
+only protection they have (issue #57). All five now go through ``_write_private``.
+
+That is the reason for the per-provider tests at the bottom. "The credential file
+is locked down" was originally checked by reading the code provider by provider,
+and reading the code got it wrong — so these call each real save path and inspect
+the real file instead.
 
 Permission assertions are POSIX-only; Windows does not implement these bits and a
 correct implementation would fail them.
@@ -383,3 +392,110 @@ def test_the_same_salt_and_machine_give_the_same_key(store):
     b = C._get_fernet(salt)
 
     assert b.decrypt(a.encrypt(b"payload")) == b"payload"
+
+
+# ── Every provider, not just the shared store ───────────────────────────
+#
+# The Google path was fixed first, and an audit of the others then found Dropbox
+# carrying the identical bug and three providers storing credentials in plaintext
+# (issue #57). The lesson is that "the credential file is locked down" was checked
+# per-provider by reading code, and reading code got it wrong. So this asserts it
+# for all five by calling the real save path and inspecting the real file.
+
+
+def _provider_savers(tmp_path, monkeypatch):
+    """Yield ``(name, save_callable, path_callable)`` for each provider.
+
+    Each provider keeps its credentials somewhere different — a module constant, a
+    method, or the shared store — so the layout is spelled out rather than guessed.
+    """
+    monkeypatch.setattr(C, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(C, "_get_machine_id", lambda: b"test-machine-id")
+    monkeypatch.setattr("cloud_drive_sync.util.paths.data_dir", lambda: tmp_path)
+
+    cases = []
+
+    # Google — through the shared per-account store.
+    def _save_google():
+        C.save_account_credentials(_creds(), "acct@example.com")
+
+    from cloud_drive_sync.util.paths import account_credentials_path
+
+    cases.append(("gdrive", _save_google, lambda: account_credentials_path("acct@example.com")))
+
+    # Dropbox — encrypted, but was written with a bare write_bytes.
+    from cloud_drive_sync.providers.dropbox.auth import DropboxAuth
+
+    dbx_path = tmp_path / "dropbox_acct.enc"
+    dbx = DropboxAuth.__new__(DropboxAuth)
+    monkeypatch.setattr(dbx, "_credentials_path", lambda aid: dbx_path, raising=False)
+    cases.append((
+        "dropbox",
+        lambda: dbx.save_credentials({"refresh_token": "r", "app_key": "k"}, "acct"),
+        lambda: dbx_path,
+    ))
+
+    # OneDrive and Box — plaintext JSON at a module-level directory.
+    from cloud_drive_sync.providers.box import auth as box_auth
+    from cloud_drive_sync.providers.onedrive import auth as od_auth
+
+    monkeypatch.setattr(od_auth, "CREDS_DIR", tmp_path / "od")
+    od = od_auth.OneDriveAuth.__new__(od_auth.OneDriveAuth)
+    cases.append((
+        "onedrive",
+        lambda: od.save_credentials({"token": "t", "client_id": "c"}, "acct"),
+        lambda: tmp_path / "od" / "onedrive_acct.json",
+    ))
+
+    monkeypatch.setattr(box_auth, "_BOX_CREDENTIALS_DIR", tmp_path / "box")
+    box = box_auth.BoxAuth.__new__(box_auth.BoxAuth)
+    cases.append((
+        "box",
+        lambda: box.save_credentials({"access_token": "a", "refresh_token": "r"}, "acct"),
+        lambda: tmp_path / "box" / "acct.json",
+    ))
+
+    from cloud_drive_sync.providers.nextcloud import auth as nc_auth
+
+    monkeypatch.setattr(nc_auth, "_CREDS_DIR", tmp_path / "nc")
+    nc = nc_auth.NextcloudAuth.__new__(nc_auth.NextcloudAuth)
+    cases.append((
+        "nextcloud",
+        lambda: nc.save_credentials(
+            {"server_url": "u", "username": "x", "app_password": "p"}, "acct"
+        ),
+        lambda: tmp_path / "nc" / "acct" / "nextcloud_creds.json",
+    ))
+
+    return cases
+
+
+@posix_only
+@pytest.mark.parametrize("index", range(5))
+def test_every_provider_writes_credentials_owner_only(tmp_path, monkeypatch, index):
+    name, save, path_of = _provider_savers(tmp_path, monkeypatch)[index]
+
+    save()
+    path = path_of()
+
+    assert path.exists(), f"{name}: nothing was written to {path}"
+    mode = path.stat().st_mode & 0o777
+    assert mode == 0o600, f"{name} credentials are {oct(mode)}"
+
+
+@posix_only
+@pytest.mark.parametrize("index", range(5))
+def test_every_provider_repairs_an_existing_loose_file(tmp_path, monkeypatch, index):
+    """Upgrades, for each provider. Anyone who authenticated before the fix has a
+    loose file already, and it only gets repaired if saving resets the mode rather
+    than leaving an existing file alone."""
+    name, save, path_of = _provider_savers(tmp_path, monkeypatch)[index]
+
+    save()
+    path = path_of()
+    path.chmod(0o644)
+
+    save()
+
+    mode = path.stat().st_mode & 0o777
+    assert mode == 0o600, f"{name}: a pre-existing 0644 file stayed {oct(mode)}"

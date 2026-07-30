@@ -104,9 +104,13 @@ class OneDriveAuth(AuthProvider):
     def save_credentials(self, creds: Any, account_id: str) -> None:
         """Save OneDrive credentials to disk."""
         creds_path = CREDS_DIR / f"onedrive_{account_id}.json"
-        creds_path.parent.mkdir(parents=True, exist_ok=True)
-        creds_path.write_text(json.dumps(creds, indent=2))
-        creds_path.chmod(0o600)
+        # Owner-only *before* the token is written. The previous order — write, then
+        # chmod — left the credentials briefly world-readable. Note these are stored
+        # as plaintext JSON, so the file mode is the only thing protecting them; see
+        # https://github.com/ciberkids/cloud-drive-sync/issues/57
+        from cloud_drive_sync.auth.credentials import _write_private
+
+        _write_private(creds_path, json.dumps(creds, indent=2).encode())
         log.info("Saved OneDrive credentials for %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:

@@ -92,11 +92,15 @@ class NextcloudAuth(AuthProvider):
         creds_dir.mkdir(parents=True, exist_ok=True)
 
         creds_file = creds_dir / "nextcloud_creds.json"
-        creds_data = json.dumps(creds, indent=2)
 
-        # Set restrictive permissions before writing
-        creds_file.touch(mode=0o600, exist_ok=True)
-        creds_file.write_text(creds_data)
+        # Owner-only before writing, which this already did — but via the shared
+        # helper, which additionally repairs a file that already exists with looser
+        # permissions (touch(exist_ok=True) leaves an existing mode alone). The app
+        # password is stored in the clear, so the mode is the only protection; see
+        # https://github.com/ciberkids/cloud-drive-sync/issues/57
+        from cloud_drive_sync.auth.credentials import _write_private
+
+        _write_private(creds_file, json.dumps(creds, indent=2).encode())
         log.info("Saved Nextcloud credentials for account: %s", account_id)
 
     def load_credentials(self, account_id: str) -> Any | None:
