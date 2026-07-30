@@ -22,6 +22,14 @@ log = get_logger("auth.credentials")
 
 # The encryption key is derived from a machine-specific seed so tokens are
 # not trivially readable if the file is copied to another machine.
+#
+# The strength of that varies by platform, and it is worth being precise about it:
+# on Linux, macOS and Windows the seed is a real machine identifier, so the file
+# alone is not enough. Inside the Docker image there is no /etc/machine-id, so the
+# fallback constant below is used — and that constant is public, in this file. For
+# container deployments the encryption therefore stops the tokens being plaintext
+# but does not bind them to the host, which makes the file mode the real control.
+# Hence _write_private: both files are owner-only.
 _SALT_FILE = "token_salt"
 
 
@@ -78,13 +86,32 @@ def _salt_path() -> Path:
     return data_dir() / _SALT_FILE
 
 
+def _write_private(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path``, readable only by the owner.
+
+    The mode is set *before* the content is written, and again for a file that
+    already exists. Both matter: ``write_bytes`` followed by ``chmod`` leaves a
+    window where the secret sits world-readable, and ``touch(mode=...)`` does not
+    change the mode of an existing file — so anyone who authenticated before this
+    was fixed would have kept their 0644 file forever.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_bytes(data)
+
+
 def _ensure_salt() -> bytes:
     sp = _salt_path()
     if sp.exists():
+        # Repair the mode on a salt written before this was locked down. It is the
+        # one key input an attacker cannot obtain elsewhere — /etc/machine-id is
+        # world-readable by design — so a readable salt gives away the key.
+        if os.name == "posix" and sp.stat().st_mode & 0o077:
+            sp.chmod(0o600)
         return sp.read_bytes()
     salt = os.urandom(16)
-    sp.parent.mkdir(parents=True, exist_ok=True)
-    sp.write_bytes(salt)
+    _write_private(sp, salt)
     return salt
 
 
@@ -105,7 +132,7 @@ def save_credentials(creds: Credentials, path: Path | None = None) -> None:
     salt = _ensure_salt()
     fernet = _get_fernet(salt)
     encrypted = fernet.encrypt(json.dumps(payload).encode())
-    path.write_bytes(encrypted)
+    _write_private(path, encrypted)
     log.info("Credentials saved to %s", path)
 
 

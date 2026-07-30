@@ -321,6 +321,9 @@ Activity log of all sync operations.
 - Tokens stored encrypted at the platform data directory (see File Path Conventions) in `credentials.enc` using `cryptography` (Fernet)
 - A random salt is stored alongside in `token_salt`
 - Encryption key is derived from a machine ID: `/etc/machine-id` on Linux, `IOPlatformUUID` via `ioreg` on macOS, `MachineGuid` from the Windows registry
+- **Both files are `0600`** (owner only), as of v2.4.1. This is the control that actually matters, because the machine ID is not itself a secret — `/etc/machine-id` is world-readable by design — so a readable salt would be enough to derive the key
+
+> **What machine binding does and does not give you.** On a desktop install, copying `credentials.enc` and `token_salt` to another machine is not enough to decrypt them: the third input is that machine's ID. **Inside the Docker image there is no `/etc/machine-id`**, so a published fallback constant is used instead, and the tokens are bound to nothing. For container deployments, treat the config volume as containing live credentials — encrypted, but decryptable by anyone who obtains it. Back it up accordingly, and do not commit it or share it in a bug report.
 
 > **Headless auth:** All providers support headless authentication via `--headless` flag. Google Drive uses console flow, OneDrive uses device code flow, others print authorization URLs for manual completion.
 

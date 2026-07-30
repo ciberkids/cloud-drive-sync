@@ -140,3 +140,107 @@ jobs:
 
       - name: Cargo check
         run: cargo check --all-targets
+
+  docker-smoke:
+    name: Docker – Container Boots (PUID + auth)
+    runs-on: ubuntu-latest
+
+    # Two bugs shipped in v2.4.0 because nothing ever started the image:
+    # PUID/PGID crashed the daemon before it served anything, and token auth was
+    # documented via environment variables that no test exercised. Neither is
+    # visible to the unit suite, and the release pipeline builds the image without
+    # ever running it. This job runs it.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the image
+        run: docker build -f docker/Dockerfile -t cds:ci .
+
+      - name: Start it the way the docs tell people to
+        run: |
+          docker run -d --name cds-ci -p 8080:8080 \
+            -e PUID=1000 -e PGID=1000 \
+            -e CDS_HTTP_TOKEN=ci-test-token \
+            -v cds-ci-config:/root/.config/cloud-drive-sync \
+            -v cds-ci-data:/root/.local/share/cloud-drive-sync \
+            cds:ci
+
+      - name: Wait for the API, and fail loudly if the container died
+        run: |
+          for i in $(seq 1 40); do
+            # A detached `docker run` exits 0 even when the process crashes on
+            # startup, so liveness has to be asserted separately from the launch.
+            if [ "$(docker inspect -f '{{.State.Running}}' cds-ci)" != "true" ]; then
+              echo "::error::container exited during startup"
+              docker logs cds-ci
+              exit 1
+            fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:8080/api/status || true)
+            [ "$code" != "000" ] && break
+            sleep 3
+          done
+          docker inspect -f '{{.State.Running}}' cds-ci | grep -qx true
+
+      - name: The daemon runs as the remapped user, not root
+        run: |
+          uid=$(docker exec cds-ci sh -c 'grep ^Uid /proc/1/status' | awk '{print $2}')
+          echo "daemon uid: $uid"
+          [ "$uid" = "1000" ]
+
+      - name: A token was read from the environment
+        run: docker logs cds-ci 2>&1 | grep -q "requires a token"
+
+      - name: Anonymous requests are refused
+        run: |
+          for path in /api/status /api/pairs; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "http://127.0.0.1:8080$path")
+            echo "$path anonymous -> $code"
+            [ "$code" = "401" ]
+          done
+
+      - name: Delete protection cannot be disabled anonymously
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 -X PUT \
+            -H 'Content-Type: application/json' -d '{"max_deletions_per_sync":0}' \
+            http://127.0.0.1:8080/api/settings/max-deletions)
+          echo "anonymous disable -> $code"
+          [ "$code" = "401" ]
+
+      - name: The correct token is accepted
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+            -H 'Authorization: Bearer ci-test-token' http://127.0.0.1:8080/api/status)
+          echo "bearer -> $code"
+          [ "$code" = "200" ]
+
+      - name: A wrong token is refused
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+            -H 'Authorization: Bearer wrong' http://127.0.0.1:8080/api/status)
+          [ "$code" = "401" ]
+
+      - name: Stored credentials are not world-readable
+        run: |
+          docker exec cds-ci python -c "
+          import pathlib, sys, tempfile
+          from google.oauth2.credentials import Credentials
+          from cloud_drive_sync.auth import credentials as C
+          # An explicit path, so this never writes over a real credentials file
+          # if someone runs this against a container with a live volume mounted.
+          probe = pathlib.Path(tempfile.mkdtemp()) / 'probe.enc'
+          C.save_credentials(Credentials(token='t', refresh_token='r',
+              token_uri='u', client_id='c', client_secret='s', scopes=['x']), probe)
+          bad = [str(p) for p in (probe, C._salt_path()) if p.stat().st_mode & 0o077]
+          sys.exit('world-readable: ' + ', '.join(bad) if bad else 0)
+          "
+
+      - name: Without a token the daemon warns instead of staying silent
+        run: |
+          docker rm -f cds-ci >/dev/null
+          docker run -d --name cds-ci-noauth -p 8081:8080 cds:ci
+          sleep 12
+          docker logs cds-ci-noauth 2>&1 | grep -q "NO AUTHENTICATION"
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs cds-ci 2>&1 || docker logs cds-ci-noauth 2>&1 || true
