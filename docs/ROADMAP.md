@@ -11,6 +11,8 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 3 | [Nextcloud backend research spike](#3--nextcloud-backend-research-spike) | Spike | [#55](https://github.com/ciberkids/cloud-drive-sync/issues/55) | ✅ Done — see [findings](Spike-Nextcloud-Backend) |
 | 4 | Nextcloud push-based change detection | Feature | [#56](https://github.com/ciberkids/cloud-drive-sync/issues/56) | ✅ Done — shipped in v2.3.0, validated against a live `notify_push` server |
 | 5 | Token authentication for the HTTP and MCP ports | Security | — | ✅ Done — shipped in v2.4.0, opt-in |
+| 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — shipped in v2.4.1 |
+| 7 | Authentication on by default for new installs | Security | — | 🔜 Next — generate a token on first run; keep upgrades untouched |
 
 ---
 
@@ -84,9 +86,15 @@ The ordered list of what gets built next. This file is the queue; each item also
 
 ---
 
-## Nothing queued
+## 7 — Authentication on by default for new installs
 
-The queue is empty. See the [release notes](https://github.com/ciberkids/cloud-drive-sync/releases) for what shipped, and the repository issues for anything new.
+Token auth shipped in v2.4.0 as **opt-in**, so a deployment is unprotected until someone sets a token. That was chosen so upgrades would not lock people out of a bookmarked `http://nas:8080`, and it remains the right call for existing installs — but it means a fresh install is wide open by default, with only a startup warning to say so.
+
+**Shape:** on first run, when no config file exists yet, generate a token, persist it, and print it prominently. Upgrades are untouched, because a config file already exists.
+
+**Why this and not the alternative.** Refusing to bind to a non-loopback address without a token fails closed, which sounds stronger, but it would stop every existing Docker deployment from starting on upgrade — worse than the problem it solves.
+
+**The part that needs care** is how a headless user finds the token. It has to be obvious in `docker logs`, and getting it wrong locks someone out of their own daemon, so this wants its own release rather than a ride-along on a patch.
 
 ## Adding to the queue
 
