@@ -37,6 +37,11 @@ from cloud_drive_sync.db.database import Database
 from cloud_drive_sync.ipc.handlers import RequestHandler
 from cloud_drive_sync.ipc.protocol import JsonRpcRequest
 
+#: An absolute path on whichever platform the tests run on. "/home/u/x" is not
+#: absolute on Windows, so local_path validation rejects it before reaching the
+#: account check these tests are about.
+ABS = "C:/tmp/cds-test" if sys.platform == "win32" else "/tmp/cds-test"
+
 #: File modes are POSIX-only; Windows does not implement these bits.
 posix_config_modes = pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX permission bits are not meaningful on Windows"
@@ -660,7 +665,7 @@ async def test_removing_an_account_unbinds_its_pairs_instead_of_deleting_them(
     """
     config.sync.pairs = [
         SyncPair(
-            local_path="/home/u/Docs",
+            local_path=f"{ABS}/Docs",
             remote_folder_id="folder_1",
             account_id="bob@example.com",
             provider="dropbox",
@@ -677,7 +682,7 @@ async def test_removing_an_account_unbinds_its_pairs_instead_of_deleting_them(
     assert pair.account_id == "", "the pair is still bound to a removed account"
     assert pair.enabled is False, "an unbound pair should not stay enabled"
     # The configuration the user built is still there to reassign.
-    assert pair.local_path == "/home/u/Docs"
+    assert pair.local_path == f"{ABS}/Docs"
     assert pair.sync_mode == "upload_only"
     assert pair.ignore_patterns == ["*.tmp"]
 
@@ -865,7 +870,7 @@ async def test_adding_a_pair_with_an_unknown_account_is_refused(handler, config_
     error = await expect_error(
         handler,
         "add_sync_pair",
-        {"local_path": "/home/u/New", "remote_folder_id": "root",
+        {"local_path": f"{ABS}/New", "remote_folder_id": "root",
          "account_id": "typo@example.com"},
     )
 
@@ -877,20 +882,20 @@ async def test_adding_a_pair_with_a_known_account_works(handler, config_file):
     await call(
         handler,
         "add_sync_pair",
-        {"local_path": "/home/u/New", "remote_folder_id": "root",
+        {"local_path": f"{ABS}/New", "remote_folder_id": "root",
          "account_id": "alice@example.com"},
     )
 
     saved = reload(config_file)
-    assert any(p.local_path == "/home/u/New" for p in saved.sync.pairs)
+    assert any(p.local_path == f"{ABS}/New" for p in saved.sync.pairs)
 
 
 async def test_adding_a_pair_with_no_account_is_still_allowed(handler, config_file):
     """An unbound pair is a legitimate state — it is what removing an account leaves
     behind, and it must be possible to create one and assign it later."""
-    await call(handler, "add_sync_pair", {"local_path": "/home/u/Later", "remote_folder_id": "root"})
+    await call(handler, "add_sync_pair", {"local_path": f"{ABS}/Later", "remote_folder_id": "root"})
 
-    assert any(p.local_path == "/home/u/Later" for p in reload(config_file).sync.pairs)
+    assert any(p.local_path == f"{ABS}/Later" for p in reload(config_file).sync.pairs)
 
 
 # ── Listing pairs is a read and must not destroy configuration ──────────
@@ -903,7 +908,7 @@ async def test_listing_pairs_unbinds_an_orphan_rather_than_deleting_it(handler, 
     """
     config.sync.pairs = [
         SyncPair(
-            local_path="/home/u/Orphan",
+            local_path=f"{ABS}/Orphan",
             remote_folder_id="folder_x",
             account_id="deleted@example.com",
             sync_mode="download_only",
@@ -915,7 +920,7 @@ async def test_listing_pairs_unbinds_an_orphan_rather_than_deleting_it(handler, 
 
     assert len(listed) == 1, "listing the pairs deleted one"
     saved = reload(config_file)
-    assert saved.sync.pairs[0].local_path == "/home/u/Orphan"
+    assert saved.sync.pairs[0].local_path == f"{ABS}/Orphan"
     assert saved.sync.pairs[0].account_id == ""
     assert saved.sync.pairs[0].enabled is False
     assert saved.sync.pairs[0].ignore_patterns == ["*.bak"], "the pair's settings were lost"

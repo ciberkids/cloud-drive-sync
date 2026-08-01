@@ -299,7 +299,7 @@ def test_every_command_documented_in_the_quick_reference_exists(runner):
     if not doc.is_file():  # pragma: no cover - source checkout only
         pytest.skip("docs/CLI.md not present in this layout")
 
-    block = re.search(r"```\ncloud-drive-sync \[OPTIONS\] COMMAND\n(.*?)```", doc.read_text(), re.S)
+    block = re.search(r"```\ncloud-drive-sync \[OPTIONS\] COMMAND\n(.*?)```", doc.read_text(encoding="utf-8"), re.S)
     assert block, "the quick-reference block in docs/CLI.md has moved"
 
     documented = set()

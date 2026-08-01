@@ -473,19 +473,34 @@ class RequestHandler:
             pair = self._pair_by_id(pair_id)
         except Exception:
             return None
-        root = (pair.local_path or "").rstrip("/")
+        root = (pair.local_path or "").strip()
         if not root:
             return None
 
-        import os.path
+        def _parts(text: str) -> list[str]:
+            """Path components, separator-agnostic and case-folded.
+
+            Compared this way rather than with ``os.path.commonpath``, which resolves
+            against the *host's* flavour: on Windows it turned "/tmp/x" into
+            "\\tmp\\x" and then failed to match the "/tmp/x" it was given, so every
+            block looked like it belonged to another pair and no legitimate deletion
+            could be approved there. Paths in the database were written by whichever
+            platform recorded them, so the comparison must not assume either.
+            """
+            return [p.casefold() for p in text.replace("\\", "/").split("/") if p]
+
+        root_parts = _parts(root)
+        if not root_parts:
+            return None
 
         for block in pending:
             if block.get("direction") != "local":
                 continue
             for sample in block.get("sample") or []:
-                if not isinstance(sample, str) or not sample.startswith("/"):
+                if not isinstance(sample, str) or not sample.strip():
                     continue
-                if os.path.commonpath([root, sample]) != root:
+                sample_parts = _parts(sample)
+                if sample_parts[: len(root_parts)] != root_parts:
                     return root
         return None
 

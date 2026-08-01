@@ -359,6 +359,8 @@ async def test_a_healthy_google_account_is_registered(monkeypatch):
 # ── A failed MCP bind must not take the daemon with it ───────────────────
 
 
+@posix_only  # Windows allows a second bind to the same port without
+             # SO_EXCLUSIVEADDRUSE, so there is no conflict to provoke.
 async def test_a_busy_mcp_port_raises_a_catchable_error():
     """uvicorn reports a failed bind by calling ``sys.exit()``.
 
@@ -447,7 +449,7 @@ def test_the_documented_runtime_paths_match_the_code():
     pid_name, sock_name = pid_path().name, socket_path().name
     parent = pid_path().parent.name
 
-    text = "\n".join(p.read_text() for p in docs.glob("*.md"))
+    text = "\n".join(p.read_text(encoding="utf-8") for p in docs.glob("*.md"))
     stale = re.findall(r"XDG_RUNTIME_DIR/cloud-drive-sync\.(?:pid|sock)", text)
     assert not stale, f"docs name the socket/pid outside {parent}/: {set(stale)}"
     assert "local/run/cloud-drive-sync" not in text, "docs still name the old ~/.local/run path"
