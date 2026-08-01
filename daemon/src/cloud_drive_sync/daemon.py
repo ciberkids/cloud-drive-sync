@@ -134,6 +134,51 @@ class Daemon:
                 "token, ready for whenever the HTTP port is enabled"
             )
 
+    async def _load_account_client(
+        self, account, clients: dict, load_account_credentials, DriveClient
+    ) -> None:
+        """Build and register the cloud client for one configured account.
+
+        Raising here is contained by the caller, so a single broken account cannot
+        stop the daemon from starting.
+        """
+        provider_name = account.provider or "gdrive"
+        if provider_name == "gdrive":
+            acct_creds = load_account_credentials(account.email)
+            if acct_creds and acct_creds.valid:
+                clients[f"gdrive:{account.email}"] = DriveClient(
+                    acct_creds, proxy=self._config.proxy
+                )
+                log.info("Loaded credentials for %s (gdrive)", account.email)
+            else:
+                log.warning("No valid credentials for %s", account.email)
+            return
+
+        from cloud_drive_sync.providers.registry import get
+
+        try:
+            provider = get(provider_name)
+        except KeyError:
+            log.warning("Unknown provider %s for account %s", provider_name, account.email)
+            return
+
+        if not provider.available:
+            log.warning(
+                "Provider %s is not available yet, skipping %s",
+                provider_name,
+                account.email,
+            )
+            return
+
+        creds = provider.auth_cls().load_credentials(account.email)
+        if not creds:
+            log.warning("No valid credentials for %s (%s)", account.email, provider_name)
+            return
+        clients[f"{provider_name}:{account.email}"] = await provider.auth_cls().create_client(
+            creds
+        )
+        log.info("Loaded credentials for %s (%s)", account.email, provider_name)
+
     async def run(self) -> None:
         """Main entry point: initialize all components and run the event loop."""
         self._loop = asyncio.get_running_loop()
@@ -216,37 +261,25 @@ class Daemon:
                         except Exception as exc:
                             log.warning("Migration failed, keeping legacy mode: %s", exc)
 
-                # Load per-account credentials using provider registry
+                # Load each account independently. Only KeyError used to be caught,
+                # so anything else — an unreadable credential file, a decryption
+                # failure, a provider SDK raising while building its client — escaped
+                # the loop and aborted startup for *every* account. One damaged file
+                # meant the daemon refused to start, when the right outcome is that the
+                # one account shows as disconnected.
                 for account in self._config.accounts:
-                    provider_name = account.provider or "gdrive"
-                    if provider_name == "gdrive":
-                        acct_creds = load_account_credentials(account.email)
-                        if acct_creds and acct_creds.valid:
-                            clients[f"gdrive:{account.email}"] = DriveClient(acct_creds, proxy=self._config.proxy)
-                            log.info("Loaded credentials for %s (gdrive)", account.email)
-                        else:
-                            log.warning("No valid credentials for %s", account.email)
-                    else:
-                        # Use provider registry for non-Google providers
-                        try:
-                            from cloud_drive_sync.providers.registry import get
-                            provider = get(provider_name)
-                            if not provider.available:
-                                log.warning(
-                                    "Provider %s is not available yet, skipping %s",
-                                    provider_name, account.email,
-                                )
-                                continue
-                            auth = provider.auth_cls()
-                            creds = auth.load_credentials(account.email)
-                            if creds:
-                                provider_client = await auth.create_client(creds)
-                                clients[f"{provider_name}:{account.email}"] = provider_client
-                                log.info("Loaded credentials for %s (%s)", account.email, provider_name)
-                            else:
-                                log.warning("No valid credentials for %s (%s)", account.email, provider_name)
-                        except KeyError:
-                            log.warning("Unknown provider %s for account %s", provider_name, account.email)
+                    try:
+                        await self._load_account_client(
+                            account, clients, load_account_credentials, DriveClient
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "Could not load account %s (%s): %s — that account will "
+                            "show as disconnected; the others are unaffected",
+                            account.email,
+                            account.provider or "gdrive",
+                            exc,
+                        )
 
                 # Legacy: if no accounts configured but old credentials exist
                 if not self._config.accounts:
@@ -589,13 +622,78 @@ class Daemon:
             pass
 
     @staticmethod
+    def _discard_pid_file(pf) -> None:
+        """Delete a pid file we have decided is stale, tolerating a read-only dir.
+
+        A pid file that cannot be removed must not stop the daemon from starting.
+        ``unlink`` used to raise straight out of ``is_running``, so ``status`` and
+        ``start`` both died with a bare PermissionError when the runtime directory was
+        not writable — which is a common state after the container's PUID remap.
+        """
+        try:
+            pf.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("Could not remove the stale pid file %s: %s", pf, exc)
+
+    @staticmethod
+    def _pid_is_this_daemon(pid: int) -> bool | None:
+        """Whether ``pid`` looks like a cloud-drive-sync daemon.
+
+        ``True`` yes, ``False`` definitely not, ``None`` cannot tell on this platform.
+
+        Liveness alone is not enough to trust a pid file, for two reasons that both
+        bite in practice:
+
+        * **In a container the daemon is PID 1.** A pid file left behind by an unclean
+          stop says ``1``, and on the next start ``os.kill(1, 0)`` succeeds — because
+          it is asking about *itself*. Every start then refuses with "Daemon is already
+          running", and since the run directory is a named volume the file survives
+          restarts, so a restart policy loops forever on a daemon that never starts.
+        * **Pids get reused.** After an unclean death the number in the file may belong
+          to something else entirely, and ``stop`` would then SIGTERM an unrelated
+          process.
+        """
+        if pid <= 1 or pid == os.getpid():
+            # <=1 is never a daemon we started, and our own pid means the file is
+            # describing this very process.
+            return False
+        if sys.platform == "linux":
+            try:
+                cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+            except OSError:
+                return False
+            return b"cloud_drive_sync" in cmdline or b"cloud-drive-sync" in cmdline
+        return None
+
+    @staticmethod
+    def _pid_from_file(pf) -> int | None:
+        try:
+            return int(pf.read_text().strip())
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
     def is_running() -> bool:
         """Check whether a daemon instance is already running."""
         pf = pid_path()
         if not pf.exists():
             return False
+        pid = Daemon._pid_from_file(pf)
+        if pid is None:
+            Daemon._discard_pid_file(pf)
+            return False
+
+        identity = Daemon._pid_is_this_daemon(pid)
+        if identity is False:
+            # Either our own pid (the container PID 1 case) or a process that is not
+            # this daemon. Treat the file as stale so startup is not blocked forever.
+            log.info(
+                "Ignoring pid file %s: pid %d is not a cloud-drive-sync daemon", pf, pid
+            )
+            Daemon._discard_pid_file(pf)
+            return False
+
         try:
-            pid = int(pf.read_text().strip())
             if sys.platform == "win32":
                 import ctypes
                 kernel32 = ctypes.windll.kernel32
@@ -603,23 +701,41 @@ class Daemon:
                 if handle:
                     kernel32.CloseHandle(handle)
                     return True
+                Daemon._discard_pid_file(pf)
                 return False
-            else:
-                os.kill(pid, 0)
-                return True
-        except (ValueError, OSError):
-            # Stale PID file
-            pf.unlink(missing_ok=True)
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            Daemon._discard_pid_file(pf)
             return False
 
     @staticmethod
     def stop_running() -> bool:
-        """Send stop signal to a running daemon."""
+        """Signal a running daemon to stop.
+
+        Refuses to signal a pid it cannot identify as this daemon: the number in a
+        stale pid file may since have been reused, and SIGTERM to an unrelated process
+        is a far worse outcome than declining to stop.
+        """
         pf = pid_path()
         if not pf.exists():
             return False
+        pid = Daemon._pid_from_file(pf)
+        if pid is None:
+            Daemon._discard_pid_file(pf)
+            return False
+
+        if Daemon._pid_is_this_daemon(pid) is False:
+            log.warning(
+                "Refusing to signal pid %d from %s: it is not a cloud-drive-sync "
+                "daemon. Discarding the stale pid file.",
+                pid,
+                pf,
+            )
+            Daemon._discard_pid_file(pf)
+            return False
+
         try:
-            pid = int(pf.read_text().strip())
             if sys.platform == "win32":
                 import ctypes
                 kernel32 = ctypes.windll.kernel32
@@ -627,8 +743,12 @@ class Daemon:
                 if handle:
                     kernel32.TerminateProcess(handle, 0)
                     kernel32.CloseHandle(handle)
+                else:
+                    return False
             else:
                 os.kill(pid, signal.SIGTERM)
             return True
-        except (ValueError, OSError):
+        except OSError as exc:
+            log.warning("Could not signal pid %d: %s", pid, exc)
+            Daemon._discard_pid_file(pf)
             return False

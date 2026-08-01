@@ -97,7 +97,7 @@ cloud-drive-sync --log-level debug start --foreground
 | `--mcp-allow-writes` | Also expose MCP tools that change state. Read-only without it. Env: `CDS_MCP_ALLOW_WRITES`. |
 | `--mcp-allowed-host HOST` | `Host` header the MCP server accepts, e.g. `nas.local:*`. Repeatable, defaults to localhost only, `*` accepts any. Env: `CDS_MCP_ALLOWED_HOSTS`. |
 
-The daemon creates a PID file at `~/.local/run/cloud-drive-sync/daemon.pid` and listens on a Unix socket at `~/.local/run/cloud-drive-sync/daemon.sock`.
+The daemon creates a PID file at `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.pid` and listens on a Unix socket at `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.sock` — typically `/run/user/<uid>/cloud-drive-sync/`.
 
 ### `stop`
 

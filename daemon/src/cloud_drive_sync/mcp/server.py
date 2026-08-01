@@ -178,13 +178,6 @@ class McpServer:
                 allowed_origins=origins,
             )
 
-        log.info(
-            "MCP server listening on http://%s:%d/mcp (%s, %d tools)",
-            self._host,
-            self._port,
-            "read/write" if self._allow_writes else "read-only",
-            len(tools_for(self._allow_writes)),
-        )
         auth_mod.warn_if_exposed(
             name="MCP endpoint",
             host=self._host,
@@ -249,7 +242,46 @@ class McpServer:
             access_log=False,
         )
         self._uvicorn = uvicorn.Server(config)
-        self._task = asyncio.create_task(self._uvicorn.serve())
+
+        # Bind here, in the caller's coroutine, rather than letting the serve task do
+        # it later. uvicorn reports a failed bind by calling sys.exit(), and a
+        # SystemExit raised inside a background task is a BaseException that escapes
+        # the caller's `except Exception` and unwinds the whole daemon — so a busy or
+        # privileged MCP port took down sync as well, which is the opposite of the
+        # intended "MCP is optional" behaviour. Translated to OSError so the caller can
+        # treat it as the ordinary failure it is.
+        try:
+            sock = config.bind_socket()
+        except SystemExit as exc:
+            raise OSError(
+                f"could not bind the MCP server to {self._host}:{self._port} "
+                f"(port in use, or not permitted)"
+            ) from exc
+
+        # Only now is it true. This used to be logged while building the app, before
+        # any bind was attempted, so a port that was busy still announced itself as
+        # listening and the error came afterwards.
+        log.info(
+            "MCP server listening on http://%s:%d/mcp (%s, %d tools)",
+            self._host,
+            self._port,
+            "read/write" if self._allow_writes else "read-only",
+            len(tools_for(self._allow_writes)),
+        )
+
+        self._task = asyncio.create_task(self._uvicorn.serve(sockets=[sock]))
+        # Anything the serve task raises after a successful bind is logged rather than
+        # left to surface as an unretrieved task exception — or, for SystemExit, to
+        # tear down the loop.
+        self._task.add_done_callback(self._log_task_exit)
+
+    @staticmethod
+    def _log_task_exit(task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("MCP server stopped unexpectedly: %r", exc)
 
     async def stop(self) -> None:
         if self._uvicorn is not None:

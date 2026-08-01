@@ -213,7 +213,7 @@ The daemon and UI communicate via **JSON-RPC 2.0** with newline-delimited messag
 
 ### Transport
 
-- **Linux / macOS**: Unix domain socket at `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` (Linux, typically `/run/user/1000/cloud-drive-sync.sock`) or `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` (macOS). Permissions set to `0600` (user-only read/write).
+- **Linux / macOS**: Unix domain socket at `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.sock` (Linux, typically `/run/user/1000/cloud-drive-sync/cloud-drive-sync.sock`) or `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` (macOS). Permissions set to `0600` (user-only read/write).
 - **Windows**: TCP connection to `127.0.0.1` on a dynamic port. The port number is written to a lock file at `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock`.
 - **Framing**: each message is a single JSON object terminated by `\n`
 
@@ -348,7 +348,7 @@ Credential files written before encryption are **upgraded on read**, not on save
 
 - Runs as a user-level systemd service (no root)
 - systemd hardening: `ProtectSystem=strict`, `PrivateTmp=true`, `NoNewPrivileges=true`
-- PID file at `$XDG_RUNTIME_DIR/cloud-drive-sync.pid`
+- PID file at `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.pid`
 
 ## File Path Conventions
 
@@ -358,5 +358,5 @@ Paths follow the [XDG Base Directory Specification](https://specifications.freed
 |---|---|---|---|
 | Configuration | `~/.config/cloud-drive-sync/` | `~/Library/Application Support/cloud-drive-sync/` | `%APPDATA%\cloud-drive-sync\` |
 | Data (DB, credentials) | `~/.local/share/cloud-drive-sync/` | `~/Library/Application Support/cloud-drive-sync/` | `%LOCALAPPDATA%\cloud-drive-sync\` |
-| Socket / IPC | `$XDG_RUNTIME_DIR/cloud-drive-sync.sock` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` | TCP `127.0.0.1` (port in `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock`) |
-| PID file | `$XDG_RUNTIME_DIR/cloud-drive-sync.pid` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.pid` | `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock` |
+| Socket / IPC | `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.sock` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.sock` | TCP `127.0.0.1` (port in `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock`) |
+| PID file | `$XDG_RUNTIME_DIR/cloud-drive-sync/cloud-drive-sync.pid` | `~/Library/Application Support/cloud-drive-sync/cloud-drive-sync.pid` | `%LOCALAPPDATA%\cloud-drive-sync\daemon.lock` |
