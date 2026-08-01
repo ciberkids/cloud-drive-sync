@@ -253,11 +253,24 @@ def account_add(provider: str, headless: bool):
 
 @account.command("remove")
 @click.argument("email")
-def account_remove(email: str):
-    """Remove a cloud account."""
+@click.option(
+    "--provider",
+    type=click.Choice(["gdrive", "dropbox", "onedrive", "box", "nextcloud"]),
+    default=None,
+    help="Which provider's account to remove. Required when the same address is "
+         "registered with more than one provider.",
+)
+def account_remove(email: str, provider: str | None):
+    """Remove a cloud account and delete its stored credentials.
+
+    Sync pairs using the account are kept but unbound, so they can be reassigned.
+    """
     try:
-        _run_client_call("remove_account", {"email": email})
-        click.echo(f"Removed account: {email}")
+        params = {"email": email}
+        if provider:
+            params["provider"] = provider
+        _run_client_call("remove_account", params)
+        click.echo(f"Removed account: {email}" + (f" ({provider})" if provider else ""))
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)

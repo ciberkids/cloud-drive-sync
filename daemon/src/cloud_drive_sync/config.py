@@ -315,6 +315,18 @@ class Config:
             "no_proxy": self.proxy.no_proxy,
         }
 
+        # Owner-only, because since v2.4.3 this file can contain the web UI access
+        # token — the credential for /api/* and the whole UI, which grants adding and
+        # removing cloud accounts, changing where data syncs, and switching off delete
+        # protection. It was landing at the umask default (0644), readable by every
+        # local account, while the credential files next to it are 0600. The mode is
+        # set before the content is written and re-applied to an existing file, the
+        # same way auth.credentials._write_private does it.
+        path.touch(mode=0o600, exist_ok=True)
+        try:
+            path.chmod(0o600)
+        except OSError as exc:  # pragma: no cover - unusual filesystems
+            log.warning("Could not restrict permissions on %s: %s", path, exc)
         with open(path, "wb") as f:
             tomli_w.dump(data, f)
         log.info("Config saved to %s", path)

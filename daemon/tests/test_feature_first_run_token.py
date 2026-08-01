@@ -84,13 +84,35 @@ def test_a_token_is_generated_even_when_http_is_disabled(cfg):
     assert Config.load(cfg).http.token == d._http_token
 
 
-def test_the_token_is_logged_where_a_container_user_can_find_it(cfg, caplog):
-    """For a headless deployment this log line is the only copy of the token."""
-    with caplog.at_level("WARNING"):
-        d = _daemon(cfg, first_run=True)
+def test_the_token_is_printed_to_stdout_where_an_operator_can_find_it(cfg, capsys):
+    """A headless operator needs to see this once — `docker logs`, or the console.
 
-    assert d._http_token in caplog.text
-    assert "First run" in caplog.text
+    It goes to stdout rather than through the logger, which is the fix for it having
+    been written into the log file as well; see the test below.
+    """
+    d = _daemon(cfg, first_run=True)
+
+    printed = capsys.readouterr().out
+    assert d._http_token in printed
+    assert "First run" in printed
+
+
+def test_the_token_is_never_written_to_the_log(cfg, caplog, capsys):
+    """The token is the credential for the whole API, so it must not be persisted
+    anywhere but the config file.
+
+    It used to be logged at WARNING, which put it in the rotating log file on disk —
+    and a secret in a log file outlives its usefulness: it survives in rotated copies
+    and gets swept up by anything shipping logs elsewhere. Tightening that file's mode
+    would fix neither. The log now records only that a token was generated and where
+    to find it.
+    """
+    with caplog.at_level("INFO"):
+        d = _daemon(cfg, first_run=True)
+    capsys.readouterr()  # discard the intended stdout copy
+
+    assert d._http_token not in caplog.text, "the access token was written to the log"
+    assert "First run" in caplog.text, "nothing recorded that a token was generated"
 
 
 # ── Upgrades are left alone ─────────────────────────────────────────────

@@ -26,6 +26,7 @@ file at the user's configuration.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,11 @@ from cloud_drive_sync.config import Account, Config, SyncConfig, SyncPair
 from cloud_drive_sync.db.database import Database
 from cloud_drive_sync.ipc.handlers import RequestHandler
 from cloud_drive_sync.ipc.protocol import JsonRpcRequest
+
+#: File modes are POSIX-only; Windows does not implement these bits.
+posix_config_modes = pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX permission bits are not meaningful on Windows"
+)
 
 
 @pytest.fixture
@@ -499,3 +505,219 @@ async def test_the_fixture_writes_only_inside_the_temp_directory(handler, config
 
     assert config_file.exists()
     assert tmp_path in config_file.parents
+
+
+# ── Pairs are addressed positionally, and 0 is falsy ────────────────────
+#
+# Every handler that chooses between "this pair" and "all pairs" used `if pair_id:`.
+# The CLI always sends strings, so "0" is truthy and it reads correctly — but a
+# hand-written HTTP client can send JSON `{"pair_id": 0}`, and the integer 0 is not.
+# `PUT /api/settings/max-deletions {"max_deletions_per_sync": 0, "pair_id": 0}`
+# therefore switched delete protection off GLOBALLY while appearing to target one
+# pair: the opposite of the request, in the dangerous direction.
+
+
+async def test_a_numeric_pair_id_targets_that_pair_not_every_pair(handler, config, config_file):
+    """The finding, at its most consequential: disabling the guard for pair 0."""
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 0, "pair_id": 0})
+
+    saved = reload(config_file)
+    assert saved.sync.max_deletions_per_sync == 100, (
+        "a numeric pair_id of 0 disabled delete protection globally"
+    )
+    assert saved.sync.pairs[0].max_deletions_per_sync == 0
+
+
+async def test_a_numeric_and_a_string_pair_id_behave_identically(handler, config_file):
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 5, "pair_id": 1})
+    numeric = reload(config_file).sync.pairs[1].max_deletions_per_sync
+
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 7, "pair_id": "1"})
+    string = reload(config_file).sync.pairs[1].max_deletions_per_sync
+
+    assert (numeric, string) == (5, 7)
+
+
+async def test_omitting_the_pair_id_still_means_all_pairs(handler, config_file):
+    """The other half — normalising must not turn "unspecified" into pair 0."""
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 42})
+
+    saved = reload(config_file)
+    assert saved.sync.max_deletions_per_sync == 42
+    assert saved.sync.pairs[0].max_deletions_per_sync is None
+
+
+async def test_a_blank_pair_id_is_treated_as_unspecified(handler, config_file):
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 9, "pair_id": ""})
+
+    assert reload(config_file).sync.max_deletions_per_sync == 9
+
+
+async def test_pair_zero_can_be_removed_by_numeric_id(handler, config_file):
+    """`params.get("id") or params.get("index")` treated a numeric 0 as absent, so
+    removing pair 0 by numeric id failed outright."""
+    result = await call(handler, "remove_sync_pair", {"id": 0})
+
+    assert result["local_path"] == "/tmp/first"
+    assert [p.local_path for p in reload(config_file).sync.pairs] == ["/tmp/second"]
+
+
+# ── A refused deletion block must not outlive its pair ───────────────────
+
+
+async def test_removing_a_pair_discards_its_refused_deletion_block(handler, db, config_file):
+    """Pair ids are positional, so removal renumbers the survivors.
+
+    A refused deletion batch is stored deliberately — so restarting cannot silently
+    resolve a safety question — and neither `clear_pair` nor `cleanup_stale_pairs`
+    touches it. So the block stayed behind under `pair_0`, the next pair inherited that
+    id, and approving granted a delete-protection bypass for a folder the user had
+    never been asked about.
+    """
+    await db.record_pending_deletions(
+        "pair_0", "local", 4200, 5000, 100, ["/tmp/first/a", "/tmp/first/b"]
+    )
+
+    await call(handler, "remove_sync_pair", {"id": "0"})
+
+    assert await db.get_pending_deletions("pair_0") == [], (
+        "the removed pair's block was inherited by the pair that took its id"
+    )
+
+
+async def test_approving_a_block_from_another_folder_is_refused(handler, db, config_file):
+    """Defence in depth for the same bug: if a stale block exists by any route,
+    approving it must not grant a bypass to a different folder."""
+    # A block whose sample paths sit outside pair 1's folder.
+    await db.record_pending_deletions(
+        "pair_1", "local", 9, 9, 1, ["/tmp/somewhere-else/x"]
+    )
+
+    result = await call(handler, "resolve_pending_deletions", {"pair_id": "1", "approve": True})
+
+    assert result["status"] == "stale"
+    assert await db.get_pending_deletions("pair_1") == [], "the stale block was left in place"
+
+
+async def test_approving_a_matching_block_still_works(handler, db):
+    """The guard must not strand a legitimate block — that would leave a pair paused
+    with no way to release it."""
+    await db.record_pending_deletions(
+        "pair_1", "local", 200, 400, 100, ["/tmp/second/one", "/tmp/second/two"]
+    )
+
+    result = await call(handler, "resolve_pending_deletions", {"pair_id": "1", "approve": True})
+
+    assert result["status"] == "approved"
+    assert result["batches"] == 1
+
+
+async def test_a_remote_direction_block_is_not_judged_against_local_paths(handler, db):
+    """Remote samples are remote paths, so comparing them to `local_path` would
+    reject every remote-direction block."""
+    await db.record_pending_deletions(
+        "pair_1", "remote", 300, 400, 100, ["/Documents/report.pdf"]
+    )
+
+    result = await call(handler, "resolve_pending_deletions", {"pair_id": "1", "approve": True})
+
+    assert result["status"] == "approved"
+
+
+# ── Removing an account must not take out another provider's ─────────────
+
+
+async def test_an_ambiguous_account_removal_is_refused(handler, config):
+    """One address can hold accounts on several providers. Removing "all of them"
+    because only an email was given is not a reasonable reading of the request — and
+    is how a Dropbox removal used to take out Google Drive."""
+    config.accounts = [
+        Account(email="dup@example.com", provider="gdrive"),
+        Account(email="dup@example.com", provider="dropbox"),
+    ]
+
+    error = await expect_error(handler, "remove_account", {"email": "dup@example.com"})
+
+    assert "gdrive" in str(error) and "dropbox" in str(error), "the error should name the candidates"
+    assert len(config.accounts) == 2, "an ambiguous request removed something anyway"
+
+
+async def test_an_unambiguous_account_removal_still_needs_no_provider(handler, config):
+    """Only ambiguity is refused; the common single-provider case is unchanged."""
+    await call(handler, "remove_account", {"email": "bob@example.com"})
+
+    assert [a.email for a in config.accounts] == ["alice@example.com"]
+
+
+async def test_removing_an_account_unbinds_its_pairs_instead_of_deleting_them(
+    handler, config, config_file
+):
+    """docs/CLI.md promises a pair "will lose its account binding and stop syncing
+    until reassigned". The handler deleted it instead — discarding the local path,
+    sync mode, ignore patterns and rules, unrecoverably, as a side effect of removing
+    an account. Reassigning is only possible if the pair still exists.
+    """
+    config.sync.pairs = [
+        SyncPair(
+            local_path="/home/u/Docs",
+            remote_folder_id="folder_1",
+            account_id="bob@example.com",
+            provider="dropbox",
+            sync_mode="upload_only",
+            ignore_patterns=["*.tmp"],
+        )
+    ]
+
+    await call(handler, "remove_account", {"email": "bob@example.com"})
+
+    saved = reload(config_file)
+    assert len(saved.sync.pairs) == 1, "the pair was deleted along with the account"
+    pair = saved.sync.pairs[0]
+    assert pair.account_id == "", "the pair is still bound to a removed account"
+    assert pair.enabled is False, "an unbound pair should not stay enabled"
+    # The configuration the user built is still there to reassign.
+    assert pair.local_path == "/home/u/Docs"
+    assert pair.sync_mode == "upload_only"
+    assert pair.ignore_patterns == ["*.tmp"]
+
+
+@posix_config_modes
+async def test_the_config_file_is_not_readable_by_other_users(handler, config_file):
+    """Since v2.4.3 this file can hold the web UI access token — the credential for
+    the whole API, granting account changes and switching off delete protection. It
+    was being written at the umask default (0644) beside credential files that are
+    0600, so any local account could read it.
+    """
+    await call(handler, "set_max_deletions", {"max_deletions_per_sync": 7})
+
+    mode = config_file.stat().st_mode & 0o777
+    assert mode == 0o600, f"config.toml is {oct(mode)}; it can contain the access token"
+
+
+@posix_config_modes
+def test_saving_over_a_loose_config_tightens_it(tmp_path):
+    """Anyone who ran an earlier version already has a 0644 config on disk, so saving
+    has to repair the mode rather than preserve it."""
+    path = tmp_path / "config.toml"
+    path.write_text("[general]\n")
+    path.chmod(0o644)
+
+    cfg = Config.load(path)
+    cfg.save(path)
+
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+async def test_a_direct_handler_call_with_a_numeric_pair_id_is_still_safe(handler, config_file):
+    """Dispatch normalises pair_id, so `if pair_id:` inside the handler happens to be
+    safe when called through `handle()`. This calls the method directly — as tests, and
+    any future front-end that skips dispatch, would — to prove the handler's own
+    `is not None` guard is doing the work rather than relying on the normaliser.
+    """
+    await handler._set_max_deletions({"max_deletions_per_sync": 0, "pair_id": 0})
+
+    saved = reload(config_file)
+    assert saved.sync.max_deletions_per_sync == 100, (
+        "bypassing dispatch let a numeric 0 disable delete protection globally"
+    )
+    assert saved.sync.pairs[0].max_deletions_per_sync == 0

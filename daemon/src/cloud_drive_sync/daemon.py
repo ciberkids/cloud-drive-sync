@@ -103,19 +103,30 @@ class Daemon:
         self._http_token = token
 
         if self._http_port > 0:
-            # Printed as a block because for a container user this log line is the
-            # only place the token exists.
-            log.warning(
+            # Written to stdout, deliberately NOT through the logger.
+            #
+            # The operator has to see this once — `docker logs`, or the console, or
+            # journald — but the logger also writes to a rotating file on disk, and a
+            # secret in a log file outlives its usefulness: it survives in rotated
+            # copies, and gets swept up by anything shipping logs elsewhere. Tightening
+            # that file's mode would not fix either of those. stdout reaches the places
+            # the operator actually reads and nowhere else.
+            print(
                 "\n"
                 "  ┌─ First run: an access token was generated ───────────────\n"
                 "  │\n"
-                "  │    %s\n"
+                f"  │    {token}\n"
                 "  │\n"
-                "  │  Open http://<host>:%d and paste it in to sign in.\n"
+                f"  │  Open http://<host>:{self._http_port} and paste it in to sign in.\n"
                 "  │  Stored in your config file under [http] token.\n"
                 "  └──────────────────────────────────────────────────────────",
-                token,
-                self._http_port,
+                flush=True,
+            )
+            # The log records that it happened, and where to look — never the value.
+            log.warning(
+                "First run: generated an access token and stored it under [http] token "
+                "in the config file. It was printed to stdout; it is deliberately not "
+                "written to the log file."
             )
         else:
             log.info(

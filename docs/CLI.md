@@ -183,7 +183,15 @@ Remove an account and delete its stored credentials.
 cloud-drive-sync account remove user@gmail.com
 ```
 
-Any sync pairs still referencing this account will lose their account binding and stop syncing until reassigned.
+Any sync pairs still referencing this account lose their account binding and stop syncing until reassigned. The pair itself is kept — its local path, sync mode, ignore patterns and rules survive, so you can point it at another account.
+
+**If the same address is registered with more than one provider**, say which one:
+
+```bash
+cloud-drive-sync account remove user@gmail.com --provider dropbox
+```
+
+Without `--provider` an ambiguous address is refused, and the error lists the candidates. Only the named provider's account and credentials are removed; the others are untouched.
 
 ### `account list`
 

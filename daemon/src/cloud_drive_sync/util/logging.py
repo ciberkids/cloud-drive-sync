@@ -92,6 +92,13 @@ def setup_logging(level: str = "info", log_file: Path | None = None) -> logging.
         file_handler = logging.handlers.RotatingFileHandler(
             log_file, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
         )
+        # Owner-only. Secrets are kept out of the log body on purpose, but the log
+        # still records local paths, account addresses and sync activity, and it was
+        # landing at the umask default (0644) beside credential files that are 0600.
+        try:
+            log_file.chmod(0o600)
+        except OSError:
+            pass  # a filesystem without POSIX modes; the handler still works
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
         file_handler.addFilter(truncator)

@@ -123,13 +123,46 @@ class RequestHandler:
             )
 
         try:
-            result = await handler(request.params)
+            result = await handler(self._normalise_params(request.params))
             return JsonRpcResponse.success(request.id, result)
         except TypeError as exc:
             return JsonRpcResponse.fail(request.id, INVALID_PARAMS, str(exc))
         except Exception as exc:
             log.exception("Handler error for %s", request.method)
             return JsonRpcResponse.fail(request.id, INTERNAL_ERROR, str(exc))
+
+    @staticmethod
+    def _normalise_params(params: dict | None) -> dict | None:
+        """Coerce ``pair_id`` to a non-empty string, or drop it entirely.
+
+        Pairs are addressed as ``"0"``, ``"1"`` … throughout this API, and several
+        handlers use ``if pair_id:`` to choose between "this pair" and "all pairs".
+        The CLI always supplies strings, so that reads correctly — but a hand-written
+        HTTP client can send JSON ``{"pair_id": 0}``, and the integer ``0`` is falsy.
+        ``PUT /api/settings/max-deletions {"max_deletions_per_sync": 0, "pair_id": 0}``
+        therefore disabled delete protection **globally** while appearing to target
+        one pair, which is the opposite of what was asked and the dangerous direction.
+
+        Normalising here fixes the whole class rather than the handlers that happen to
+        be known: after this, ``0`` arrives as ``"0"`` and is truthy, and an absent or
+        blank id is absent. The consequential handlers additionally test
+        ``is not None`` explicitly, so a direct method call that bypasses dispatch —
+        as tests and any future front-end may do — is still correct.
+        """
+        if not params or "pair_id" not in params:
+            return params
+        pair_id = params["pair_id"]
+        if pair_id is None:
+            return params
+        normalised = dict(params)
+        text = str(pair_id).strip()
+        if text:
+            normalised["pair_id"] = text
+        else:
+            # A blank id means "unspecified"; leaving it in would look like a request
+            # for a pair named "".
+            normalised.pop("pair_id")
+        return normalised
 
     def _require_engine(self) -> SyncEngine:
         """Raise if engine is not initialized (not yet authenticated)."""
@@ -141,7 +174,7 @@ class RequestHandler:
         """Extract pair_id from params, defaulting to pair_0 if not provided."""
         params = params or {}
         pair_id = params.get("pair_id")
-        if not pair_id:
+        if pair_id is None:
             if self._config.sync.pairs:
                 pair_id = "pair_0"
             else:
@@ -326,7 +359,9 @@ class RequestHandler:
             if window < 0:
                 raise TypeError("deletion_window_seconds cannot be negative")
 
-        if pair_id:
+        # `is not None`, not truthiness: "0" is a valid pair index. Dispatch also
+        # normalises a JSON number to a string, so both routes are safe.
+        if pair_id is not None:
             pair = self._pair_by_id(pair_id)
             if has_limit:
                 pair.max_deletions_per_sync = value
@@ -342,10 +377,10 @@ class RequestHandler:
 
         self._config.save()
         log.info(
-            "Delete fail-safe set to limit=%s window=%ss for %s",
+            "Delete fail-safe set to limit=%s window=%s for %s",
             value if has_limit else "unchanged",
-            window if window is not None else "unchanged",
-            pair_id or "all pairs",
+            f"{window}s" if window is not None else "unchanged",
+            pair_id if pair_id is not None else "all pairs",
         )
         return {
             "status": "ok",
@@ -361,7 +396,7 @@ class RequestHandler:
             return []
         pair_id = (params or {}).get("pair_id")
         return await db.get_pending_deletions(
-            self._engine_pair_id(pair_id) if pair_id else None
+            self._engine_pair_id(pair_id) if pair_id is not None else None
         )
 
     async def _resolve_pending_deletions(self, params: dict) -> dict:
@@ -388,6 +423,23 @@ class RequestHandler:
         if not pending:
             return {"status": "not_found", "pair_id": pair_id}
 
+        stale = self._blocks_not_matching_pair(pair_id, pending)
+        if stale:
+            # The block describes files outside this pair's folder, so it was recorded
+            # by a pair that has since been removed or renumbered. Approving would
+            # hand a delete-protection bypass to a folder the user was never asked
+            # about, so refuse and forget the block instead. Forgetting is safe: the
+            # next pass re-detects any deletions still outstanding and asks again.
+            await db.clear_pending_deletions(engine_id)
+            log.warning(
+                "Refused to resolve a deletion block for %s: it describes paths "
+                "outside %s, so it belongs to a pair that has been removed or "
+                "renumbered. The stale block has been discarded.",
+                pair_id,
+                stale,
+            )
+            return {"status": "stale", "pair_id": pair_id, "expected_under": stale}
+
         await db.clear_pending_deletions(engine_id)
 
         if approve:
@@ -406,6 +458,36 @@ class RequestHandler:
             "pair_id": pair_id,
             "batches": len(pending),
         }
+
+    def _blocks_not_matching_pair(self, pair_id: str, pending: list) -> str | None:
+        """The pair's local path, if a stored block clearly describes somewhere else.
+
+        Returns ``None`` when the blocks look like they belong to this pair — which
+        includes the case where there is nothing to compare, since refusing on missing
+        evidence would strand a legitimate block with no way to approve it.
+
+        Only local-direction samples are checked. Remote-direction samples are remote
+        paths and have no relationship to ``local_path``.
+        """
+        try:
+            pair = self._pair_by_id(pair_id)
+        except Exception:
+            return None
+        root = (pair.local_path or "").rstrip("/")
+        if not root:
+            return None
+
+        import os.path
+
+        for block in pending:
+            if block.get("direction") != "local":
+                continue
+            for sample in block.get("sample") or []:
+                if not isinstance(sample, str) or not sample.startswith("/"):
+                    continue
+                if os.path.commonpath([root, sample]) != root:
+                    return root
+        return None
 
     async def _database_info(self) -> dict | None:
         """Size and reclaimable-space gauge for ``state.db``.
@@ -543,7 +625,11 @@ class RequestHandler:
         }
 
     async def _remove_sync_pair(self, params: dict) -> dict:
-        id_val = params.get("id") or params.get("index")
+        # `or` would treat a JSON `{"id": 0}` as missing and then fail outright, so
+        # pair 0 could not be removed by numeric id at all.
+        id_val = params.get("id")
+        if id_val is None:
+            id_val = params.get("index")
         try:
             index = int(id_val)
         except (TypeError, ValueError):
@@ -552,7 +638,36 @@ class RequestHandler:
             raise TypeError("Invalid pair id")
         removed = self._config.sync.pairs.pop(index)
         self._config.save()
+        await self._forget_positional_state_from(index)
         return {"status": "removed", "local_path": removed.local_path}
+
+    async def _forget_positional_state_from(self, index: int) -> None:
+        """Drop refused-deletion blocks whose owning pair moved or disappeared.
+
+        Pairs are identified positionally — pair ``N`` is ``pair_N`` — so removing one
+        renumbers every pair after it, and any stored row keyed by the old number now
+        describes a different folder. A refused deletion batch is the dangerous case:
+        it survives on purpose, so that restarting cannot silently resolve a safety
+        question, and ``clear_pair``/``cleanup_stale_pairs`` do not touch it. The
+        result was that removing a pair left its block behind, the next pair inherited
+        the id, and approving that block granted a delete-protection bypass to a
+        folder the user had never been asked about.
+
+        Forgetting the block is the fail-safe direction: nothing is deleted as a
+        result, and if the deletions are still pending the next sync pass re-detects
+        them and asks again. Only blocks at or after the removal point are affected —
+        lower indices still mean what they did.
+        """
+        db = self._db or (self._engine._db if self._engine else None)
+        if db is None:
+            return
+        remaining = len(self._config.sync.pairs)
+        # +1 because the pair that was removed also had an id at `index`.
+        for i in range(index, remaining + 1):
+            try:
+                await db.clear_pending_deletions(f"pair_{i}")
+            except Exception as exc:
+                log.warning("Could not clear pending deletions for pair_%d: %s", i, exc)
 
     async def _set_conflict_strategy(self, params: dict) -> dict:
         strategy = params.get("strategy")
@@ -597,7 +712,7 @@ class RequestHandler:
         engine = self._require_engine()
         params = params or {}
         pair_id = params.get("pair_id")
-        if pair_id:
+        if pair_id is not None:
             ok = await engine.force_sync(pair_id)
             return {"status": "ok" if ok else "not_found"}
         # No pair_id supplied → sync all pairs
@@ -981,6 +1096,17 @@ class RequestHandler:
 
         # Remove from config — if provider is given, remove only that account;
         # otherwise remove all accounts with this email (backward compat).
+        if not provider:
+            # One address can hold accounts on several providers. Removing "all of
+            # them" because only an email was given is not a reasonable reading of the
+            # request, and it is how a Dropbox removal used to take out Google Drive.
+            candidates = sorted({a.provider for a in self._config.accounts if a.email == email})
+            if len(candidates) > 1:
+                raise TypeError(
+                    f"{email} has accounts on {', '.join(candidates)}. "
+                    f"Say which one to remove, e.g. provider={candidates[0]!r}."
+                )
+
         if provider:
             removed = [
                 a for a in self._config.accounts
@@ -990,16 +1116,24 @@ class RequestHandler:
                 a for a in self._config.accounts
                 if not (a.email == email and a.provider == provider)
             ]
-            self._config.sync.pairs = [
+            orphaned = [
                 p for p in self._config.sync.pairs
-                if not (p.account_id == email and p.provider == provider)
+                if p.account_id == email and p.provider == provider
             ]
         else:
             removed = [a for a in self._config.accounts if a.email == email]
             self._config.accounts = [a for a in self._config.accounts if a.email != email]
-            self._config.sync.pairs = [
-                p for p in self._config.sync.pairs if p.account_id != email
-            ]
+            orphaned = [p for p in self._config.sync.pairs if p.account_id == email]
+
+        # Unbind the affected pairs rather than deleting them. Deleting threw away the
+        # local path, sync mode, ignore patterns and rules the user had configured —
+        # unrecoverably, and as a side effect of removing an account. It also
+        # contradicted the documented behaviour, which is that a pair "will lose its
+        # account binding and stop syncing until reassigned". Reassigning is only
+        # possible if the pair still exists.
+        for pair in orphaned:
+            pair.account_id = ""
+            pair.enabled = False
 
         self._config.save()
 

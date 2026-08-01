@@ -228,7 +228,9 @@ One `[[accounts]]` section per cloud account. Accounts are normally managed via 
 | `provider` | string | `"gdrive"`, `"nextcloud"`, `"dropbox"`, `"onedrive"`, or `"box"` |
 | `server_url` | string | Nextcloud only — base URL of the Nextcloud server, e.g. `https://cloud.example.com` |
 
-Credentials (OAuth tokens, app passwords) are stored separately in the system keychain, not in `config.toml`.
+**Where credentials live.** Cloud credentials — OAuth tokens and Nextcloud app passwords — are **not** in `config.toml`. They are encrypted at rest in separate files, owner-readable only (`0600`); see [Authentication](Architecture#authentication) for the layout. No system keychain is involved, on any platform.
+
+The one secret that *is* in `config.toml` is the web UI access token, under `[http] token`. That is why the file is written `0600` — it is the credential for `/api/*` and the whole UI. If you have copied your config somewhere less protected, treat that token as exposed and replace it.
 
 ---
 
