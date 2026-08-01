@@ -151,6 +151,9 @@ class DropboxAuth(AuthProvider):
         about = await client.get_about()
         return about.get("user", {}).get("emailAddress", "unknown")
 
+    def delete_credentials(self, account_id: str) -> None:
+        self._credentials_path(account_id).unlink(missing_ok=True)
+
     @staticmethod
     def _credentials_path(account_id: str) -> Path:
         """Get the path for storing Dropbox credentials for an account."""

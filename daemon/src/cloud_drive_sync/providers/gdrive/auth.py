@@ -109,6 +109,11 @@ class GoogleDriveAuth(AuthProvider):
 
         return load_account_credentials(account_id)
 
+    def delete_credentials(self, account_id: str) -> None:
+        from cloud_drive_sync.util.paths import account_credentials_path
+
+        account_credentials_path(account_id).unlink(missing_ok=True)
+
     async def create_client(self, creds: Any) -> CloudClient:
         from cloud_drive_sync.providers.gdrive.client import GoogleDriveClient
 

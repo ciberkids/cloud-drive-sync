@@ -123,6 +123,17 @@ class NextcloudAuth(AuthProvider):
             return None
         return data
 
+    def delete_credentials(self, account_id: str) -> None:
+        creds_file = _CREDS_DIR / account_id / "nextcloud_creds.json"
+        creds_file.unlink(missing_ok=True)
+        creds_file.with_suffix(".salt").unlink(missing_ok=True)
+        # This provider gets a directory per account, so clear it up too — but only
+        # if empty, since another provider stores its files in the same tree.
+        try:
+            creds_file.parent.rmdir()
+        except OSError:
+            pass
+
     async def create_client(self, creds: Any) -> CloudClient:
         """Create a NextcloudClient from stored credentials."""
         from nc_py_api import Nextcloud

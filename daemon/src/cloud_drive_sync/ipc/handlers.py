@@ -937,6 +937,31 @@ class RequestHandler:
                 return {"status": "error", "message": str(exc)}
         return {"status": "no_auth_callback"}
 
+    def _delete_account_credentials(self, removed: list, email: str) -> None:
+        """Delete stored credentials for each account that was actually removed.
+
+        Nothing is deleted when nothing was removed. That matters because the email
+        alone does not identify a credential file: several providers can hold an
+        account for the same address, and deleting by email would take out the wrong
+        one.
+        """
+        from cloud_drive_sync.providers.registry import get
+
+        for account in removed:
+            try:
+                entry = get(account.provider)
+                entry.auth_cls().delete_credentials(email)
+            except Exception as exc:
+                # A provider whose extra is not installed, or a credential file
+                # already gone. Worth a line, but the account is removed either way
+                # and failing here would leave the config half-updated.
+                log.warning(
+                    "Could not delete %s credentials for %s: %s",
+                    account.provider,
+                    email,
+                    exc,
+                )
+
     async def _remove_account(self, params: dict) -> dict:
         """Remove a registered account and its credentials."""
         params = params or {}
@@ -957,6 +982,10 @@ class RequestHandler:
         # Remove from config — if provider is given, remove only that account;
         # otherwise remove all accounts with this email (backward compat).
         if provider:
+            removed = [
+                a for a in self._config.accounts
+                if a.email == email and a.provider == provider
+            ]
             self._config.accounts = [
                 a for a in self._config.accounts
                 if not (a.email == email and a.provider == provider)
@@ -966,6 +995,7 @@ class RequestHandler:
                 if not (p.account_id == email and p.provider == provider)
             ]
         else:
+            removed = [a for a in self._config.accounts if a.email == email]
             self._config.accounts = [a for a in self._config.accounts if a.email != email]
             self._config.sync.pairs = [
                 p for p in self._config.sync.pairs if p.account_id != email
@@ -973,11 +1003,15 @@ class RequestHandler:
 
         self._config.save()
 
-        # Delete credential file
-        from cloud_drive_sync.util.paths import account_credentials_path
-        cred_path = account_credentials_path(email)
-        if cred_path.exists():
-            cred_path.unlink()
+        # Delete the credentials of the accounts actually removed, via each
+        # provider's own path.
+        #
+        # This used to unlink `account_credentials_path(email)` unconditionally — the
+        # *Google Drive* credential file — whatever provider was being removed. So
+        # removing a Dropbox account deleted the Google credentials for the same
+        # address, breaking an account the user had not touched, while the Dropbox
+        # credentials stayed on disk after the account was gone.
+        self._delete_account_credentials(removed, email)
 
         # Remove client from engine (namespaced key, with backward-compat
         # fallback to bare email for legacy entries).

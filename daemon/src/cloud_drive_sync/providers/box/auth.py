@@ -128,6 +128,11 @@ class BoxAuth(AuthProvider):
             label=f"Box credentials for {account_id}",
         )
 
+    def delete_credentials(self, account_id: str) -> None:
+        creds_path = _BOX_CREDENTIALS_DIR / f"{account_id}.json"
+        creds_path.unlink(missing_ok=True)
+        creds_path.with_suffix(".salt").unlink(missing_ok=True)
+
     async def create_client(self, creds: Any) -> CloudClient:
         from box_sdk_gen import BoxClient as SdkBoxClient
         from box_sdk_gen import BoxOAuth, OAuthConfig

@@ -129,6 +129,12 @@ class OneDriveAuth(AuthProvider):
             log.debug("Loaded OneDrive credentials for %s", account_id)
         return data
 
+    def delete_credentials(self, account_id: str) -> None:
+        # The salt sibling has to go too, or it is left behind pointing at nothing.
+        creds_path = CREDS_DIR / f"onedrive_{account_id}.json"
+        creds_path.unlink(missing_ok=True)
+        creds_path.with_suffix(".salt").unlink(missing_ok=True)
+
     async def create_client(self, creds: Any) -> CloudClient:
         """Create an OneDriveClient from saved credentials."""
         from cloud_drive_sync.providers.onedrive.client import OneDriveClient

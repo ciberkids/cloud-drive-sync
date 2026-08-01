@@ -247,6 +247,28 @@ class AuthProvider(ABC):
     def load_credentials(self, account_id: str) -> Any | None:
         """Load credentials for a specific account."""
 
+    def delete_credentials(self, account_id: str) -> None:
+        """Delete the stored credentials for an account.
+
+        Each provider knows where it put them, which is the point: removing an
+        account used to delete a hardcoded Google Drive credential path regardless
+        of which provider was being removed. So taking away a Dropbox account wiped
+        the Google credentials for the same address — breaking an account the user
+        had not touched — while leaving the Dropbox ones on disk.
+
+        The default is a no-op that says so, rather than silence: a provider without
+        an implementation leaves live credentials behind after the account is gone,
+        and that should be visible in the log rather than assumed.
+        """
+        from cloud_drive_sync.util.logging import get_logger
+
+        get_logger("providers.base").warning(
+            "%s does not implement delete_credentials; credentials for %s may remain "
+            "on disk after the account was removed",
+            type(self).__name__,
+            account_id,
+        )
+
     @abstractmethod
     async def create_client(self, creds: Any) -> CloudClient:
         """Create a CloudClient from credentials."""
