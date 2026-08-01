@@ -51,6 +51,8 @@ def _make_engine_mock() -> MagicMock:
     engine.force_sync_all = AsyncMock(return_value=None)
     engine.pause_pair = AsyncMock(return_value=True)
     engine.resume_pair = AsyncMock(return_value=True)
+    engine.pause_all = AsyncMock(return_value=1)
+    engine.resume_all = AsyncMock(return_value=1)
     engine.get_status.return_value = {
         "pair_0": {
             "active": True, "paused": False, "last_sync": None,
@@ -143,7 +145,11 @@ async def test_pause_sync_with_empty_params(db: Database, config: Config):
         f"pause_sync with empty params failed: {resp.error}. "
         "Bug: pair_id required but not sent by UI."
     )
-    engine.pause_pair.assert_called_once()
+    # No pair_id means every pair, which is what the docs, the CLI output and the web
+    # UI's global toggle all say. It used to pause only the first pair while claiming
+    # to have paused everything, so this now asserts the plural call.
+    engine.pause_all.assert_called_once()
+    engine.pause_pair.assert_not_called()
 
 
 # ── Bug 3c: resume_sync fails with empty/None params ──────────────
@@ -179,7 +185,8 @@ async def test_resume_sync_with_empty_params(db: Database, config: Config):
         f"resume_sync with empty params failed: {resp.error}. "
         "Bug: pair_id required but not sent by UI."
     )
-    engine.resume_pair.assert_called_once()
+    engine.resume_all.assert_called_once()
+    engine.resume_pair.assert_not_called()
 
 
 # ── Bug 3d: Verify force_sync works with valid pair_id ─────────────

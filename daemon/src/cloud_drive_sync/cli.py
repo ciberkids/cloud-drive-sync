@@ -367,8 +367,13 @@ def sync_now(pair_id: str | None):
     """Trigger an immediate sync."""
     try:
         params = {"pair_id": pair_id} if pair_id else {}
-        _run_client_call("force_sync", params)
-        click.echo("Sync triggered.")
+        result = _run_client_call("force_sync", params) or {}
+        # The daemon answers not_found for an id it cannot resolve. This used to be
+        # discarded, so `sync 0` printed "Sync triggered." having done nothing.
+        if result.get("status") == "not_found":
+            click.echo(f"Error: no such sync pair: {pair_id}", err=True)
+            sys.exit(1)
+        click.echo("Sync triggered." if pair_id else "Sync triggered for all pairs.")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -523,8 +528,14 @@ def pause(pair_id: str | None):
     """Pause syncing."""
     try:
         params = {"pair_id": pair_id} if pair_id else {}
-        _run_client_call("pause_sync", params)
-        click.echo("Sync paused.")
+        result = _run_client_call("pause_sync", params) or {}
+        if result.get("status") == "not_found":
+            click.echo(f"Error: no such sync pair: {pair_id}", err=True)
+            sys.exit(1)
+        if pair_id:
+            click.echo(f"Paused sync pair {pair_id}.")
+        else:
+            click.echo(f"Paused all sync pairs ({result.get('pairs', 0)}).")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -536,8 +547,14 @@ def resume(pair_id: str | None):
     """Resume syncing."""
     try:
         params = {"pair_id": pair_id} if pair_id else {}
-        _run_client_call("resume_sync", params)
-        click.echo("Sync resumed.")
+        result = _run_client_call("resume_sync", params) or {}
+        if result.get("status") == "not_found":
+            click.echo(f"Error: no such sync pair: {pair_id}", err=True)
+            sys.exit(1)
+        if pair_id:
+            click.echo(f"Resumed sync pair {pair_id}.")
+        else:
+            click.echo(f"Resumed all sync pairs ({result.get('pairs', 0)}).")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -613,6 +630,11 @@ def repair(pair_id: str | None, dry_run: bool):
             for path in stubs:
                 action = "would delete" if dry_run else "deleted"
                 click.echo(f"  {action}: {path}")
+        elif not pairs_scanned:
+            # Claiming health after examining nothing is the most misleading answer a
+            # repair tool can give.
+            click.echo("No enabled sync pairs were scanned — nothing was checked.", err=True)
+            sys.exit(1)
         elif not repaired:
             click.echo("No stubs found — everything looks healthy.")
     except Exception as exc:

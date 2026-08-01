@@ -302,24 +302,28 @@ cloud-drive-sync sync pair_0
 Pause syncing. The daemon stays running but stops processing changes.
 
 ```bash
-# Pause all pairs
+# Pause every pair
 cloud-drive-sync pause
 
-# Pause a specific pair
-cloud-drive-sync pause pair_0
+# Pause one pair, using the id `pair list` prints
+cloud-drive-sync pause 0
 ```
+
+Both id forms work — `0` as shown by `pair list`, and the internal `pair_0`. An id that matches no pair is an error with a non-zero exit, rather than a message saying it was paused.
 
 ### `resume`
 
 Resume syncing after a pause.
 
 ```bash
-# Resume all pairs
+# Resume every pair
 cloud-drive-sync resume
 
-# Resume a specific pair
-cloud-drive-sync resume pair_0
+# Resume one pair, using the id `pair list` prints
+cloud-drive-sync resume 0
 ```
+
+As with `pause`, both id forms are accepted and an unmatched id exits non-zero.
 
 ---
 

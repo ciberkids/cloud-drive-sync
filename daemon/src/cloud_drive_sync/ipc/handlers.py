@@ -542,14 +542,28 @@ class RequestHandler:
         return f"{s}s"
 
     def _cleanup_orphaned_pairs(self) -> None:
-        """Remove pairs referencing accounts that no longer exist."""
+        """Unbind pairs referencing accounts that no longer exist.
+
+        This used to **delete** them, from a code path reached by simply *listing* the
+        pairs — so a read discarded configuration, and the local path, sync mode,
+        ignore patterns and rules went with it. Now the pair is unbound and disabled,
+        which is the same thing removing an account does, and leaves it visible so the
+        user can point it at another account.
+        """
         known_emails = {a.email for a in self._config.accounts}
-        before = len(self._config.sync.pairs)
-        self._config.sync.pairs = [
-            p for p in self._config.sync.pairs
-            if not p.account_id or p.account_id in known_emails
-        ]
-        if len(self._config.sync.pairs) < before:
+        changed = False
+        for pair in self._config.sync.pairs:
+            if pair.account_id and pair.account_id not in known_emails:
+                log.warning(
+                    "Sync pair %s references unknown account %s; disabling it until "
+                    "it is reassigned",
+                    pair.local_path,
+                    pair.account_id,
+                )
+                pair.account_id = ""
+                pair.enabled = False
+                changed = True
+        if changed:
             self._config.save()
 
     async def _get_sync_pairs(self, params: dict) -> list[dict]:
@@ -590,6 +604,19 @@ class RequestHandler:
         for existing in self._config.sync.pairs:
             if existing.local_path == local_path and existing.remote_folder_id == remote_folder_id:
                 raise TypeError("This sync pair already exists")
+
+        # An account that does not exist used to be accepted and persisted, reported
+        # as success, and then the pair was silently discarded by the next listing —
+        # so a mistyped address looked like it worked and the pair simply vanished.
+        account_id = params.get("account_id", "")
+        if account_id:
+            known = {a.email for a in self._config.accounts}
+            if account_id not in known:
+                raise TypeError(
+                    f"No account {account_id!r} is configured"
+                    + (f". Known accounts: {', '.join(sorted(known))}" if known else
+                       ". Add one first with 'account add'.")
+                )
 
         pair = SyncPair(
             local_path=local_path,
@@ -713,23 +740,42 @@ class RequestHandler:
         params = params or {}
         pair_id = params.get("pair_id")
         if pair_id is not None:
-            ok = await engine.force_sync(pair_id)
-            return {"status": "ok" if ok else "not_found"}
+            # Normalised, because `pair list` prints "0" while the engine keys on
+            # "pair_0" — so `sync 0` used to match nothing and report ok anyway.
+            ok = await engine.force_sync(self._engine_pair_id(pair_id))
+            return {"status": "ok" if ok else "not_found", "pair_id": pair_id}
         # No pair_id supplied → sync all pairs
         await engine.force_sync_all()
         return {"status": "ok"}
 
     async def _pause_sync(self, params: dict) -> dict:
+        """Pause one pair, or every pair when no id is given.
+
+        Two defects here. The id was passed to the engine unnormalised, so ``pause 0``
+        — the form ``pair list`` prints — looked up a pair named "0" while the engine
+        keys on "pair_0", found nothing, and returned ``not_found`` which the CLI then
+        reported as success. And with no id at all it paused only the *first* pair
+        while the docs, the CLI output and the web UI's global toggle all say "all".
+        """
         engine = self._require_engine()
-        pair_id = self._default_pair_id(params)
+        params = params or {}
+        if params.get("pair_id") is None:
+            count = await engine.pause_all()
+            return {"status": "paused", "pairs": count}
+        pair_id = self._engine_pair_id(params["pair_id"])
         ok = await engine.pause_pair(pair_id)
-        return {"status": "paused" if ok else "not_found"}
+        return {"status": "paused" if ok else "not_found", "pair_id": params["pair_id"]}
 
     async def _resume_sync(self, params: dict) -> dict:
+        """Resume one pair, or every pair when no id is given. See _pause_sync."""
         engine = self._require_engine()
-        pair_id = self._default_pair_id(params)
+        params = params or {}
+        if params.get("pair_id") is None:
+            count = await engine.resume_all()
+            return {"status": "resumed", "pairs": count}
+        pair_id = self._engine_pair_id(params["pair_id"])
         ok = await engine.resume_pair(pair_id)
-        return {"status": "resumed" if ok else "not_found"}
+        return {"status": "resumed" if ok else "not_found", "pair_id": params["pair_id"]}
 
     # Maps UI filter tab names → (status, actions) for server-side filtering.
     _FILTER_TO_ACTIONS: ClassVar[dict[str, list[str]]] = {
@@ -1474,9 +1520,20 @@ class RequestHandler:
         if db is None:
             raise RuntimeError("Database not available")
 
+        # A pair id that matches nothing used to leave pairs_to_scan empty, and the
+        # command then reported "everything looks healthy" having examined nothing at
+        # all — the most misleading possible answer from a repair tool. Resolve the id
+        # first so a typo, or the "pair_0" form, is an error rather than a silent
+        # no-op. _pair_by_id raises for anything that is not a configured pair.
+        target_index: int | None = None
+        if target_pair_id is not None:
+            self._pair_by_id(target_pair_id)
+            text = str(target_pair_id)
+            target_index = int(text[len("pair_"):] if text.startswith("pair_") else text)
+
         pairs_to_scan: list[tuple[int, object]] = []
         for i, pair in enumerate(self._config.sync.pairs):
-            if target_pair_id is not None and str(i) != str(target_pair_id):
+            if target_index is not None and i != target_index:
                 continue
             if not pair.enabled:
                 continue

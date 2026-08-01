@@ -1016,6 +1016,19 @@ class SyncEngine:
         log.info("Resumed %s", pair_id)
         return True
 
+    async def pause_all(self) -> int:
+        """Pause every registered pair, returning how many. Mirrors force_sync_all."""
+        for ps in self._pairs.values():
+            ps.paused = True
+        log.info("Paused all %d pair(s)", len(self._pairs))
+        return len(self._pairs)
+
+    async def resume_all(self) -> int:
+        for ps in self._pairs.values():
+            ps.paused = False
+        log.info("Resumed all %d pair(s)", len(self._pairs))
+        return len(self._pairs)
+
     async def force_sync(self, pair_id: str) -> bool:
         ps = self._pairs.get(pair_id)
         if not ps:

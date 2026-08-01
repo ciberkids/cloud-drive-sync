@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -721,3 +722,200 @@ async def test_a_direct_handler_call_with_a_numeric_pair_id_is_still_safe(handle
         "bypassing dispatch let a numeric 0 disable delete protection globally"
     )
     assert saved.sync.pairs[0].max_deletions_per_sync == 0
+
+
+# ── Pair ids the CLI prints must be the ids the engine understands ───────
+#
+# `pair list` prints "0", "1"; the engine keys pairs as "pair_0". The pause, resume
+# and sync handlers passed the client form straight through, so `pause 0` looked up a
+# pair named "0", found nothing, and returned not_found — which the CLI then reported
+# as success. The id was correct, the command did nothing, and nothing said so.
+
+
+class _EngineSpy:
+    """Records what the engine was asked to do, with no real sync machinery."""
+
+    #: `_repair` reaches into the engine for the provider client of a pair, so the spy
+    #: has to carry both attribute names it looks for.
+    _clients: ClassVar[dict] = {}
+    _client = None
+
+    def __init__(self, known=("pair_0", "pair_1")) -> None:
+        self.known = set(known)
+        self.paused: list[str] = []
+        self.resumed: list[str] = []
+        self.synced: list[str] = []
+        self.pause_all_calls = 0
+        self.resume_all_calls = 0
+        self.sync_all_calls = 0
+
+    async def pause_pair(self, pair_id):
+        self.paused.append(pair_id)
+        return pair_id in self.known
+
+    async def resume_pair(self, pair_id):
+        self.resumed.append(pair_id)
+        return pair_id in self.known
+
+    async def force_sync(self, pair_id):
+        self.synced.append(pair_id)
+        return pair_id in self.known
+
+    async def pause_all(self):
+        self.pause_all_calls += 1
+        return len(self.known)
+
+    async def resume_all(self):
+        self.resume_all_calls += 1
+        return len(self.known)
+
+    async def force_sync_all(self):
+        self.sync_all_calls += 1
+
+
+@pytest.fixture
+def handler_with_engine(config: Config, db: Database):
+    spy = _EngineSpy()
+    h = RequestHandler(engine=spy, config=config)
+    h.set_db(db)
+    return h, spy
+
+
+@pytest.mark.parametrize(
+    ("method", "attr"),
+    [("pause_sync", "paused"), ("resume_sync", "resumed"), ("force_sync", "synced")],
+)
+async def test_the_client_pair_id_is_translated_for_the_engine(handler_with_engine, method, attr):
+    handler, spy = handler_with_engine
+
+    result = await call(handler, method, {"pair_id": "0"})
+
+    assert getattr(spy, attr) == ["pair_0"], (
+        f"{method} passed the client id through unnormalised, so it matched nothing"
+    )
+    assert result["status"] != "not_found"
+
+
+@pytest.mark.parametrize("method", ["pause_sync", "resume_sync", "force_sync"])
+async def test_the_engine_form_is_also_accepted(handler_with_engine, method):
+    """Callers that already hold "pair_0" must not be rejected."""
+    handler, _ = handler_with_engine
+
+    result = await call(handler, method, {"pair_id": "pair_1"})
+
+    assert result["status"] != "not_found"
+
+
+@pytest.mark.parametrize("method", ["pause_sync", "resume_sync", "force_sync"])
+async def test_an_unknown_pair_is_reported_as_not_found(handler_with_engine, method):
+    handler, _ = handler_with_engine
+
+    result = await call(handler, method, {"pair_id": "9"})
+
+    assert result["status"] == "not_found"
+
+
+async def test_pausing_with_no_id_pauses_every_pair(handler_with_engine):
+    """It used to pause only the first pair while the output, the docs and the web UI's
+    global toggle all say every pair — so two of three pairs kept syncing."""
+    handler, spy = handler_with_engine
+
+    result = await call(handler, "pause_sync", {})
+
+    assert spy.pause_all_calls == 1
+    assert spy.paused == [], "a single pair was paused instead of all of them"
+    assert result["pairs"] == 2
+
+
+async def test_resuming_with_no_id_resumes_every_pair(handler_with_engine):
+    handler, spy = handler_with_engine
+
+    await call(handler, "resume_sync", {})
+
+    assert spy.resume_all_calls == 1
+    assert spy.resumed == []
+
+
+# ── repair must not report health after examining nothing ────────────────
+
+
+async def test_repair_rejects_a_pair_id_that_matches_nothing(handler_with_engine):
+    """It used to scan zero pairs and report "everything looks healthy" — the most
+    misleading answer a repair tool can give."""
+    handler, _ = handler_with_engine
+
+    await expect_error(handler, "repair", {"pair_id": "9"})
+
+
+async def test_repair_accepts_both_id_forms(handler_with_engine):
+    handler, _ = handler_with_engine
+
+    for form in ("0", "pair_0"):
+        result = await call(handler, "repair", {"pair_id": form, "dry_run": True})
+        assert "pairs_scanned" in result
+
+
+# ── pair add must not accept an account that does not exist ─────────────
+
+
+async def test_adding_a_pair_with_an_unknown_account_is_refused(handler, config_file):
+    """It used to be accepted, persisted, reported as success — and then silently
+    discarded by the next `pair list`, so a mistyped address looked like it worked and
+    the pair simply vanished."""
+    error = await expect_error(
+        handler,
+        "add_sync_pair",
+        {"local_path": "/home/u/New", "remote_folder_id": "root",
+         "account_id": "typo@example.com"},
+    )
+
+    assert "typo@example.com" in str(error)
+    assert "alice@example.com" in str(error), "the error should name the known accounts"
+
+
+async def test_adding_a_pair_with_a_known_account_works(handler, config_file):
+    await call(
+        handler,
+        "add_sync_pair",
+        {"local_path": "/home/u/New", "remote_folder_id": "root",
+         "account_id": "alice@example.com"},
+    )
+
+    saved = reload(config_file)
+    assert any(p.local_path == "/home/u/New" for p in saved.sync.pairs)
+
+
+async def test_adding_a_pair_with_no_account_is_still_allowed(handler, config_file):
+    """An unbound pair is a legitimate state — it is what removing an account leaves
+    behind, and it must be possible to create one and assign it later."""
+    await call(handler, "add_sync_pair", {"local_path": "/home/u/Later", "remote_folder_id": "root"})
+
+    assert any(p.local_path == "/home/u/Later" for p in reload(config_file).sync.pairs)
+
+
+# ── Listing pairs is a read and must not destroy configuration ──────────
+
+
+async def test_listing_pairs_unbinds_an_orphan_rather_than_deleting_it(handler, config, config_file):
+    """`get_sync_pairs` — a *listing* — used to delete pairs whose account was gone,
+    taking the local path, sync mode, ignore patterns and rules with them. A read must
+    not discard configuration the user cannot get back.
+    """
+    config.sync.pairs = [
+        SyncPair(
+            local_path="/home/u/Orphan",
+            remote_folder_id="folder_x",
+            account_id="deleted@example.com",
+            sync_mode="download_only",
+            ignore_patterns=["*.bak"],
+        )
+    ]
+
+    listed = await call(handler, "get_sync_pairs")
+
+    assert len(listed) == 1, "listing the pairs deleted one"
+    saved = reload(config_file)
+    assert saved.sync.pairs[0].local_path == "/home/u/Orphan"
+    assert saved.sync.pairs[0].account_id == ""
+    assert saved.sync.pairs[0].enabled is False
+    assert saved.sync.pairs[0].ignore_patterns == ["*.bak"], "the pair's settings were lost"

@@ -162,8 +162,12 @@ def test_this_process_is_recognised_as_a_daemon_when_it_looks_like_one():
     the opposite failure — so this pins that a cloud-drive-sync process is accepted.
     Asserted against a real child process whose command line names the package.
     """
+    # The marker goes in the source text passed to -c, which lands in the child's
+    # cmdline. Importing the package for real would make this depend on the
+    # interpreter running the tests having it installed — true in the venv and in CI,
+    # not for a bare system python.
     child = subprocess.Popen(
-        [sys.executable, "-c", "import cloud_drive_sync, time; time.sleep(30)"]
+        [sys.executable, "-c", "# cloud_drive_sync daemon\nimport time; time.sleep(30)"]
     )
     try:
         assert Daemon._pid_is_this_daemon(child.pid) is True
