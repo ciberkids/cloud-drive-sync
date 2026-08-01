@@ -14,6 +14,7 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — v2.4.1 (Google), v2.4.2 (every provider) |
 | 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
+| 9 | Give each sync pair a stable id | Data safety | — | 🔜 Next — positional ids re-point one pair's history at another |
 
 ---
 
@@ -106,6 +107,21 @@ Token auth shipped in v2.4.0 as **opt-in**, so a deployment is unprotected until
 Those three stored credentials as plaintext JSON while the README claimed encryption at rest; Nextcloud's was an app password, the credential itself. **Shipped in v2.4.3** ([#57](https://github.com/ciberkids/cloud-drive-sync/issues/57)).
 
 The non-obvious part, recorded so it is not "tidied up" later: their salt is written **beside each credential file** rather than in the shared data directory. They live under the config directory while the shared salt lives under data — separate volumes in a container — so a shared salt would let the ciphertext and its only key be restored apart, and salt creation mints a new salt rather than failing. That would turn a config-only restore into silent, permanent loss of every account. See [Authentication](Architecture#authentication).
+
+## 9 — Give each sync pair a stable id
+
+Pairs are identified by their position in the config list: pair *N* is `pair_N`, in the engine, in `sync_state`, in `pending_deletions` and in the change tokens. Removing or reordering a pair therefore renumbers every pair after it, and stored rows keyed by the old number start describing a different folder.
+
+**Five findings from the 2026-08-01 audit are symptoms of this**, all fixed locally rather than at the root:
+
+- A refused deletion block outlived its pair, so approving it granted a delete-protection bypass to a folder the user was never asked about. *(Mitigated: removal discards blocks at or after the removal point, and approving verifies the sample paths belong to the pair.)*
+- `pair remove` left the pair registered in the running engine, and the freed index made the next `pair add` collide with it. *(Mitigated only in part — a restart is still needed for a removal to fully settle.)*
+- Demo mode inserted its pair at index 0 of the real config, so it inherited the first real pair's identity and overwrote its sync state. *(Not yet mitigated.)*
+- `pause 0` / `sync 0` matched nothing because the CLI prints `0` and the engine keys `pair_0`. *(Mitigated: ids are normalised at the handler.)*
+
+**Shape:** persist a per-pair uuid on `SyncPair`, key the engine and the database on it, and migrate `sync_state`, `pending_deletions` and the change tokens across.
+
+**Why it is its own release.** The migration has to re-key three tables at once, and getting it wrong re-points one pair's sync history at another folder — which is precisely the failure class it exists to remove. That needs its own verification pass, not a ride-along on a patch.
 
 ## Adding to the queue
 
