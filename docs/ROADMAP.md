@@ -14,7 +14,7 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — v2.4.1 (Google), v2.4.2 (every provider) |
 | 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
-| 9 | Give each sync pair a stable id | Data safety | — | 🔜 Next — positional ids re-point one pair's history at another |
+| 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5 (history follows its pair); the identity scheme is still positional |
 
 ---
 
@@ -115,13 +115,25 @@ Pairs are identified by their position in the config list: pair *N* is `pair_N`,
 **Five findings from the 2026-08-01 audit are symptoms of this**, all fixed locally rather than at the root:
 
 - A refused deletion block outlived its pair, so approving it granted a delete-protection bypass to a folder the user was never asked about. *(Mitigated: removal discards blocks at or after the removal point, and approving verifies the sample paths belong to the pair.)*
-- `pair remove` left the pair registered in the running engine, and the freed index made the next `pair add` collide with it. *(Mitigated only in part — a restart is still needed for a removal to fully settle.)*
-- Demo mode inserted its pair at index 0 of the real config, so it inherited the first real pair's identity and overwrote its sync state. *(Not yet mitigated.)*
+- `pair remove` left the pair registered in the running engine, so a removed pair kept running until restart. *(Still open — the stored state is now correct, but the live engine is not told.)*
+- Demo mode inserted its pair at index 0 of the real config, so it inherited the first real pair's identity and overwrote its sync state. *(Fixed in v2.4.5 — it appends.)*
 - `pause 0` / `sync 0` matched nothing because the CLI prints `0` and the engine keys `pair_0`. *(Mitigated: ids are normalised at the handler.)*
 
-**Shape:** persist a per-pair uuid on `SyncPair`, key the engine and the database on it, and migrate `sync_state`, `pending_deletions` and the change tokens across.
+### What v2.4.5 fixed
 
-**Why it is its own release.** The migration has to re-key three tables at once, and getting it wrong re-points one pair's sync history at another folder — which is precisely the failure class it exists to remove. That needs its own verification pass, not a ride-along on a patch.
+The *harm* is gone. Removing a pair now shifts the surviving pairs' rows down across all six `pair_id` tables in one transaction, so each pair keeps its own sync state, change token, conflicts and refused deletion batch. Demo mode appends its pair instead of inserting at index 0, which had renumbered every real pair. Those were the only two things that mutated pair order.
+
+That replaced an earlier mitigation which *discarded* deletion blocks at and after the removal point — fail-safe but lossy, since a survivor's own block went with the stale one.
+
+### What is still open, and the cost of finishing it
+
+The identity scheme is still positional, so the invariant is maintained by remembering to renumber rather than by construction. A future reorder feature, or a hand-edited `config.toml`, would reintroduce the drift.
+
+**Shape:** persist a per-pair uuid on `SyncPair`, key the engine and the database on it, and migrate all six tables across.
+
+**The cost is larger than it looks, and most of it is not in the daemon.** The engine's `pair_N` ids are exposed to the UI — through `get_status` keys, activity-log rows and pair counts — and `Transfers.tsx`, `SyncStatus.tsx` and `ActivityLog.tsx` each rebuild `pair_${i}` from a list index to join against them. Switching to uuids therefore means a config-dependent database migration **plus** three UI components **plus** a webui rebuild, and the UI join is where a mistake shows wrong data silently instead of erroring.
+
+**And the migration cannot be more correct than the data it inherits.** The mapping `pair_N -> pairs[N].id` is only right if the config order at migration time matches the order when the rows were written. Anyone who removed a pair on a version before v2.4.5 already has mis-assigned rows, and nothing records the old order — so the migration freezes whatever state exists and prevents future drift. It cannot repair past drift, and it should not try: a heuristic matching stored paths against `local_path` would be guessing about the user's files.
 
 ## Adding to the queue
 

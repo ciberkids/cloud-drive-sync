@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import ClassVar
 
 import aiosqlite
 
@@ -722,22 +723,75 @@ CREATE TABLE IF NOT EXISTS partial_transfers (
             log.info("Pruned %d stale sync_state entries for %s", len(stale), pair_id)
         return len(stale)
 
+    #: Every table keyed by pair_id. Kept in one place because it has been wrong
+    #: twice: `clear_pair` and `cleanup_stale_pairs` both omitted pending_deletions,
+    #: so a refused deletion batch outlived the pair that recorded it.
+    PAIR_TABLES: ClassVar[tuple[str, ...]] = (
+        "sync_state",
+        "change_tokens",
+        "conflicts",
+        "sync_log",
+        "pending_deletions",
+        "partial_transfers",
+    )
+
     async def clear_pair(self, pair_id: str) -> None:
-        await self.db.execute("DELETE FROM sync_state WHERE pair_id = ?", (pair_id,))
-        await self.db.execute("DELETE FROM change_tokens WHERE pair_id = ?", (pair_id,))
-        await self.db.execute("DELETE FROM conflicts WHERE pair_id = ?", (pair_id,))
-        await self.db.execute("DELETE FROM sync_log WHERE pair_id = ?", (pair_id,))
-        await self.db.execute("DELETE FROM partial_transfers WHERE pair_id = ?", (pair_id,))
+        for table in self.PAIR_TABLES:
+            await self.db.execute(f"DELETE FROM {table} WHERE pair_id = ?", (pair_id,))
         await self.db.commit()
+
+    async def renumber_pairs_after_removal(self, removed_index: int, remaining: int) -> int:
+        """Move each surviving pair's stored rows to its new positional id.
+
+        Pairs are identified by their position — pair *N* is ``pair_N`` — so removing
+        one renumbers every pair after it, and rows keyed by the old number start
+        describing a different folder. Sync state, the change token and any refused
+        deletion batch all followed the *index* rather than the pair, so after removing
+        the first of two pairs the survivor inherited the removed pair's history:
+        its change token, its file state, and a delete-protection block recorded
+        against a folder the user was never asked about.
+
+        This shifts the rows down alongside the config, so history stays with its pair.
+
+        Ascending order matters: ``pair_1 -> pair_0`` is only safe once ``pair_0``'s
+        rows are gone, and each later rename frees the key the next one needs. The
+        whole thing is one transaction — a half-renumbered database would leave some
+        pairs pointing at the wrong history, which is the failure being fixed.
+
+        Returns the number of pairs whose rows were moved.
+        """
+        # The removed pair's own rows go first, freeing its id for the next pair.
+        for table in self.PAIR_TABLES:
+            await self.db.execute(
+                f"DELETE FROM {table} WHERE pair_id = ?", (f"pair_{removed_index}",)
+            )
+
+        moved = 0
+        for new_index in range(removed_index, remaining):
+            old_id, new_id = f"pair_{new_index + 1}", f"pair_{new_index}"
+            for table in self.PAIR_TABLES:
+                await self.db.execute(
+                    f"UPDATE {table} SET pair_id = ? WHERE pair_id = ?", (new_id, old_id)
+                )
+            moved += 1
+
+        await self.db.commit()
+        if moved:
+            log.info(
+                "Renumbered %d pair(s) after removing pair_%d, so each keeps its own "
+                "sync history",
+                moved,
+                removed_index,
+            )
+        return moved
 
     async def cleanup_stale_pairs(self, active_pair_ids: set[str]) -> int:
         """Remove all data for pairs not in the active set."""
+        # Built from PAIR_TABLES so a table cannot be forgotten here again:
+        # pending_deletions was missing, so a refused deletion batch was never
+        # recognised as stale and outlived the pair that recorded it.
         cursor = await self.db.execute(
-            "SELECT DISTINCT pair_id FROM sync_state "
-            "UNION SELECT DISTINCT pair_id FROM change_tokens "
-            "UNION SELECT DISTINCT pair_id FROM conflicts "
-            "UNION SELECT DISTINCT pair_id FROM sync_log "
-            "UNION SELECT DISTINCT pair_id FROM partial_transfers"
+            " UNION ".join(f"SELECT DISTINCT pair_id FROM {t}" for t in self.PAIR_TABLES)
         )
         rows = await cursor.fetchall()
         all_pair_ids = {row[0] for row in rows}

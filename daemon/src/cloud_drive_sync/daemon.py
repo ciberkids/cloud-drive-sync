@@ -432,8 +432,12 @@ class Daemon:
             p.local_path == demo_path for p in self._config.sync.pairs
         )
         if not has_demo_pair:
-            self._config.sync.pairs.insert(
-                0,
+            # Appended, not inserted at 0. Pairs are identified by position, so
+            # inserting at the front renumbered every real pair — the demo pair took
+            # `pair_0`, inheriting the first real pair's sync state and change token,
+            # and each real pair then pointed at its neighbour's history. Demo mode
+            # shares the real config and database, so that damage outlived the demo.
+            self._config.sync.pairs.append(
                 SyncPair(local_path=demo_path, remote_folder_id="root", enabled=True),
             )
 

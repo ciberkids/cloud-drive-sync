@@ -680,36 +680,38 @@ class RequestHandler:
             raise TypeError("Invalid pair id")
         removed = self._config.sync.pairs.pop(index)
         self._config.save()
-        await self._forget_positional_state_from(index)
+        await self._renumber_stored_state(index)
         return {"status": "removed", "local_path": removed.local_path}
 
-    async def _forget_positional_state_from(self, index: int) -> None:
-        """Drop refused-deletion blocks whose owning pair moved or disappeared.
+    async def _renumber_stored_state(self, index: int) -> None:
+        """Shift stored rows down so each surviving pair keeps its own history.
 
         Pairs are identified positionally — pair ``N`` is ``pair_N`` — so removing one
-        renumbers every pair after it, and any stored row keyed by the old number now
-        describes a different folder. A refused deletion batch is the dangerous case:
-        it survives on purpose, so that restarting cannot silently resolve a safety
-        question, and ``clear_pair``/``cleanup_stale_pairs`` do not touch it. The
-        result was that removing a pair left its block behind, the next pair inherited
-        the id, and approving that block granted a delete-protection bypass to a
-        folder the user had never been asked about.
+        renumbers every pair after it in the config while the database still keys their
+        sync state, change token, conflicts and refused deletion batches by the old
+        number. The survivor therefore inherited the removed pair's history.
 
-        Forgetting the block is the fail-safe direction: nothing is deleted as a
-        result, and if the deletions are still pending the next sync pass re-detects
-        them and asks again. Only blocks at or after the removal point are affected —
-        lower indices still mean what they did.
+        This previously *discarded* the refused deletion blocks at and after the
+        removal point, which was fail-safe but lossy: a survivor's own block was thrown
+        away along with the stale one, so a pair legitimately awaiting a decision
+        silently stopped awaiting it. Renumbering keeps each pair's history with it,
+        which is both safe and correct.
         """
         db = self._db or (self._engine._db if self._engine else None)
         if db is None:
             return
-        remaining = len(self._config.sync.pairs)
-        # +1 because the pair that was removed also had an id at `index`.
-        for i in range(index, remaining + 1):
-            try:
-                await db.clear_pending_deletions(f"pair_{i}")
-            except Exception as exc:
-                log.warning("Could not clear pending deletions for pair_%d: %s", i, exc)
+        try:
+            await db.renumber_pairs_after_removal(index, len(self._config.sync.pairs))
+        except Exception as exc:
+            # The pair is already out of the config, so raising here would leave the
+            # caller believing the removal failed when it did not. Log loudly: the
+            # stored rows are now one position out, and the next sync re-plans from
+            # whatever state it finds rather than deleting anything.
+            log.error(
+                "Removed the pair but could not renumber its stored state (%s). "
+                "Sync will re-plan from the state it finds; no data is deleted.",
+                exc,
+            )
 
     async def _set_conflict_strategy(self, params: dict) -> dict:
         strategy = params.get("strategy")

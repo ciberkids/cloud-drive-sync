@@ -571,24 +571,87 @@ async def test_pair_zero_can_be_removed_by_numeric_id(handler, config_file):
 # ── A refused deletion block must not outlive its pair ───────────────────
 
 
-async def test_removing_a_pair_discards_its_refused_deletion_block(handler, db, config_file):
-    """Pair ids are positional, so removal renumbers the survivors.
+async def test_a_survivor_keeps_its_own_history_when_an_earlier_pair_is_removed(
+    handler, db, config
+):
+    """The reason the renumbering exists.
 
-    A refused deletion batch is stored deliberately — so restarting cannot silently
-    resolve a safety question — and neither `clear_pair` nor `cleanup_stale_pairs`
-    touches it. So the block stayed behind under `pair_0`, the next pair inherited that
-    id, and approving granted a delete-protection bypass for a folder the user had
-    never been asked about.
+    Pairs are identified by position — pair *N* is ``pair_N`` — so removing one
+    renumbers every pair after it in the config while the database still keys their
+    rows by the old number. The survivor therefore inherited the removed pair's
+    history: its file state, its change token, and any refused deletion batch recorded
+    against a folder the user was never asked about.
+
+    An earlier fix *discarded* the blocks at and after the removal point. That was
+    fail-safe but lossy — a survivor's own block was thrown away with the stale one, so
+    a pair legitimately awaiting a decision silently stopped awaiting it. Shifting the
+    rows down keeps each pair's history with it, which is both safe and correct.
     """
-    await db.record_pending_deletions(
-        "pair_0", "local", 4200, 5000, 100, ["/tmp/first/a", "/tmp/first/b"]
-    )
+    from cloud_drive_sync.db.models import ChangeToken, FileState, SyncEntry
+
+    config.sync.pairs = [
+        SyncPair(local_path=f"{ABS}/{tag * 3}", remote_folder_id=f"r{tag}")
+        for tag in "ABC"
+    ]
+    for i, tag in enumerate("ABC"):
+        await db.upsert_sync_entry(
+            SyncEntry(path=f"{tag}/file.txt", pair_id=f"pair_{i}", state=FileState.SYNCED)
+        )
+        await db.upsert_change_token(ChangeToken(pair_id=f"pair_{i}", token=f"token-{tag}"))
+        await db.record_pending_deletions(
+            f"pair_{i}", "local", 9, 9, 1, [f"{ABS}/{tag * 3}/x"]
+        )
 
     await call(handler, "remove_sync_pair", {"id": "0"})
 
-    assert await db.get_pending_deletions("pair_0") == [], (
-        "the removed pair's block was inherited by the pair that took its id"
+    # BBB and CCC are now pair_0 and pair_1, and must carry their own rows.
+    for index, tag in ((0, "B"), (1, "C")):
+        entries = await db.get_all_entries(f"pair_{index}")
+        assert [e.path for e in entries] == [f"{tag}/file.txt"], (
+            f"pair_{index} inherited another pair's file state"
+        )
+        token = await db.get_change_token(f"pair_{index}")
+        assert token and token.token == f"token-{tag}", (
+            f"pair_{index} inherited another pair's change token — it would re-scan "
+            f"from the wrong point"
+        )
+        pending = await db.get_pending_deletions(f"pair_{index}")
+        assert pending and pending[0]["sample"] == [f"{ABS}/{tag * 3}/x"], (
+            f"pair_{index} inherited another pair's refused deletion block"
+        )
+
+
+async def test_the_removed_pairs_rows_are_gone(handler, db, config):
+    """And the now-unused top index holds nothing, so a later `pair add` starts clean
+    rather than adopting a dead pair's state."""
+    from cloud_drive_sync.db.models import ChangeToken, FileState, SyncEntry
+
+    for i in range(2):
+        await db.upsert_sync_entry(
+            SyncEntry(path=f"f{i}.txt", pair_id=f"pair_{i}", state=FileState.SYNCED)
+        )
+        await db.upsert_change_token(ChangeToken(pair_id=f"pair_{i}", token=f"t{i}"))
+
+    await call(handler, "remove_sync_pair", {"id": "0"})
+
+    assert await db.get_all_entries("pair_1") == []
+    assert await db.get_change_token("pair_1") is None
+
+
+async def test_removing_the_last_pair_leaves_nothing_behind(handler, db, config):
+    from cloud_drive_sync.db.models import ChangeToken, FileState, SyncEntry
+
+    await db.upsert_sync_entry(
+        SyncEntry(path="only.txt", pair_id="pair_1", state=FileState.SYNCED)
     )
+    await db.upsert_change_token(ChangeToken(pair_id="pair_1", token="t"))
+    await db.record_pending_deletions("pair_1", "local", 3, 3, 1, [f"{ABS}/second/x"])
+
+    await call(handler, "remove_sync_pair", {"id": "1"})
+
+    assert await db.get_all_entries("pair_1") == []
+    assert await db.get_change_token("pair_1") is None
+    assert await db.get_pending_deletions("pair_1") == []
 
 
 async def test_approving_a_block_from_another_folder_is_refused(handler, db, config_file):
@@ -924,3 +987,64 @@ async def test_listing_pairs_unbinds_an_orphan_rather_than_deleting_it(handler, 
     assert saved.sync.pairs[0].account_id == ""
     assert saved.sync.pairs[0].enabled is False
     assert saved.sync.pairs[0].ignore_patterns == ["*.bak"], "the pair's settings were lost"
+
+
+async def test_every_pair_keyed_table_is_renumbered(db):
+    """A table left out of the renumbering is the failure this whole change is about,
+    and it has happened twice: `clear_pair` and `cleanup_stale_pairs` both omitted
+    pending_deletions. So the list is asserted against the schema rather than trusted.
+    """
+    import re
+
+    from cloud_drive_sync.db import database as db_mod
+
+    declared = {
+        m.group(1)
+        for m in re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\)", db_mod.SCHEMA_SQL, re.S)
+        if "pair_id" in m.group(2)
+    }
+
+    assert declared == set(Database.PAIR_TABLES), (
+        f"PAIR_TABLES is out of step with the schema: "
+        f"missing={declared - set(Database.PAIR_TABLES)} "
+        f"extra={set(Database.PAIR_TABLES) - declared}"
+    )
+
+
+async def test_renumbering_is_atomic_across_tables(db, monkeypatch):
+    """A half-renumbered database leaves some pairs pointing at the wrong history —
+    the exact failure being fixed — so the rewrite must not commit partially."""
+    from cloud_drive_sync.db.models import ChangeToken, FileState, SyncEntry
+
+    await db.upsert_sync_entry(
+        SyncEntry(path="b.txt", pair_id="pair_1", state=FileState.SYNCED)
+    )
+    await db.upsert_change_token(ChangeToken(pair_id="pair_1", token="token-B"))
+
+    real_execute = db.db.execute
+    calls = {"n": 0}
+
+    async def failing_execute(sql, *a, **kw):
+        calls["n"] += 1
+        # Fail partway through the rewrite, after at least one UPDATE has run.
+        if calls["n"] > 8 and sql.strip().upper().startswith("UPDATE"):
+            raise RuntimeError("simulated disk error")
+        return await real_execute(sql, *a, **kw)
+
+    monkeypatch.setattr(db.db, "execute", failing_execute)
+    with pytest.raises(RuntimeError):
+        await db.renumber_pairs_after_removal(0, 1)
+    monkeypatch.undo()
+
+    await db.db.rollback()
+    # Either the whole shift happened or none of it; never a mix.
+    at_0 = [e.path for e in await db.get_all_entries("pair_0")]
+    at_1 = [e.path for e in await db.get_all_entries("pair_1")]
+    tok_0 = await db.get_change_token("pair_0")
+    tok_1 = await db.get_change_token("pair_1")
+    moved = at_0 == ["b.txt"] and tok_0 is not None and tok_0.token == "token-B"
+    untouched = at_1 == ["b.txt"] and tok_1 is not None and tok_1.token == "token-B"
+    assert moved or untouched, (
+        f"partially renumbered: state at pair_0={at_0} pair_1={at_1}, "
+        f"token at pair_0={tok_0 and tok_0.token} pair_1={tok_1 and tok_1.token}"
+    )
