@@ -281,8 +281,13 @@ jobs:
 
       - name: The printed token actually works
         run: |
-          tok=$(docker logs cds-ci-fresh 2>&1 | grep -A2 "access token was generated" \
-                | tail -1 | tr -d ' │')
+          # Matched by shape, not by position. The token goes to stdout and the log
+          # line about it goes to stderr, and `docker logs` interleaves the two — a
+          # `grep -A2 ... | tail -1` picked up the log line that landed in the middle
+          # of the banner and tried to authenticate with that.
+          tok=$(docker logs cds-ci-fresh 2>&1 \
+                | sed -n 's/^ *│ *\([A-Za-z0-9_-]\{32,\}\) *$/\1/p' | head -1)
+          echo "extracted a ${#tok}-character token"
           test -n "$tok"
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
             -H "Authorization: Bearer $tok" http://127.0.0.1:8081/api/status)

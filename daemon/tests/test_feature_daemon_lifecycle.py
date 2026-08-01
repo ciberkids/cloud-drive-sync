@@ -154,30 +154,69 @@ def test_stopping_discards_the_pid_file_it_refused(pid_file):
     assert not pid_file.exists(), "the unusable pid file was left to block the next stop"
 
 
-@linux_only
-def test_this_process_is_recognised_as_a_daemon_when_it_looks_like_one():
-    """The identity check must not be so strict that it rejects the real daemon.
+def _stub_cmdline(monkeypatch, pid_to_cmdline: dict[int, bytes]):
+    """Serve chosen /proc/<pid>/cmdline bytes, so identity can be tested exactly."""
+    import pathlib as _pathlib
 
-    A check that always said "not the daemon" would make ``stop`` never work, which is
-    the opposite failure — so this pins that a cloud-drive-sync process is accepted.
-    Asserted against a real child process whose command line names the package.
-    """
-    # The marker goes in the source text passed to -c, which lands in the child's
-    # cmdline. Importing the package for real would make this depend on the
-    # interpreter running the tests having it installed — true in the venv and in CI,
-    # not for a bare system python.
-    child = subprocess.Popen(
-        [sys.executable, "-c", "# cloud_drive_sync daemon\nimport time; time.sleep(30)"]
-    )
-    try:
-        assert Daemon._pid_is_this_daemon(child.pid) is True
-    finally:
-        child.kill()
-        child.wait()
+    import cloud_drive_sync.daemon as daemon_mod
+
+    real_read = _pathlib.Path.read_bytes
+
+    def fake_read(self, *a, **kw):
+        text = str(self)
+        for pid, data in pid_to_cmdline.items():
+            if text == f"/proc/{pid}/cmdline":
+                return data
+        return real_read(self, *a, **kw)
+
+    monkeypatch.setattr(daemon_mod.Path, "read_bytes", fake_read)
+
+
+@linux_only
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        b"python\x00-m\x00cloud_drive_sync\x00start\x00--foreground\x00",
+        b"/usr/bin/python3\x00-m\x00cloud_drive_sync\x00start\x00",
+        b"/usr/local/bin/cloud-drive-sync-daemon\x00start\x00",
+        b"/usr/bin/cloud-drive-sync\x00start\x00--http-port\x008080\x00",
+    ],
+    ids=["module", "abs-python-module", "console-script", "short-console-script"],
+)
+def test_a_real_daemon_command_line_is_recognised(monkeypatch, cmdline):
+    """The check must not be so strict that it rejects the daemon — that would make
+    `stop` never work, which is the opposite failure."""
+    _stub_cmdline(monkeypatch, {4242: cmdline})
+
+    assert Daemon._pid_is_this_daemon(4242) is True
+
+
+@linux_only
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        # The CI regression: the venv lives under a directory containing the project
+        # name, so a substring test over the whole cmdline matched the interpreter
+        # path and identified every script run from that venv as the daemon — which
+        # `stop` would then SIGTERM.
+        b"/home/runner/work/cloud-drive-sync/cloud-drive-sync/daemon/.venv/bin/python\x00-c\x00import time; time.sleep(30)\x00",
+        b"/home/u/cloud-drive-sync/.venv/bin/python\x00manage.py\x00runserver\x00",
+        # A directory of that name in an unrelated command.
+        b"/bin/tar\x00-czf\x00backup.tgz\x00/home/u/cloud-drive-sync\x00",
+        b"/usr/bin/vim\x00/home/u/cloud-drive-sync/notes.txt\x00",
+        b"",
+    ],
+    ids=["ci-venv-path", "home-venv-path", "tar-of-the-directory", "editing-a-file", "empty"],
+)
+def test_something_that_merely_mentions_the_project_is_not_the_daemon(monkeypatch, cmdline):
+    _stub_cmdline(monkeypatch, {4243: cmdline})
+
+    assert Daemon._pid_is_this_daemon(4243) is False
 
 
 @linux_only
 def test_an_ordinary_process_is_not_mistaken_for_the_daemon():
+    """Belt and braces against a real process, whatever this checkout is called."""
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         assert Daemon._pid_is_this_daemon(child.pid) is False

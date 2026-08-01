@@ -657,13 +657,33 @@ class Daemon:
             # <=1 is never a daemon we started, and our own pid means the file is
             # describing this very process.
             return False
-        if sys.platform == "linux":
-            try:
-                cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
-            except OSError:
-                return False
-            return b"cloud_drive_sync" in cmdline or b"cloud-drive-sync" in cmdline
-        return None
+        if sys.platform != "linux":
+            return None
+        try:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except OSError:
+            return False
+
+        # Match the *arguments*, not any occurrence of the name in the blob.
+        #
+        # A substring test over the whole cmdline is wrong because the interpreter path
+        # is part of it: a checkout or virtualenv at ~/cloud-drive-sync/.venv/bin/python
+        # makes every unrelated script run from that venv look like the daemon — and
+        # `stop` would then SIGTERM it. CI found this, because its workspace path is
+        # /home/runner/work/cloud-drive-sync/...; a local run passed only because the
+        # directory happened to be named differently.
+        args = [a for a in cmdline.split(b"\0") if a]
+        if not args:
+            return False
+        # `python -m cloud_drive_sync start ...` — the module name is its own argument,
+        # matched exactly. The underscore form does not appear in ordinary paths.
+        if b"cloud_drive_sync" in args:
+            return True
+        # The console script, where argv[0] *is* the executable. Only argv[0] is
+        # considered: checking every argument would match `tar -czf b.tgz
+        # ~/cloud-drive-sync` or `vim ~/cloud-drive-sync/notes.txt`, and treating
+        # those as the daemon is how `stop` ends up signalling the wrong process.
+        return args[0].rsplit(b"/", 1)[-1] in (b"cloud-drive-sync", b"cloud-drive-sync-daemon")
 
     @staticmethod
     def _pid_from_file(pf) -> int | None:
