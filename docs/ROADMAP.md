@@ -15,6 +15,7 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
 | 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5 (history follows its pair); the identity scheme is still positional |
+| 10 | [Event webhooks](#10--event-webhooks) | Feature | — | 📋 Proposed — see [the proposal](Proposal-Event-Webhooks) |
 
 ---
 
@@ -134,6 +135,31 @@ The identity scheme is still positional, so the invariant is maintained by remem
 **The cost is larger than it looks, and most of it is not in the daemon.** The engine's `pair_N` ids are exposed to the UI — through `get_status` keys, activity-log rows and pair counts — and `Transfers.tsx`, `SyncStatus.tsx` and `ActivityLog.tsx` each rebuild `pair_${i}` from a list index to join against them. Switching to uuids therefore means a config-dependent database migration **plus** three UI components **plus** a webui rebuild, and the UI join is where a mistake shows wrong data silently instead of erroring.
 
 **And the migration cannot be more correct than the data it inherits.** The mapping `pair_N -> pairs[N].id` is only right if the config order at migration time matches the order when the rows were written. Anyone who removed a pair on a version before v2.4.5 already has mis-assigned rows, and nothing records the old order — so the migration freezes whatever state exists and prevents future drift. It cannot repair past drift, and it should not try: a heuristic matching stored paths against `local_path` would be guessing about the user's files.
+
+## 10 — Event webhooks
+
+**Problem.** The daemon knows things the user needs to act on and has no way to tell them. A refused deletion batch pauses a pair and waits for a human ([item 1](#1--delete-fail-safe)); a conflict waits for a decision; an expired credential stops an account syncing. All of it surfaces only if someone opens the UI or runs `activity`. On the deployment where this matters most — a headless NAS or container, running unattended for weeks — nobody is looking. The delete fail-safe is the sharpest case: it exists precisely to stop silent data loss, and today it announces itself into a log file.
+
+**Feature.** Per-pair outbound HTTP callbacks. Configurable at three levels — global, per account, per pair — as a hierarchy where a lower level can override an inherited setting or introduce a callback that exists nowhere above it. Several authorization mechanisms, because the receiving end is someone else's system: none, Basic, bearer, a daemon-minted JWT, and an arbitrary custom header.
+
+**Requirements**
+
+- Three configuration levels with a defined merge, not just override: a pair must be able to add its own callback, narrow an inherited one's event set, and switch an inherited one off.
+- A stable identifier in the payload. Positional `pair_N` must never leave the process — see [item 9](#9--give-each-sync-pair-a-stable-id).
+- Delivery must never block or slow a sync pass. A hung endpoint is a normal condition.
+- At-least-once, with a per-event id so receivers can deduplicate. Bounded queue; `deletion.blocked` must not be droppable.
+- Secrets never in a log, an error message, a status payload, or a read API response.
+- Reachable from every front-end: CLI, REST, MCP (read-only), UI.
+
+**Open questions**
+
+- Is `deletion.blocked` alone worth the first release? It is most of the value, at a fraction of the scope.
+- Does the account level pull its weight, given it holds exactly one setting today?
+- Batching, for the case where a library scan produces thousands of per-file events.
+
+> **Full design:** [Proposal: Event Webhooks](Proposal-Event-Webhooks) — payload schema, the three-level merge algorithm with a worked example, all five authorization mechanisms, and the two prerequisites it depends on.
+
+---
 
 ## Adding to the queue
 
