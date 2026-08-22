@@ -659,6 +659,7 @@ mod tests {
     fn sync_pair_roundtrip() {
         let pair = SyncPair {
             id: "sp-1".into(),
+            uid: "3f7a1c68-2d4e-4f0b-9a11-8c5e6b0d2a94".into(),
             local_path: "/home/user/docs".into(),
             remote_folder_id: "folder-abc".into(),
             enabled: true,
@@ -672,8 +673,27 @@ mod tests {
         let serialized = serde_json::to_value(&pair).unwrap();
         let deserialized: SyncPair = serde_json::from_value(serialized).unwrap();
         assert_eq!(deserialized.id, "sp-1");
+        assert_eq!(deserialized.uid, "3f7a1c68-2d4e-4f0b-9a11-8c5e6b0d2a94");
         assert_eq!(deserialized.sync_mode, "bidirectional");
         assert_eq!(deserialized.ignore_patterns.unwrap().len(), 2);
+    }
+
+    /// A daemon older than the `uid` field omits it entirely. Deserialising must
+    /// still succeed, or the desktop app fails to list pairs at all when talking to
+    /// one — hence `#[serde(default)]` on the field rather than a bare String.
+    #[test]
+    fn sync_pair_without_uid_still_deserializes() {
+        let json_val = serde_json::json!({
+            "id": "sp-1",
+            "local_path": "/home/user/docs",
+            "remote_folder_id": "folder-abc",
+            "enabled": true,
+            "sync_mode": "bidirectional"
+        });
+
+        let pair: SyncPair = serde_json::from_value(json_val).unwrap();
+        assert_eq!(pair.id, "sp-1");
+        assert!(pair.uid.is_empty(), "an absent uid should default, not fail");
     }
 
     #[test]

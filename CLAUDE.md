@@ -5,10 +5,14 @@
 After every code change, always follow this sequence:
 
 > **IMPORTANT:** Steps 1–4 are the local CI gate. Run them as one block immediately before `git commit`, after ALL edits are done — never after only part of the changes. A partial run that passes does not count; only the final run over the complete changeset does.
+>
+> **Use the exact commands below.** Two shorter forms look equivalent and are not, and both have let a red CI through:
+> - `python` is **not** the venv — it resolves to the system interpreter (3.14 here, against CI's 3.12) and lacks `mcp` and `nc_py_api`, so 7 tests skip and 23 fewer are collected. Always `.venv/bin/python`.
+> - `cargo check` does **not** compile `#[cfg(test)]` code. CI runs `cargo check --all-targets`, so a struct-literal in a Rust test that a new field broke passes locally and fails there.
 
-1. **Run tests** — `cd daemon && python -m pytest tests/ -x -q` (must pass)
+1. **Run tests** — `cd daemon && .venv/bin/python -m pytest tests/ -x -q` (must pass)
 2. **Run lint** — `cd daemon && .venv/bin/ruff check src/ tests/`
-3. **Run Rust check** — `cd ui/src-tauri && cargo check` (create sidecar placeholder first if needed)
+3. **Run Rust check** — `cd ui/src-tauri && cargo check --all-targets` (create sidecar placeholder first if needed)
 4. **Run TS check** — `cd ui && npx tsc --noEmit`
 5. **Rebuild web UI** — if any UI file changed, run `make build-webui` to rebuild the React app and copy it into `daemon/src/cloud_drive_sync/http/webui/`. This builds with `WEB=1` so the bundle uses `fetch()` to `/api/*` instead of Tauri's `invoke()` — without this flag the HTTP UI cannot reach the daemon at all.
 6. **Update documentation** — if the change affects user-facing behavior, update docs/ (DAEMON.md, ARCHITECTURE.md, CLI.md, UI.md) and README.md. docs/ is the single source of truth; the wiki auto-syncs from it.
@@ -32,14 +36,14 @@ Use TeamCreate with worktree-isolated teammates for parallel workstreams. Do NOT
 
 ```bash
 # Daemon tests
-cd daemon && python -m pytest tests/ -x -q
+cd daemon && .venv/bin/python -m pytest tests/ -x -q
 
 # Lint
 cd daemon && .venv/bin/ruff check src/ tests/
 
 # Rust check (needs sidecar placeholder)
 mkdir -p ui/src-tauri/bin && touch ui/src-tauri/bin/cloud-drive-sync-daemon-x86_64-unknown-linux-gnu
-cd ui/src-tauri && cargo check
+cd ui/src-tauri && cargo check --all-targets
 
 # TypeScript check
 cd ui && npx tsc --noEmit
