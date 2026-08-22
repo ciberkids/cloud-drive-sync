@@ -41,6 +41,13 @@ log = get_logger("sync.engine")
 # longer than poll_interval: this is upkeep, not part of the sync cycle.
 MAINTENANCE_INTERVAL_SECONDS = 6 * 60 * 60
 
+# A continuous loop that keeps failing fails every poll interval -- every 30s by
+# default. Reporting each one would fill the activity log and, for anything consuming
+# these events, flood a webhook receiver with the same message forever. So an
+# unchanged failure is re-reported at most this often. The *first* occurrence and any
+# change of message always report immediately, because that is the informative part.
+FAILURE_REPORT_INTERVAL_SECONDS = 300.0
+
 
 #: Cap on how many paths a summary carries. The payload/notification is a summary,
 #: not a manifest: an initial sync of a large library produces tens of thousands of
@@ -145,6 +152,10 @@ class SyncEngine:
         # otherwise approving would loop — the next pass re-plans the same
         # deletions and the guard blocks them again.
         self._delete_overrides: set[str] = set()
+        # Repeat-failure suppression for the continuous loops. See
+        # FAILURE_REPORT_INTERVAL_SECONDS.
+        self._last_failure_report: dict[tuple[str, str], float] = {}
+        self._suppressed_failures: dict[tuple[str, str], int] = {}
 
     @property
     def pairs(self) -> dict[str, PairStatus]:
@@ -613,6 +624,20 @@ class SyncEngine:
         log. The row is what the user sees in the UI.
         """
         detail = f"{phase} failed: {exc}"
+
+        # Suppress an unchanged, repeating failure. Keyed on the pair and the message,
+        # so a *different* failure is never hidden behind an ongoing one.
+        key = (ps.pair_id, detail)
+        now = time.monotonic()
+        last = self._last_failure_report.get(key)
+        if last is not None and now - last < FAILURE_REPORT_INTERVAL_SECONDS:
+            self._suppressed_failures[key] = self._suppressed_failures.get(key, 0) + 1
+            return
+        repeats = self._suppressed_failures.pop(key, 0)
+        self._last_failure_report[key] = now
+        if repeats:
+            detail = f"{detail} (repeated {repeats + 1} times)"
+
         with contextlib.suppress(Exception):
             await self._db.add_log_entry(SyncLogEntry(
                 action="sync", path="", pair_id=ps.pair_id,

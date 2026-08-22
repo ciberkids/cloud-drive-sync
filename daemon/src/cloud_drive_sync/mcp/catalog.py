@@ -44,6 +44,15 @@ NEVER_EXPOSED: dict[str, str] = {
         "assistant approve a refused mass deletion defeats its entire purpose"
     ),
     "mkdir_local": "creates directories anywhere the daemon can write",
+    # Same reasoning as set_proxy: this would let an agent point the user's file
+    # activity at a host it chose.
+    "set_webhooks": "would let an agent send file activity to a host it chose",
+    "test_webhook": "would let an agent trigger outbound requests on demand",
+    # And the same reasoning as get_proxy, which is excluded purely because a URL can
+    # embed a credential: a webhook url can carry a token in its path or query, and
+    # the free-form `headers` table can hold an API key under any name the user likes,
+    # which the secret masking cannot cover.
+    "get_webhooks": "webhook urls and custom headers can embed credentials",
 }
 
 
@@ -158,6 +167,30 @@ READ_TOOLS: tuple[McpTool, ...] = (
             "account_id": {"type": "string", "description": "Account email. Defaults to the only account."},
             "parent_id": {"type": "string", "description": "Remote folder id to list children of."},
         }),
+    ),
+    # Deliberately the *resolved* view rather than the stored config. It reduces each
+    # target to scheme+host, the event list and the auth mode name -- enough to explain
+    # why a delivery is failing, and no url path, query string, custom headers or
+    # secrets. `get_webhooks` is excluded outright for exactly those.
+    McpTool(
+        "resolve_webhooks",
+        "get_resolved_webhooks",
+        "Which webhook targets will actually fire for a scope, after merging the "
+        "global and per-pair configuration, plus any configuration problems found. "
+        "Endpoints are reduced to scheme and host; no credentials are returned.",
+        _schema({
+            "scope": {
+                "type": "string",
+                "description": "'global' or 'pair:<uid>'. Defaults to 'global'.",
+            },
+        }),
+    ),
+    McpTool(
+        "webhook_status",
+        "get_webhook_status",
+        "Webhook delivery health per target: delivered, failed and dropped counts, "
+        "queue depth, whether the circuit breaker has opened, and the last status "
+        "code. Use this to diagnose a webhook that is not arriving.",
     ),
 )
 

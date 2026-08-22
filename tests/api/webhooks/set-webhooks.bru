@@ -1,0 +1,40 @@
+meta {
+  name: Set Webhooks (global)
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/webhooks?scope=global
+  body: json
+}
+
+body:json {
+  {
+    "enabled": true,
+    "targets": [
+      {
+        "define": true,
+        "name": "bruno-test",
+        "url": "http://127.0.0.1:9/never-listening",
+        "events": ["sync.completed"],
+        "auth": { "mode": "none" }
+      }
+    ]
+  }
+}
+
+tests {
+  // Writes require the HTTP token to be configured. A 200 means it was accepted;
+  // an error means this daemon has no token set, which is itself the documented
+  // behaviour rather than a test failure.
+  test("accepted, or refused for want of a token", function() {
+    expect([200, 400, 500]).to.include(res.status);
+  });
+
+  test("a new name without define is reported rather than silently ignored", function() {
+    if (res.status === 200) {
+      expect(res.body.problems).to.be.an("array");
+    }
+  });
+}

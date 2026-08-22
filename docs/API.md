@@ -13,7 +13,9 @@ The methods below are the daemon's single backend. Two other front-ends dispatch
 | HTTP REST | `POST/GET http://localhost:8080/api/*` — see [HTTP Server](Daemon#http-server-web-ui--rest-api) |
 | MCP | tools over `http://localhost:8081/mcp` — see [MCP Server](Daemon#mcp-server-for-ai-assistants) |
 
-MCP exposes a curated subset under different tool names (`list_sync_pairs` maps to `get_sync_pairs`), is read-only unless `--mcp-allow-writes` is set, and never exposes `shutdown`, `start_auth`, `exchange_auth_code`, `get_proxy`, `set_proxy`, `list_local_dirs` or `mkdir_local`.
+MCP exposes a curated subset under different tool names (`list_sync_pairs` maps to `get_sync_pairs`), is read-only unless `--mcp-allow-writes` is set, and never exposes `shutdown`, `start_auth`, `exchange_auth_code`, `get_proxy`, `set_proxy`, `list_local_dirs`, `mkdir_local`, `get_webhooks`, `set_webhooks` or `test_webhook`.
+
+Two of those exclusions are worth explaining, because they are read methods rather than writes. `get_proxy` is excluded because a proxy URL can embed credentials (`http://user:pass@host`), and `get_webhooks` is excluded for the same reason: a webhook URL can carry a token in its path or query string, and a target's free-form `headers` table can hold an API key under any name. `get_resolved_webhooks` **is** exposed, because it reduces each endpoint to scheme and host and returns no headers — enough for an assistant to explain why a delivery is failing, and not enough to leak a credential.
 
 ## IPC Methods (Client → Daemon)
 

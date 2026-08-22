@@ -208,6 +208,134 @@ def _run_client_call(method: str, params: dict | None = None):
 
 
 # ---------------------------------------------------------------------------
+# Webhooks
+#
+# Note this is the CLI's first settings surface. Every other command here is a read
+# or a state action -- there is no `set_*` reachable from the command line at all --
+# so there was no in-repo pattern to copy and this invents one.
+# ---------------------------------------------------------------------------
+
+@cli.group()
+def webhook():
+    """Manage outbound event webhooks."""
+
+
+def _webhook_scope(scope: str) -> dict:
+    return {"scope": scope}
+
+
+@webhook.command("list")
+@click.option("--scope", default="global", help="'global' or 'pair:<uid>'.")
+@click.option("--raw", is_flag=True, help="Show the stored config rather than the resolved view.")
+def webhook_list(scope: str, raw: bool):
+    """Show the webhook targets that will actually fire for a scope.
+
+    The resolved view by default, because "which webhooks fire for this folder" is the
+    question a three-level merge makes hard to answer by reading the config.
+    """
+    try:
+        if raw:
+            result = _run_client_call("get_webhooks", _webhook_scope(scope))
+            targets = (result.get("webhooks") or {}).get("targets") or []
+            if not targets:
+                click.echo(f"No webhook targets defined at {result.get('scope', scope)}.")
+                return
+            click.echo(f"Targets defined at {result.get('scope', scope)}:")
+            for entry in targets:
+                flags = []
+                if entry.get("define"):
+                    flags.append("define")
+                if entry.get("enabled") is False:
+                    flags.append("disabled")
+                suffix = f"  [{', '.join(flags)}]" if flags else ""
+                click.echo(f"  {entry.get('name')}{suffix}")
+                if entry.get("url"):
+                    click.echo(f"      url:    {entry['url']}")
+                if entry.get("events"):
+                    click.echo(f"      events: {', '.join(entry['events'])}")
+            return
+
+        result = _run_client_call("get_resolved_webhooks", _webhook_scope(scope))
+        targets = result.get("targets") or []
+        problems = result.get("problems") or []
+        if not targets:
+            click.echo(f"No webhooks will fire for {result.get('scope', scope)}.")
+        else:
+            click.echo(f"Webhooks that will fire for {result.get('scope', scope)}:")
+            for target in targets:
+                click.echo(f"  {target['name']}  ({target['target_key']})")
+                click.echo(f"      endpoint: {target['endpoint']}")
+                click.echo(f"      events:   {', '.join(target['events'])}")
+                click.echo(
+                    f"      auth:     {target['auth_mode']}"
+                    + ("  + signature" if target.get("signed") else "")
+                )
+                if not target.get("verify_tls", True):
+                    click.echo("      warning:  TLS verification is disabled")
+        _echo_problems(problems)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+def _echo_problems(problems: list) -> None:
+    if problems:
+        click.echo("")
+        click.echo("Configuration problems:", err=True)
+        for problem in problems:
+            click.echo(f"  - {problem}", err=True)
+
+
+@webhook.command("status")
+def webhook_status():
+    """Delivery health for each target: counts, queue depth, breaker state."""
+    try:
+        result = _run_client_call("get_webhook_status", {})
+        if not result.get("running"):
+            click.echo("Webhook delivery is not running (no authenticated account yet).")
+            return
+        targets = result.get("targets") or []
+        if not targets:
+            click.echo("No webhook deliveries attempted yet.")
+            return
+        for target in targets:
+            health = "healthy" if target.get("healthy") else "UNHEALTHY"
+            click.echo(f"{target['target_key']}  [{health}]")
+            click.echo(f"    endpoint:  {target['endpoint']}")
+            click.echo(
+                f"    delivered: {target['delivered']}   failed: {target['failed']}   "
+                f"dropped: {target['dropped']}   queued: {target['queued']}"
+            )
+            if target.get("last_error"):
+                click.echo(f"    last error: {target['last_error']}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@webhook.command("test")
+@click.option("--scope", default="global", help="'global' or 'pair:<uid>'.")
+@click.option("--name", default=None, help="Send to one target only.")
+def webhook_test(scope: str, name: str | None):
+    """Send a webhook.test event to the resolved targets."""
+    params = _webhook_scope(scope)
+    if name:
+        params["name"] = name
+    try:
+        result = _run_client_call("test_webhook", params)
+        sent = result.get("sent_to") or []
+        if not sent:
+            click.echo("No targets resolved for that scope; nothing sent.")
+        else:
+            click.echo(f"Test event queued for: {', '.join(sent)}")
+            click.echo("Check 'webhook status' for the delivery result.")
+        _echo_problems(result.get("problems") or [])
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Account management
 # ---------------------------------------------------------------------------
 

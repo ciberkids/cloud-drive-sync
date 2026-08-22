@@ -32,6 +32,11 @@ Monitoring:
   activity [--limit N]             Show recent sync activity
   conflicts                        Show unresolved conflicts
   resolve <conflict_id> <resolution>   Resolve a conflict
+
+Webhooks:
+  webhook list [--scope S] [--raw]  Show webhooks that will fire
+  webhook status                    Delivery health per target
+  webhook test [--scope S] [--name N]   Send a test event
 ```
 
 ## Global Options

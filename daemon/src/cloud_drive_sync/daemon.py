@@ -641,6 +641,9 @@ class Daemon:
         await self._webhook_delivery.start()
         self._webhook_dispatcher = WebhookDispatcher(self._config, self._webhook_delivery)
         self._engine.bus.subscribe(self._webhook_dispatcher)
+        if self._handler is not None:
+            # So `webhook status` and `webhook test` can see delivery.
+            self._handler.set_webhook_delivery(self._webhook_delivery)
 
         configured = len(self._config.webhooks.targets) + sum(
             len(p.webhooks.targets) for p in self._config.sync.pairs

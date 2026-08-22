@@ -1,0 +1,20 @@
+meta {
+  name: Get Webhook Status
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/webhooks/status
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("reports whether delivery is running", function() {
+    expect(res.body).to.have.property("running");
+    expect(res.body.targets).to.be.an("array");
+  });
+}

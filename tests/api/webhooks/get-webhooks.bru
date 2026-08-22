@@ -1,0 +1,35 @@
+meta {
+  name: Get Webhooks (global)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/webhooks?scope=global
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("reports the scope it read", function() {
+    expect(res.body.scope).to.equal("global");
+  });
+
+  // A read must never return a literal secret: the web UI would put it in a
+  // browser and in every screenshot. Secrets come back as null with a *_set flag.
+  test("no literal secret is returned", function() {
+    const targets = (res.body.webhooks && res.body.webhooks.targets) || [];
+    targets.forEach(function(t) {
+      if (t.auth) {
+        ["token", "password", "value"].forEach(function(field) {
+          expect(t.auth[field] === undefined || t.auth[field] === null).to.equal(true);
+        });
+      }
+      if (t.signature) {
+        expect(t.signature.secret === undefined || t.signature.secret === null).to.equal(true);
+      }
+    });
+  });
+}

@@ -173,6 +173,15 @@ class HttpServer:
         r.add_put("/api/settings/bandwidth", self._set_bandwidth_limits)
         r.add_get("/api/settings/proxy", self._get_proxy)
         r.add_put("/api/settings/proxy", self._set_proxy)
+        # Webhooks. The scope travels as a query parameter rather than a path
+        # segment: a pair uid is fine in a path, but keeping one shape for every
+        # scope avoids two routes that mean the same thing, and it leaves room for
+        # the account scope (`?provider=..&email=..`) without a third.
+        r.add_get("/api/webhooks", self._get_webhooks)
+        r.add_put("/api/webhooks", self._set_webhooks)
+        r.add_get("/api/webhooks/resolved", self._get_resolved_webhooks)
+        r.add_get("/api/webhooks/status", self._get_webhook_status)
+        r.add_post("/api/webhooks/test", self._test_webhook)
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         r.add_post("/api/repair", self._repair)
 
@@ -310,6 +319,31 @@ class HttpServer:
     async def _set_notification_prefs(self, req): return self._json(await self._rpc("set_notification_prefs", await self._body(req)))
     async def _get_bandwidth_limits(self, req): return self._json(await self._rpc("get_bandwidth_limits"))
     async def _set_bandwidth_limits(self, req): return self._json(await self._rpc("set_bandwidth_limits", await self._body(req)))
+    def _webhook_params(self, req, body: dict | None = None) -> dict:
+        """Merge the ``scope`` query parameter into the request body."""
+        params = dict(body or {})
+        params["scope"] = req.query.get("scope", "global")
+        return params
+
+    async def _get_webhooks(self, req):
+        return self._json(await self._rpc("get_webhooks", self._webhook_params(req)))
+
+    async def _set_webhooks(self, req):
+        body = await self._body(req)
+        return self._json(await self._rpc("set_webhooks", self._webhook_params(req, body)))
+
+    async def _get_resolved_webhooks(self, req):
+        return self._json(
+            await self._rpc("get_resolved_webhooks", self._webhook_params(req))
+        )
+
+    async def _get_webhook_status(self, req):
+        return self._json(await self._rpc("get_webhook_status", {}))
+
+    async def _test_webhook(self, req):
+        body = await self._body(req) if req.can_read_body else {}
+        return self._json(await self._rpc("test_webhook", self._webhook_params(req, body)))
+
     async def _get_proxy(self, req): return self._json(await self._rpc("get_proxy"))
     async def _set_proxy(self, req): return self._json(await self._rpc("set_proxy", await self._body(req)))
     async def _set_conflict_strategy(self, req): return self._json(await self._rpc("set_conflict_strategy", await self._body(req)))

@@ -258,6 +258,190 @@ The one secret that *is* in `config.toml` is the web UI access token, under `[ht
 
 ---
 
+### `[webhooks]`
+
+Outbound HTTP callbacks. When something happens — a sync finishes, a conflict appears,
+a mass deletion is refused — the daemon posts a JSON event to an endpoint you choose.
+
+Configurable at two levels, which merge: **global** (`[webhooks]`) and **per pair**
+(`[sync.pairs.webhooks]`). A pair can override a field of an inherited callback, switch
+one off, or define one that exists nowhere else.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Master switch for this level. `false` at a level disables every target at that level and below; a pair can set `true` to opt back in |
+| `allow_private_addresses` | boolean | `true` | Global only. Set `false` on a shared deployment to refuse private and link-local endpoints. Not overridable per pair |
+
+#### `[webhooks.defaults]`
+
+Applied to every target that does not set the field itself. A target's own value always
+wins.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `timeout_seconds` | integer | `15` | Total request timeout. The connect timeout is fixed at 5s |
+| `max_attempts` | integer | `5` | Attempts per event, including the first |
+| `verify_tls` | boolean | `true` | Set `false` only for a self-signed endpoint on your own network |
+| `include_paths` | boolean | `true` | When `false`, file paths are replaced by SHA-256 hashes and `local_path` is omitted. See [Paths are personal data](#paths-are-personal-data) |
+| `max_files_per_event` | integer | `100` | Cap on path samples per event. `0` omits the lists entirely |
+
+#### `[[webhooks.targets]]`
+
+One block per callback.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | (required) | The merge key across levels. A pair overriding a callback names the same value |
+| `define` | boolean | `false` | Required when introducing a **new** name, rejected for an existing one. See below |
+| `url` | string | (required) | Where to POST |
+| `events` | list of strings | (required) | Event names, or one glob segment (`conflict.*`, or `*` for everything). **Replaces** the inherited list |
+| `events_add` | list of strings | `[]` | Add to the inherited list. Applied at this level only, never inherited further down |
+| `events_remove` | list of strings | `[]` | Remove from the inherited list. Applied after `events_add`, at this level only |
+| `headers` | table | `{}` | Extra request headers, merged per key with the inherited ones |
+| `headers_remove` | list of strings | `[]` | Remove inherited header keys. This level only |
+| `enabled` | boolean | (inherits) | `false` switches this target off for this level and below |
+| `timeout_seconds` | integer | (inherits) | Overrides `[webhooks.defaults]` |
+| `max_attempts` | integer | (inherits) | Overrides `[webhooks.defaults]` |
+| `verify_tls` | boolean | (inherits) | Overrides `[webhooks.defaults]` |
+| `include_paths` | boolean | (inherits) | Overrides `[webhooks.defaults]` |
+| `max_files_per_event` | integer | (inherits) | Overrides `[webhooks.defaults]` |
+
+Omit any key to inherit it from the level above. Omitting is not the same as setting a
+default: an omitted key keeps tracking the level above when you later change it there.
+
+#### `define` — why a new callback needs one extra word
+
+`name` is how levels are merged, so without a declaration of intent the daemon cannot
+tell "override the inherited callback" from "define my own". That ambiguity fails
+silently in the worse direction: if you write a new callback whose name happens to
+match a disabled one above, it inherits `enabled = false` and never fires, with a
+perfectly valid URL and event list so nothing else looks wrong.
+
+So: **`define = true` when the name is new**, and omit it when overriding. Getting it
+the wrong way round is reported at startup and by `cloud-drive-sync webhook list`,
+naming both levels.
+
+#### `[webhooks.targets.auth]`
+
+How to authenticate. `mode` is **required** whenever this block is present — the block
+is replaced wholesale rather than merged, so a pair overriding just a token would
+otherwise lose the inherited mode and silently downgrade to unauthenticated.
+
+| Mode | Required keys | Header sent |
+|---|---|---|
+| `none` | — | none |
+| `basic` | `username`, and `password` or `password_env` | `Authorization: Basic base64(user:pass)` |
+| `bearer` | `token` or `token_env` | `Authorization: Bearer <token>` |
+| `custom` | `header`, and `value` or `value_env` | `<header>: <value>` |
+
+`custom` accepts `header = "Authorization"`, which covers schemes that are not modelled
+(`Authorization: Token abc`).
+
+Every secret has an `_env` twin — `token_env`, `password_env`, `value_env` — naming an
+environment variable to read at request time. **Prefer it.** The value never touches the
+config file, so a config backup carries no credential, and it is how a container or
+systemd unit is meant to supply secrets. A literal wins over an `_env` reference if both
+are set.
+
+#### `[webhooks.targets.signature]`
+
+Optional HMAC signature over the request body. Composes with any `auth` mode, including
+`none` — which is the best combination if your receiver can verify signatures, because
+then no long-lived credential is transmitted at all.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `secret` / `secret_env` | string | (required) | The shared signing secret |
+| `algorithm` | string | `"sha256"` | `"sha256"` or `"sha512"` |
+| `header` | string | `"X-CDS-Signature"` | Header carrying `<algorithm>=<hex digest>` |
+| `timestamp_header` | string | `"X-CDS-Timestamp"` | Header carrying the Unix timestamp |
+
+The digest covers `"<timestamp>.<body>"`, so the timestamp is inside the signed
+material and a captured body cannot be replayed later under a fresh one. Verify against
+the **raw bytes** you received, not a re-serialised copy.
+
+#### Events
+
+| Event | When |
+|---|---|
+| `sync.completed` | A sync pass finished with something to report |
+| `sync.failed` | A sync pass raised |
+| `conflict.detected` | Both sides changed the same file |
+| `deletion.blocked` | [Delete protection](Daemon#delete-protection) refused a batch |
+| `activity.stopped` / `activity.resumed` | [Emergency stop](Daemon#emergency-stop) |
+| `transfer.progress` | Per-chunk transfer progress. Very high volume; opt in deliberately |
+| `webhook.test` | Sent by `cloud-drive-sync webhook test` |
+
+`deletion.blocked` is the one worth wiring to something you actually watch. It fires
+when the daemon has refused to delete files and is waiting for a human, and its payload
+carries the full breach — including `ratio`, which is what distinguishes a wiped source
+from an ordinary cleanup.
+
+#### Paths are personal data
+
+A webhook sends your filenames to another system. If that system is outside your
+control, set `include_paths = false`: paths become SHA-256 hashes and `local_path` is
+omitted from the payload, which is enough to count and correlate events but not to read
+them.
+
+#### Annotated example
+
+```toml
+[webhooks]
+enabled = true
+
+[webhooks.defaults]
+timeout_seconds = 15
+max_attempts = 5
+
+# A callback for everything, authenticated with a token from the environment.
+[[webhooks.targets]]
+define = true
+name = "ops-bus"
+url = "https://ops.example.com/hooks/cds"
+events = ["sync.completed", "sync.failed", "deletion.blocked"]
+auth = { mode = "bearer", token_env = "CDS_OPS_TOKEN" }
+
+# A Home Assistant automation on the LAN; no credential needed.
+[[webhooks.targets]]
+define = true
+name = "home-assistant"
+url = "http://ha.lan:8123/api/webhook/cds"
+events = ["sync.completed", "conflict.detected"]
+auth = { mode = "none" }
+
+[[sync.pairs]]
+uid = "3f7a1c68-2d4e-4f0b-9a11-8c5e6b0d2a94"
+local_path = "/home/me/Documents"
+account_id = "me@example.com"
+provider = "gdrive"
+
+  [sync.pairs.webhooks]
+
+  # Only tell ops about refused deletions for this folder.
+  [[sync.pairs.webhooks.targets]]
+  name = "ops-bus"
+  events = ["deletion.blocked"]
+
+  # And do not notify Home Assistant about this folder at all.
+  [[sync.pairs.webhooks.targets]]
+  name = "home-assistant"
+  enabled = false
+
+  # A callback only this folder has. `define` because the name is new.
+  [[sync.pairs.webhooks.targets]]
+  define = true
+  name = "photo-indexer"
+  url = "http://nas.lan:9000/reindex"
+  events = ["sync.completed"]
+  auth = { mode = "custom", header = "X-API-Key", value_env = "NAS_KEY" }
+```
+
+Run `cloud-drive-sync webhook list --scope pair:<uid>` to see what that actually
+resolves to, rather than working it out by hand.
+
+---
+
 ## Selective Sync (Ignore Patterns)
 
 There are two ways to exclude files from syncing.

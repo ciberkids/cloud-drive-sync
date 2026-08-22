@@ -349,3 +349,113 @@ class TestContinuousLoopsReportTheirPasses:
             )
         finally:
             await engine.stop()
+
+
+class TestRepeatFailureSuppression:
+    """A loop that keeps failing fails every poll interval.
+
+    Reporting each one would fill the activity log and flood any webhook receiver with
+    the same message forever. Surfaced by an end-to-end run: demo mode's poller raises
+    on every cycle, and before suppression that was one event every 5 seconds.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_unchanged_failure_is_reported_once_then_suppressed(
+        self, config, db, demo_dirs
+    ):
+        _local, remote = demo_dirs
+        events: list[str] = []
+
+        async def record(event, params):
+            events.append(event)
+
+        engine = SyncEngine(
+            config, db, MockDriveClient(remote),
+            file_ops=MockFileOperations(MockDriveClient(remote)),
+            change_poller=MockChangePoller(MockDriveClient(remote)),
+        )
+        engine.set_notify_callback(record)
+        ps = engine.pairs.get("pair_0")
+        if ps is None:
+            await engine.start()
+            await asyncio.sleep(0.5)
+            ps = engine.pairs["pair_0"]
+        try:
+            events.clear()
+            boom = RuntimeError("the same failure over and over")
+            for _ in range(5):
+                await engine._report_failure(ps, "Remote poll", boom)
+            assert events.count("sync_failed") == 1, (
+                f"an unchanged failure should report once; saw {events}"
+            )
+        finally:
+            await engine.stop()
+
+    @pytest.mark.asyncio
+    async def test_a_different_failure_is_never_hidden_behind_an_ongoing_one(
+        self, config, db, demo_dirs
+    ):
+        _local, remote = demo_dirs
+        events: list[tuple[str, dict]] = []
+
+        async def record(event, params):
+            events.append((event, params))
+
+        engine = SyncEngine(
+            config, db, MockDriveClient(remote),
+            file_ops=MockFileOperations(MockDriveClient(remote)),
+            change_poller=MockChangePoller(MockDriveClient(remote)),
+        )
+        engine.set_notify_callback(record)
+        try:
+            await engine.start()
+            await asyncio.sleep(0.5)
+            ps = engine.pairs["pair_0"]
+            events.clear()
+            await engine._report_failure(ps, "Remote poll", RuntimeError("first problem"))
+            await engine._report_failure(ps, "Remote poll", RuntimeError("first problem"))
+            await engine._report_failure(ps, "Remote poll", RuntimeError("a new problem"))
+            errors = [p["error"] for e, p in events if e == "sync_failed"]
+            assert errors == ["first problem", "a new problem"], (
+                f"a new failure must not be suppressed by an ongoing one; saw {errors}"
+            )
+        finally:
+            await engine.stop()
+
+    @pytest.mark.asyncio
+    async def test_the_repeat_count_is_reported_when_it_resurfaces(
+        self, config, db, demo_dirs
+    ):
+        """Suppressed occurrences are counted, not forgotten -- otherwise a long
+        outage looks like a single blip in the activity log."""
+        from cloud_drive_sync.sync import engine as engine_mod
+
+        _local, remote = demo_dirs
+        engine = SyncEngine(
+            config, db, MockDriveClient(remote),
+            file_ops=MockFileOperations(MockDriveClient(remote)),
+            change_poller=MockChangePoller(MockDriveClient(remote)),
+        )
+        try:
+            await engine.start()
+            await asyncio.sleep(0.5)
+            ps = engine.pairs["pair_0"]
+            boom = RuntimeError("persistent trouble")
+            await engine._report_failure(ps, "Remote poll", boom)
+            for _ in range(3):
+                await engine._report_failure(ps, "Remote poll", boom)
+
+            # Expire the window rather than sleeping through it.
+            key = ("pair_0", "Remote poll failed: persistent trouble")
+            engine._last_failure_report[key] -= (
+                engine_mod.FAILURE_REPORT_INTERVAL_SECONDS + 1
+            )
+            await engine._report_failure(ps, "Remote poll", boom)
+
+            rows = await db.get_recent_log(limit=50)
+            details = [r.detail for r in rows if r.status == "error"]
+            assert any("repeated 4 times" in d for d in details), (
+                f"the suppressed count was not surfaced; saw {details}"
+            )
+        finally:
+            await engine.stop()

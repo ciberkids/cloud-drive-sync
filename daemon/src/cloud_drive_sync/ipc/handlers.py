@@ -32,6 +32,7 @@ class RequestHandler:
         self._shutdown_callback = None
         self._db = None
         self._drive_client = None
+        self._webhook_delivery = None
         self._start_time = time.monotonic()
         self._pid = os.getpid()
 
@@ -80,6 +81,11 @@ class RequestHandler:
             "emergency_stop": self._emergency_stop,
             "emergency_resume": self._emergency_resume,
             "get_stop_state": self._get_stop_state,
+            "get_webhooks": self._get_webhooks,
+            "set_webhooks": self._set_webhooks,
+            "get_resolved_webhooks": self._resolve_webhooks,
+            "get_webhook_status": self._webhook_status,
+            "test_webhook": self._test_webhook,
         }
 
     def set_auth_callback(self, callback) -> None:
@@ -1382,6 +1388,146 @@ class RequestHandler:
             "https_proxy": self._config.proxy.https_proxy,
             "no_proxy": self._config.proxy.no_proxy,
         }
+
+    # ── Webhooks ────────────────────────────────────────────────────
+
+    def _webhook_scope(self, params: dict):
+        """Resolve the ``scope`` parameter to the config block it names.
+
+        Returns ``(label, block, setter)``. ``pair:<uid>`` is addressed by the stable
+        uid rather than the positional index, so a scope that was valid when the caller
+        read it cannot come to mean a different folder by the time they write it.
+        """
+        scope = (params or {}).get("scope", "global")
+        if scope == "global":
+            def set_global(block):
+                self._config.webhooks = block
+            return "global", self._config.webhooks, set_global
+
+        if scope.startswith("pair:"):
+            uid = scope.removeprefix("pair:")
+            for pair in self._config.sync.pairs:
+                if pair.uid == uid:
+                    def set_pair(block, target=pair):
+                        target.webhooks = block
+                    return scope, pair.webhooks, set_pair
+            raise TypeError(f"No sync pair with uid {uid!r}")
+
+        raise TypeError(
+            f"Unknown webhook scope {scope!r}; expected 'global' or 'pair:<uid>'"
+        )
+
+    async def _get_webhooks(self, params: dict) -> dict:
+        """Return one level's webhook config, with every literal secret masked."""
+        from cloud_drive_sync.webhooks.api import masked
+
+        label, block, _setter = self._webhook_scope(params)
+        return {"scope": label, "webhooks": masked(block)}
+
+    async def _set_webhooks(self, params: dict) -> dict:
+        """Replace one level's webhook config.
+
+        Requires authentication to be configured -- see :mod:`cloud_drive_sync.webhooks.api`
+        for why this endpoint does not inherit the posture of the others.
+        """
+        from cloud_drive_sync.webhooks.api import (
+            WebhookAuthRequired,
+            apply_update,
+            masked,
+            require_http_token,
+        )
+
+        try:
+            require_http_token(self._config.http.token)
+        except WebhookAuthRequired as exc:
+            raise TypeError(str(exc)) from exc
+
+        label, block, setter = self._webhook_scope(params)
+        update = (params or {}).get("webhooks")
+        if not isinstance(update, dict):
+            raise TypeError("webhooks must be an object")
+
+        updated = apply_update(block, update)
+        setter(updated)
+        self._config.save()
+
+        # Report the problems the new configuration would produce, so a bad edit is
+        # visible at the point of saving rather than silently never firing.
+        _targets, problems = self._resolve_for_scope(label)
+        return {"scope": label, "webhooks": masked(updated), "problems": problems}
+
+    def _resolve_for_scope(self, label: str):
+        from cloud_drive_sync.webhooks.resolver import SCOPE_GLOBAL, resolve_targets
+
+        levels = [(SCOPE_GLOBAL, self._config.webhooks)]
+        if label.startswith("pair:"):
+            uid = label.removeprefix("pair:")
+            pair = next((p for p in self._config.sync.pairs if p.uid == uid), None)
+            if pair is not None:
+                levels.append((label, pair.webhooks))
+        return resolve_targets(levels)
+
+    async def _resolve_webhooks(self, params: dict) -> dict:
+        """The effective targets for a scope — what will actually fire, and why.
+
+        The question a three-level merge makes hard to answer by reading the config, so
+        this is the answer the CLI and UI both show.
+        """
+        from cloud_drive_sync.webhooks.resolver import target_for_display
+
+        label, _block, _setter = self._webhook_scope(params)
+        targets, problems = self._resolve_for_scope(label)
+        return {
+            "scope": label,
+            "targets": [target_for_display(t) for t in targets],
+            "problems": problems,
+        }
+
+    async def _webhook_status(self, params: dict) -> dict:
+        """Delivery health per target: counters, queue depth, breaker state."""
+        delivery = getattr(self, "_webhook_delivery", None)
+        if delivery is None:
+            return {"running": False, "targets": []}
+        return {"running": True, "targets": delivery.stats()}
+
+    async def _test_webhook(self, params: dict) -> dict:
+        """Send a ``webhook.test`` event to one target and report the outcome."""
+        from cloud_drive_sync.webhooks.api import WebhookAuthRequired, require_http_token
+
+        try:
+            require_http_token(self._config.http.token)
+        except WebhookAuthRequired as exc:
+            raise TypeError(str(exc)) from exc
+
+        delivery = getattr(self, "_webhook_delivery", None)
+        if delivery is None:
+            raise TypeError(
+                "Webhook delivery is not running. It starts with the sync engine, so "
+                "authenticate an account first."
+            )
+
+        label, _block, _setter = self._webhook_scope(params)
+        targets, problems = self._resolve_for_scope(label)
+        wanted = (params or {}).get("name")
+        if wanted:
+            targets = [t for t in targets if t.name == wanted]
+            if not targets:
+                raise TypeError(f"No resolved target named {wanted!r} in {label}")
+
+        from cloud_drive_sync.webhooks.payload import make_event
+
+        raw = make_event("webhook.test", {"message": "test event from cloud-drive-sync"})
+        for target in targets:
+            delivery.submit(raw, target, {})
+        return {
+            "scope": label,
+            "sent_to": [t.target_key for t in targets],
+            "problems": problems,
+        }
+
+    def set_webhook_delivery(self, delivery) -> None:
+        """Give the handler a view of delivery, for status and test."""
+        self._webhook_delivery = delivery
 
     async def _get_proxy(self, params: dict) -> dict:
         """Return current proxy settings."""

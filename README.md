@@ -95,6 +95,7 @@ Authentication in headless mode works without a local browser — the daemon pri
 - **Conflict resolution** — three strategies: keep both copies, newest wins, or ask the user
 - **Real-time monitoring** — local filesystem watcher (watchdog) + remote change polling
 - **Desktop notifications** — native OS notifications for sync events, conflicts, and errors
+- **Event webhooks** — POST sync events to your own endpoint, configurable globally or per pair, with Basic/bearer/custom auth and HMAC signing (see [Webhooks](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#webhooks))
 - **System tray** — always-on tray icon with dynamic status indicators (idle, syncing, error, conflict)
 - **Headless CLI** — full management via command line without the GUI
 - **Selective sync** — per-pair ignore patterns and `.cloud-drive-sync-ignore` files (gitignore-style)

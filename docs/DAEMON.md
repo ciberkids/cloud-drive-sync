@@ -478,6 +478,18 @@ Treat a reachable port as equivalent to filesystem access to everything the daem
 | GET/PUT | `/api/settings/proxy` | HTTP/HTTPS proxy settings |
 | PUT | `/api/settings/conflict-strategy` | Conflict strategy (`keep_both` / `newest_wins` / `ask_user`) |
 
+**Webhooks**
+
+The `scope` query parameter selects the level: `global` (the default) or `pair:<uid>`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/webhooks?scope=S` | Stored config for a level, with secrets masked |
+| PUT | `/api/webhooks?scope=S` | Replace a level's config. Requires a token to be configured |
+| GET | `/api/webhooks/resolved?scope=S` | The callbacks that will actually fire, after merging |
+| GET | `/api/webhooks/status` | Delivery health per target |
+| POST | `/api/webhooks/test?scope=S` | Send a `webhook.test` event. Requires a token to be configured |
+
 **File Browser (headless)**
 
 | Method | Path | Description |
@@ -819,6 +831,113 @@ The size is measured once, before the first chunk. If the file is **truncated** 
 This is a normal, retryable failure. The transfer is retried up to three times, re-measuring the file each time, so a file that has settled at its new size uploads on the next attempt.
 
 If the file **grows** instead, the upload sends the size it measured and stops there. The cloud copy is a prefix of the local file, and the next scan sees the newer modification time and uploads again.
+
+## Webhooks
+
+Outbound HTTP callbacks: when something happens, the daemon POSTs a JSON event to an
+endpoint you choose. Configured in `config.toml` — see
+[`[webhooks]`](Configuration#webhooks) for every key — at two levels, global and per
+pair, which merge.
+
+The motivating case is a headless install. A refused mass deletion pauses a pair and
+waits for a human; a conflict waits for a decision; an expired credential stops an
+account syncing. On a NAS or in a container, nobody is looking at the UI, and all of
+that currently surfaces only if someone runs `activity`.
+
+### What a payload looks like
+
+One event per POST, `Content-Type: application/json`:
+
+```json
+{
+  "schema_version": 1,
+  "event": "sync.completed",
+  "event_id": "9f2b0c14-7e83-4a51-b6d2-1c8f4e5a7b30",
+  "occurred_at": "2026-08-20T12:34:56.789Z",
+  "source": { "app": "cloud-drive-sync", "version": "2.4.5", "instance_id": "b71e4f9a-..." },
+  "scope": {
+    "pair_id": "3f7a1c68-2d4e-4f0b-9a11-8c5e6b0d2a94",
+    "pair_label": "/home/me/Documents",
+    "account": { "provider": "gdrive", "email": "me@example.com" },
+    "local_path": "/home/me/Documents",
+    "remote_folder_id": "0B9aXqZ1kLmNoPqRs"
+  },
+  "delivery": { "target": "ops-bus", "target_key": "global|ops-bus", "attempt": 1, "sent_at": "..." },
+  "data": { "uploaded": 12, "downloaded": 3, "deleted": 0, "errors": 0, "files": { "...": [] } }
+}
+```
+
+Three things a receiver should rely on:
+
+- **`event_id` is stable across retries.** Delivery is at-least-once, so this is your
+  deduplication key. The same event redelivered carries the same id; only
+  `delivery.attempt` changes.
+- **`scope.pair_id` is stable.** It is the pair's `uid`, not its position, so removing
+  another pair will not silently re-point it at a different folder.
+- **Ignore fields you do not know.** New fields are added without bumping
+  `schema_version`; only a breaking change bumps it.
+
+Order events on `occurred_at` rather than on arrival: a retried event can land after a
+later one.
+
+### Reliability, and what it does not promise
+
+A webhook never slows down a sync. Events are queued and delivered by a background
+worker per target, so a hung endpoint costs nothing on the sync path.
+
+- Retries on connection errors, timeouts, `408`, `429` and `5xx`, with exponential
+  backoff and jitter, honouring `Retry-After`. Other `4xx` responses are **not**
+  retried — a `401` is a configuration error, and retrying it per event would turn a
+  typo into a flood.
+- Redirects are never followed.
+- After 10 consecutive failures a target is marked unhealthy and drops to one attempt
+  every five minutes. `webhook status` shows this.
+- Each target has a bounded queue (1000 events). On overflow the oldest are dropped and
+  counted. `deletion.blocked`, `sync.failed` and `account.auth_failed` use a separate
+  lane so a busy stream cannot evict an alert.
+- **The queue is in memory.** Events still queued when the daemon stops are lost. For
+  the case where that matters most this is less bad than it sounds: a refused deletion
+  is persisted independently and still waiting in `deletions list` after a restart, so
+  the information survives even when the notification did not.
+
+### Checking it works
+
+```bash
+# What will actually fire for a folder, after merging global and per-pair config
+cloud-drive-sync webhook list --scope pair:3f7a1c68-2d4e-4f0b-9a11-8c5e6b0d2a94
+
+# Send a test event
+cloud-drive-sync webhook test --name ops-bus
+
+# Delivery counters, queue depth and breaker state
+cloud-drive-sync webhook status
+```
+
+`webhook list` reports configuration problems as well as targets — a callback that
+inherited no URL, an `auth` block with no `mode`, or a new name missing `define = true`.
+Those are logged at startup too.
+
+### Security notes
+
+- **Editing webhook config requires authentication to be enabled.** This is stricter
+  than the other endpoints on purpose. Everything they can do moves your data between
+  your own accounts; a webhook sends your file activity to a host the caller names, and
+  makes the daemon issue HTTP requests inside your network. On an install with no token
+  set, `/api/*` is reachable without credentials — so webhook writes are refused there
+  rather than inheriting that. Run `cloud-drive-sync gen-token` first.
+- Secrets are never returned by a read, logged, or written to the activity log. Use the
+  `_env` form (`token_env = "..."`) so they never enter `config.toml` at all.
+- URLs are only ever logged as scheme and host, because a path or query string can
+  itself be the credential.
+- TLS verification is on by default. Turning it off logs a warning naming the target.
+- Private and LAN addresses are allowed by default, because posting to something on
+  your own network is the main use case. Set
+  `webhooks.allow_private_addresses = false` globally to refuse them on a shared box.
+
+> **Not the same as provider push notifications.** Google Drive push and Nextcloud
+> `notify_push` are *inbound* — the cloud telling the daemon something changed. These
+> webhooks are *outbound*. See [Nextcloud Change Detection](#nextcloud-change-detection)
+> for the inbound kind.
 
 ## Delete Protection
 

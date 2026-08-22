@@ -1,0 +1,28 @@
+meta {
+  name: Get Resolved Webhooks
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/webhooks/resolved?scope=global
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("returns targets and problems", function() {
+    expect(res.body.targets).to.be.an("array");
+    expect(res.body.problems).to.be.an("array");
+  });
+
+  // The resolved view is the one exposed to assistants, so the endpoint must be
+  // reduced to scheme+host: a url path or query can itself be the credential.
+  test("endpoints carry no path or query", function() {
+    res.body.targets.forEach(function(t) {
+      expect(t.endpoint).to.match(/^[a-z]+:\/\/[^/?]+$/);
+    });
+  });
+}
