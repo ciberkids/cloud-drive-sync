@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -58,6 +59,8 @@ class Daemon:
         self._engine: SyncEngine | None = None
         self._handler: RequestHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._webhook_delivery = None
+        self._webhook_dispatcher = None
         self._ipc_server: IpcServer | None = None
         self._http_server = None
         self._shutdown_event = asyncio.Event()
@@ -331,6 +334,7 @@ class Daemon:
             # Wire up notifications if engine is ready
             if self._engine:
                 self._engine.set_notify_callback(self._ipc_server.notify_all)
+                await self._start_webhooks()
 
             # Install signal handlers
             loop = asyncio.get_running_loop()
@@ -388,6 +392,15 @@ class Daemon:
     async def _shutdown(self) -> None:
         """Gracefully shut down all components."""
         log.info("Shutting down...")
+
+        if self._webhook_delivery is not None:
+            # First, so nothing queues more work while the engine winds down. Does not
+            # wait for the queue to drain: a daemon that will not exit because a
+            # webhook endpoint is slow is a worse problem than a lost notification.
+            with contextlib.suppress(Exception):
+                await self._webhook_delivery.stop()
+            self._webhook_delivery = None
+            self._webhook_dispatcher = None
 
         if self._engine:
             await self._engine.stop()
@@ -519,7 +532,7 @@ class Daemon:
                     self._engine.set_notify_callback(self._ipc_server.notify_all)
 
                 loop.call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(self._engine.start())
+                    lambda: asyncio.ensure_future(self._start_engine_with_webhooks())
                 )
                 log.info("Sync engine initialized after authentication")
 
@@ -584,7 +597,9 @@ class Daemon:
                 self._handler.set_drive_client(client)
                 if self._ipc_server:
                     self._engine.set_notify_callback(self._ipc_server.notify_all)
-                loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._engine.start()))
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self._start_engine_with_webhooks())
+                )
             elif self._engine is not None:
                 self._engine._clients[f"{provider}:{email}"] = client
                 self._handler.set_drive_client(client)
@@ -600,6 +615,66 @@ class Daemon:
         """Stop and restart the sync engine (e.g. after credential refresh)."""
         if self._engine:
             await self._engine.stop()
+            await self._engine.start()
+
+    async def _start_webhooks(self) -> None:
+        """Stand up webhook delivery and subscribe it to the engine's event bus.
+
+        Called from every path that creates an engine. The dispatcher is a second
+        subscriber alongside the IPC notifier -- which is the whole reason the engine
+        grew a bus instead of a single callback slot.
+        """
+        if self._engine is None or self._webhook_delivery is not None:
+            return
+        from cloud_drive_sync import __version__
+        from cloud_drive_sync.webhooks.delivery import WebhookDelivery
+        from cloud_drive_sync.webhooks.dispatcher import WebhookDispatcher
+        from cloud_drive_sync.webhooks.identity import instance_id
+        from cloud_drive_sync.webhooks.payload import PayloadContext
+
+        context = PayloadContext(
+            app="cloud-drive-sync",
+            version=__version__,
+            instance_id=instance_id(),
+        )
+        self._webhook_delivery = WebhookDelivery(context)
+        await self._webhook_delivery.start()
+        self._webhook_dispatcher = WebhookDispatcher(self._config, self._webhook_delivery)
+        self._engine.bus.subscribe(self._webhook_dispatcher)
+
+        configured = len(self._config.webhooks.targets) + sum(
+            len(p.webhooks.targets) for p in self._config.sync.pairs
+        )
+        if configured:
+            # Named at startup so an unexpected destination is discoverable rather
+            # than only visible by reading the config.
+            from cloud_drive_sync.webhooks.redaction import safe_endpoint
+            hosts = sorted({
+                safe_endpoint(t.url)
+                for t in self._config.webhooks.targets
+                if t.url
+            } | {
+                safe_endpoint(t.url)
+                for pair in self._config.sync.pairs
+                for t in pair.webhooks.targets
+                if t.url
+            })
+            log.info(
+                "Webhooks enabled: %d target definition(s), posting to %s",
+                configured,
+                ", ".join(hosts) or "(no url configured)",
+            )
+
+    async def _start_engine_with_webhooks(self) -> None:
+        """Subscribe webhook delivery, then start the engine.
+
+        Order matters: ``_initial_sync`` emits ``sync_complete`` for each pair, and a
+        dispatcher subscribed afterwards would miss it. Used by the two authentication
+        paths, which construct the engine on a worker thread and schedule its start
+        back onto the loop.
+        """
+        await self._start_webhooks()
+        if self._engine is not None:
             await self._engine.start()
 
     def _log_auth_event(self, action: str, detail: str, status: str) -> None:

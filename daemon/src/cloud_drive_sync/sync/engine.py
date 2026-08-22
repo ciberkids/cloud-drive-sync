@@ -815,7 +815,31 @@ class SyncEngine:
             with contextlib.suppress(Exception):
                 await self._notify_callback(
                     "delete_blocked",
-                    {"pair_id": ps.pair_id, "message": verdict.describe()},
+                    {
+                        "pair_id": ps.pair_id,
+                        "message": verdict.describe(),
+                        # The structured breach, not just the prose. A receiver can
+                        # act on `ratio` -- 4213 of 5001 tracked files is a wiped
+                        # source, 4213 of 4,000,000 is a folder cleanup -- and can act
+                        # on nothing at all if given only a sentence.
+                        "breaches": [
+                            {
+                                "direction": str(b.direction),
+                                "count": b.count,
+                                "limit": b.limit,
+                                "tracked": b.tracked,
+                                "ratio": round(b.ratio, 4),
+                                "recent": b.recent,
+                                "total_in_window": b.total_in_window,
+                                "window_seconds": b.window_seconds,
+                                "sample": list(b.sample),
+                                "sample_truncated": len(b.sample) >= failsafe.SAMPLE_SIZE,
+                            }
+                            for b in verdict.breaches
+                        ],
+                        "pair_paused": True,
+                        "resolution_required": True,
+                    },
                 )
         return False
 
