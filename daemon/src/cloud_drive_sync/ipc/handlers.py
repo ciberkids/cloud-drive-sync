@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from typing import Any, ClassVar
 
 from cloud_drive_sync.config import Config, SyncPair, SyncRules
@@ -585,7 +586,11 @@ class RequestHandler:
         self._cleanup_orphaned_pairs()
         return [
             {
+                # `id` stays the positional index: every front-end already joins on
+                # it, and the engine/database still key on `pair_N`. `uid` is the
+                # stable identity -- the only one safe to hand to a third party.
                 "id": str(i),
+                "uid": p.uid,
                 "local_path": p.local_path,
                 "remote_folder_id": p.remote_folder_id,
                 "enabled": p.enabled,
@@ -642,6 +647,9 @@ class RequestHandler:
             ignore_patterns=params.get("ignore_patterns", []),
             account_id=params.get("account_id", ""),
             provider=provider,
+            # Minted here rather than derived, so two pairs that differ only by a
+            # field later edited to match can never collide.
+            uid=str(uuid.uuid4()),
         )
         self._config.sync.pairs.append(pair)
         self._config.save()

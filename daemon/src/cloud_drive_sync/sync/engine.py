@@ -477,26 +477,34 @@ class SyncEngine:
                     status="success", detail=f"Sync complete: {', '.join(parts)}",
                 ))
 
-            # Notify UI
+            # Notify UI.
+            #
+            # Suppressed like the delete_blocked/activity_stopped/activity_resumed
+            # sites (#59). This one used to be bare, and what follows it is
+            # load-bearing: the change-token upsert and _start_continuous below. A
+            # consumer that raised took both out, leaving the pair with no watcher
+            # and no poller until the daemon was restarted -- reported to the user as
+            # "Sync failed" with the consumer's exception attached.
             if self._notify_callback:
-                await self._notify_callback("sync_complete", {
-                    "pair_id": pair_id,
-                    "uploaded": uploaded,
-                    "downloaded": downloaded,
-                    "mkdirs": mkdirs,
-                    "deleted": deleted,
-                    "errors": errors,
-                    "files": {
-                        "uploaded": uploaded_files,
-                        "downloaded": downloaded_files,
-                        "deleted": deleted_files,
-                        "conflicted": conflicted_files,
-                    },
-                })
-                await self._notify_callback("status_changed", {
-                    "pair_id": pair_id,
-                    "status": "idle",
-                })
+                with contextlib.suppress(Exception):
+                    await self._notify_callback("sync_complete", {
+                        "pair_id": pair_id,
+                        "uploaded": uploaded,
+                        "downloaded": downloaded,
+                        "mkdirs": mkdirs,
+                        "deleted": deleted,
+                        "errors": errors,
+                        "files": {
+                            "uploaded": uploaded_files,
+                            "downloaded": downloaded_files,
+                            "deleted": deleted_files,
+                            "conflicted": conflicted_files,
+                        },
+                    })
+                    await self._notify_callback("status_changed", {
+                        "pair_id": pair_id,
+                        "status": "idle",
+                    })
 
             # Get change token for future polling
             poller = ps.poller or self._poller

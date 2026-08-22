@@ -617,13 +617,18 @@ class Daemon:
             status=status,
             detail=detail,
         )
-        try:
-            loop = asyncio.get_event_loop()
-            loop.call_soon_threadsafe(
-                lambda: asyncio.ensure_future(self._db.add_log_entry(entry))
-            )
-        except RuntimeError:
-            pass
+        # `self._loop`, not `asyncio.get_event_loop()` (#58). This runs on a worker
+        # thread -- `_do_auth` is invoked via `asyncio.to_thread` from the IPC and
+        # HTTP handlers -- where `get_event_loop()` raises RuntimeError. The bare
+        # `except RuntimeError: pass` then swallowed it, so every auth lifecycle row
+        # raised through those paths was silently discarded, including the failures.
+        loop = self._loop
+        if loop is None:
+            log.warning("Cannot record auth event %r: the event loop is not running yet", action)
+            return
+        loop.call_soon_threadsafe(
+            lambda: asyncio.ensure_future(self._db.add_log_entry(entry))
+        )
 
     @staticmethod
     def _discard_pid_file(pf) -> None:

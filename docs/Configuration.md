@@ -206,6 +206,30 @@ One `[[sync.pairs]]` section per sync pair. Multiple pairs are supported.
 | `max_deletions_per_sync` | integer | (inherits global) | Per-pair delete cap; `0` disables delete protection for this pair |
 | `deletion_window_seconds` | integer | (inherits global) | Per-pair window for the delete cap |
 | `force_polling` | boolean | `false` | Nextcloud only: skip `notify_push` and always walk the tree — see [Nextcloud Change Detection](Daemon#nextcloud-change-detection) |
+| `uid` | string | (assigned automatically) | Stable identifier for this pair. Written by the daemon; you do not need to set it. See below. |
+
+#### `uid` — the stable pair identifier
+
+Assigned automatically. You never need to write it, and editing it by hand is a bad
+idea — see below.
+
+Internally a pair is identified by its **position** in this file: pair *N* is `pair_N`
+in the engine and in the state database. That works because removing a pair renumbers
+the stored rows to match, but the number is not stable across edits. `uid` is a stable
+identity that does not move.
+
+Behaviour worth knowing:
+
+- **New pairs** get a random `uid` when they are created.
+- **Pairs that predate the field** get one derived from `provider`, `account_id`,
+  `local_path` and `remote_folder_id` the first time the config is loaded. It is
+  written out the next time any setting is saved.
+- Once written, the `uid` is fixed. Changing `local_path` afterwards does **not**
+  change it — the derivation is a one-time bridge, not an ongoing function of those
+  fields.
+- Deleting the `uid` line causes a new one to be derived on the next load. If the pair
+  has since been moved, the derived value will differ from the original, so anything
+  keyed on the old value will see it as a different pair.
 
 #### `sync_mode` values
 

@@ -41,7 +41,13 @@ pub struct DaemonStatus {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncPair {
+    /// Positional index, as a string. Every front-end joins on this and the daemon
+    /// keys sync state on `pair_N`, so it keeps its existing meaning.
     pub id: String,
+    /// Stable identity, independent of position. `serde(default)` because a daemon
+    /// older than this field omits it, and the desktop app must still start.
+    #[serde(default)]
+    pub uid: String,
     pub local_path: String,
     pub remote_folder_id: String,
     pub enabled: bool,

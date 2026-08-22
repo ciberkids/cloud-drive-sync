@@ -93,7 +93,10 @@ export interface DaemonStatus {
 export type SyncMode = "two_way" | "upload_only" | "download_only";
 
 export interface SyncPair {
+  /** Positional index as a string ("0", "1"), as get_sync_pairs returns it. */
   id: string;
+  /** Stable per-pair identity. Optional: a daemon predating it omits the field. */
+  uid?: string;
   local_path: string;
   remote_folder_id: string;
   enabled: boolean;

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,6 +13,30 @@ from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.paths import config_path
 
 log = get_logger("config")
+
+# Namespace for deriving a stable uid for pairs that predate the ``uid`` field.
+# Expressed as a uuid5 of a fixed URL rather than a hardcoded constant so the input
+# is self-documenting; the value is stable for all time either way.
+_PAIR_UID_NAMESPACE = uuid.uuid5(
+    uuid.NAMESPACE_URL, "https://github.com/ciberkids/cloud-drive-sync/pair-uid"
+)
+
+
+def derive_pair_uid(
+    *, provider: str, account_id: str, local_path: str, remote_folder_id: str
+) -> str:
+    """Derive a stable uid for a pair that has none stored.
+
+    Deterministic on purpose. A random uuid minted per load would hand a different
+    identity to webhook receivers after every restart, which is worse than having no
+    identity at all. Derivation is a one-time bridge: the value is persisted by the
+    next ``save()``, after which these four fields no longer influence it.
+
+    Note this must never be called from a context that then writes the config as a
+    side effect of *loading* it -- see the comment in :meth:`Config.load`.
+    """
+    key = f"{provider}|{account_id}|{local_path}|{remote_folder_id}"
+    return str(uuid.uuid5(_PAIR_UID_NAMESPACE, key))
 
 
 @dataclass
@@ -66,6 +91,13 @@ class SyncPair:
     # Force ETag polling even when the server advertises notify_push (#56). The
     # mechanism is chosen automatically; this exists for when that choice is wrong.
     force_polling: bool = False
+    # Stable identity, independent of position in the list. The engine and the
+    # database still key on the positional ``pair_N`` (roadmap item 9), which is
+    # survivable internally because removal renumbers the stored rows to match --
+    # but it is not survivable in an outbound payload, where a receiver keys its own
+    # state on whatever we send and we cannot migrate it. Minted at creation;
+    # derived deterministically for pairs that predate this field.
+    uid: str = ""
 
 
 @dataclass
@@ -192,8 +224,26 @@ class Config:
                     max_deletions_per_sync=pair_data.get("max_deletions_per_sync"),
                     deletion_window_seconds=pair_data.get("deletion_window_seconds"),
                     force_polling=pair_data.get("force_polling", False),
+                    uid=pair_data.get("uid", ""),
                 )
             )
+
+        # Backfill a stable uid for pairs written before the field existed.
+        #
+        # Done in memory only. `load()` must not write -- first-run detection is
+        # `not config_path().exists()`, so a config created as a side effect of
+        # loading one would make every install look like an upgrade and silently
+        # switch off authentication-on-by-default for new installs (roadmap item 7,
+        # pinned by test_feature_first_run_token). The derived value is persisted by
+        # the next save(), which is a write the caller asked for.
+        for pair in cfg.sync.pairs:
+            if not pair.uid:
+                pair.uid = derive_pair_uid(
+                    provider=pair.provider,
+                    account_id=pair.account_id,
+                    local_path=pair.local_path,
+                    remote_folder_id=pair.remote_folder_id,
+                )
 
         # Warn if two pairs share a local_path but have conflicting strategies
         path_strategies: dict[str, str] = {}
@@ -285,6 +335,9 @@ class Config:
                             else {}
                         ),
                         **({"force_polling": True} if p.force_polling else {}),
+                        # Truthiness is correct here: "" means "not yet assigned",
+                        # and there is no meaningful empty-but-set uid.
+                        **({"uid": p.uid} if p.uid else {}),
                         "sync_rules": {
                             "max_file_size_mb": p.sync_rules.max_file_size_mb,
                             "include_regex": p.sync_rules.include_regex,
