@@ -158,13 +158,17 @@ class TestARaisingConsumerDoesNotBreakTheSyncPass:
             assert "status_changed" in seen, f"status_changed was not delivered; saw {seen}"
 
     @pytest.mark.asyncio
-    async def test_a_consumer_raising_on_the_first_event_does_not_hide_the_second(
+    async def test_a_consumer_raising_on_one_event_still_gets_the_next(
         self, config, db, demo_dirs
     ):
-        """Both awaits share one suppress block, so a raise in `sync_complete` stops
-        `status_changed` too. That is acceptable -- losing a notification is survivable,
-        losing the sync is not -- but it should be a recorded decision rather than a
-        surprise, so this test documents the actual behaviour.
+        """Isolation is per delivery, not per pass.
+
+        Worth pinning because the weaker version is a plausible implementation and is
+        noticeably worse. If the guard were a single ``suppress`` around both awaits,
+        a consumer that failed on ``sync_complete`` would also silently lose
+        ``status_changed`` -- so one bad event would leave the UI showing a pair as
+        still syncing forever. ``EventBus.emit`` wraps each subscriber call, so the
+        next event is delivered normally.
         """
         local, remote = demo_dirs
         (local / "file.txt").write_text("data")
@@ -178,9 +182,10 @@ class TestARaisingConsumerDoesNotBreakTheSyncPass:
 
         gen = _run_engine_with_callback(config, db, MockDriveClient(remote), explode_on_first)
         async for _engine in gen:
-            assert seen == ["sync_complete"], (
-                "documented behaviour: one suppress block covers both awaits, so the "
-                f"second is skipped after the first raises; saw {seen}"
+            assert "sync_complete" in seen
+            assert "status_changed" in seen, (
+                "a raise on one event must not suppress the next one; "
+                f"saw {seen}"
             )
-            # The sync itself must still have completed.
+            # And the sync itself must still have completed.
             assert await db.get_change_token("pair_0") is not None

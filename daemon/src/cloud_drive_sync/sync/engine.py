@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from cloud_drive_sync.db.models import ChangeToken, ConflictRecord, SyncLogEntry
 from cloud_drive_sync.drive.changes import ChangePoller, RemoteChange
 from cloud_drive_sync.drive.client import DriveClient
 from cloud_drive_sync.drive.operations import FileOperations
+from cloud_drive_sync.events import EventBus
 from cloud_drive_sync.local.hasher import md5_hash
 from cloud_drive_sync.local.scanner import DEFAULT_IGNORE_PATTERNS, load_ignore_file, scan_directory
 from cloud_drive_sync.local.watcher import ChangeType, DirectoryWatcher, LocalChange
@@ -38,6 +40,56 @@ log = get_logger("sync.engine")
 # How often to prune the activity log and release free database pages. Far
 # longer than poll_interval: this is upkeep, not part of the sync cycle.
 MAINTENANCE_INTERVAL_SECONDS = 6 * 60 * 60
+
+
+#: Cap on how many paths a summary carries. The payload/notification is a summary,
+#: not a manifest: an initial sync of a large library produces tens of thousands of
+#: paths, and every consumer downstream has to hold them.
+_SUMMARY_SAMPLE_LIMIT = 200
+
+
+def summarise_actions(
+    executed: list[SyncAction],
+    failed: list[SyncAction],
+    *,
+    conflict_source: list[SyncAction] | None = None,
+) -> dict:
+    """Reduce a batch of actions to the counts and samples a consumer needs.
+
+    Extracted because three places now report a completed pass -- the initial sync and
+    both continuous loops -- and three hand-rolled copies of this counting would drift
+    apart. ``failed`` actions are excluded from the counts: they did not happen.
+    """
+    counts = {"uploaded": 0, "downloaded": 0, "mkdirs": 0, "deleted": 0}
+    files: dict[str, list[str]] = {
+        "uploaded": [], "downloaded": [], "deleted": [], "conflicted": [],
+    }
+    failed_paths = {a.path for a in failed}
+
+    def sample(bucket: str, path: str) -> None:
+        if len(files[bucket]) < _SUMMARY_SAMPLE_LIMIT:
+            files[bucket].append(path)
+
+    for a in executed:
+        if a.path in failed_paths:
+            continue
+        if a.action == ActionType.UPLOAD:
+            counts["uploaded"] += 1
+            sample("uploaded", a.path)
+        elif a.action == ActionType.DOWNLOAD:
+            counts["downloaded"] += 1
+            sample("downloaded", a.path)
+        elif a.action == ActionType.MKDIR:
+            counts["mkdirs"] += 1
+        elif a.action in (ActionType.DELETE_LOCAL, ActionType.DELETE_REMOTE):
+            counts["deleted"] += 1
+            sample("deleted", a.path)
+
+    for a in conflict_source if conflict_source is not None else executed:
+        if a.action == ActionType.CONFLICT:
+            sample("conflicted", a.path)
+
+    return {**counts, "errors": len(failed), "files": files}
 
 
 @dataclass
@@ -82,7 +134,12 @@ class SyncEngine:
         self._pairs: dict[str, PairStatus] = {}
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
-        self._notify_callback = None
+        # One bus, many consumers. `_notify_callback` stays as the name the rest of
+        # this class (and the executors it hands the reference to) already uses, but it
+        # now points at the bus's emit -- stable for the process lifetime, and it
+        # isolates subscriber exceptions so an observer cannot break a sync pass (#59).
+        self._bus = EventBus()
+        self._notify_callback = self._bus.emit
         # Pairs whose next pass may delete freely because a user approved a
         # refused batch. One-shot: consumed by the next _deletions_allowed check,
         # otherwise approving would loop — the next pass re-plans the same
@@ -97,9 +154,21 @@ class SyncEngine:
     def conflict_resolver(self) -> ConflictResolver:
         return self._conflict_resolver
 
+    @property
+    def bus(self) -> EventBus:
+        """The event bus. Subscribe to observe daemon events."""
+        return self._bus
+
     def set_notify_callback(self, callback) -> None:
-        """Set the IPC notification callback."""
-        self._notify_callback = callback
+        """Register a notification consumer.
+
+        Kept for the three ``daemon.py`` call sites that wire the IPC server, and
+        because "set" reads correctly when there is only one consumer. It is a
+        subscribe: calling it twice with different callables leaves both registered
+        rather than the second silently displacing the first, which is what the old
+        single slot did.
+        """
+        self._bus.subscribe(callback)
 
     async def start(self) -> None:
         """Initialize and start sync for all enabled pairs."""
@@ -397,44 +466,25 @@ class SyncEngine:
                     resolved_actions = resolved_actions + orphan_actions
 
             # Execute
-            uploaded = 0
-            downloaded = 0
-            mkdirs = 0
-            deleted = 0
-            errors = 0
-            uploaded_files: list[str] = []
-            downloaded_files: list[str] = []
-            deleted_files: list[str] = []
-            conflicted_files: list[str] = []
+            summary = summarise_actions([], [], conflict_source=actions)
             if ps.executor:
                 if not await self._may_execute(ps, resolved_actions):
                     return
                 failed = await ps.executor.execute_all(resolved_actions)
-                errors = len(failed)
-                failed_paths = {a.path for a in failed} if failed else set()
                 if failed:
                     ps.errors.extend(f"Failed: {a.path}" for a in failed)
-                for a in resolved_actions:
-                    if a.path in failed_paths:
-                        continue
-                    if a.action == ActionType.UPLOAD:
-                        uploaded += 1
-                        if len(uploaded_files) < 200:
-                            uploaded_files.append(a.path)
-                    elif a.action == ActionType.DOWNLOAD:
-                        downloaded += 1
-                        if len(downloaded_files) < 200:
-                            downloaded_files.append(a.path)
-                    elif a.action == ActionType.MKDIR:
-                        mkdirs += 1
-                    elif a.action in (ActionType.DELETE_LOCAL, ActionType.DELETE_REMOTE):
-                        deleted += 1
-                        if len(deleted_files) < 200:
-                            deleted_files.append(a.path)
-            # Collect unresolved conflicts (ask_user strategy)
-            for a in actions:
-                if a.action == ActionType.CONFLICT and len(conflicted_files) < 200:
-                    conflicted_files.append(a.path)
+                summary = summarise_actions(
+                    resolved_actions, failed, conflict_source=actions
+                )
+            uploaded = summary["uploaded"]
+            downloaded = summary["downloaded"]
+            mkdirs = summary["mkdirs"]
+            deleted = summary["deleted"]
+            errors = summary["errors"]
+            uploaded_files = summary["files"]["uploaded"]
+            downloaded_files = summary["files"]["downloaded"]
+            deleted_files = summary["files"]["deleted"]
+            conflicted_files = summary["files"]["conflicted"]
 
             # Prune DB entries for paths that no longer exist on local or remote.
             # Without this, files_synced accumulates across wipe+resync cycles (#39).
@@ -538,6 +588,43 @@ class SyncEngine:
         task_remote = asyncio.create_task(self._remote_poll_loop(ps))
         self._tasks.append(task_remote)
 
+    async def _report_pass(self, ps: PairStatus, summary: dict, duration: float) -> None:
+        """Announce a completed continuous-sync pass (#60).
+
+        Before this, only ``_initial_sync`` reported completion, so any consumer saw
+        one event per pair per daemon start and silence afterwards.
+        """
+        if not any(
+            summary[k] for k in ("uploaded", "downloaded", "mkdirs", "deleted", "errors")
+        ):
+            return  # nothing happened; do not manufacture an event
+        with contextlib.suppress(Exception):
+            await self._notify_callback("sync_complete", {
+                "pair_id": ps.pair_id,
+                "duration_seconds": round(duration, 3),
+                **summary,
+            })
+
+    async def _report_failure(self, ps: PairStatus, phase: str, exc: BaseException) -> None:
+        """Record and announce a failed continuous-sync pass (#60).
+
+        Both loops previously only called ``log.exception``: no activity-log row and no
+        notification, so a pair failing every cycle was invisible outside the daemon
+        log. The row is what the user sees in the UI.
+        """
+        detail = f"{phase} failed: {exc}"
+        with contextlib.suppress(Exception):
+            await self._db.add_log_entry(SyncLogEntry(
+                action="sync", path="", pair_id=ps.pair_id,
+                status="error", detail=detail,
+            ))
+        with contextlib.suppress(Exception):
+            await self._notify_callback("sync_failed", {
+                "pair_id": ps.pair_id,
+                "phase": phase,
+                "error": str(exc),
+            })
+
     async def _local_change_loop(self, ps: PairStatus) -> None:
         """Process local filesystem changes with batching for concurrency."""
         if not ps.watcher:
@@ -566,6 +653,7 @@ class SyncEngine:
                 except asyncio.QueueEmpty:
                     break
 
+            started = time.monotonic()
             try:
                 stored_entries = {
                     e.path: e for e in await self._db.get_all_entries(ps.pair_id)
@@ -606,11 +694,17 @@ class SyncEngine:
                 if ps.executor:
                     if not await self._may_execute(ps, actions):
                         continue
-                    await ps.executor.execute_all(actions)
+                    failed = await ps.executor.execute_all(actions)
                     ps.last_sync = datetime.now(UTC)
+                    await self._report_pass(
+                        ps,
+                        summarise_actions(actions, failed),
+                        time.monotonic() - started,
+                    )
 
-            except Exception:
+            except Exception as exc:
                 log.exception("Error processing local changes batch (%d changes)", len(changes))
+                await self._report_failure(ps, "Local sync", exc)
 
     async def _may_execute(self, ps: PairStatus, actions: list[SyncAction]) -> bool:
         """Both gates that stand between a plan and the executor.
@@ -760,6 +854,7 @@ class SyncEngine:
                 await asyncio.sleep(1)
                 continue
 
+            started = time.monotonic()
             try:
                 changes, new_token = await poller.poll_changes(token)
                 token = new_token
@@ -767,10 +862,13 @@ class SyncEngine:
                     ChangeToken(pair_id=ps.pair_id, token=new_token)
                 )
                 if changes:
-                    await self._process_remote_changes(ps, changes)
+                    summary = await self._process_remote_changes(ps, changes)
                     ps.last_sync = datetime.now(UTC)
-            except Exception:
+                    if summary is not None:
+                        await self._report_pass(ps, summary, time.monotonic() - started)
+            except Exception as exc:
                 log.exception("Error polling remote changes for %s", ps.pair_id)
+                await self._report_failure(ps, "Remote poll", exc)
 
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=interval)
@@ -779,8 +877,12 @@ class SyncEngine:
 
     async def _process_remote_changes(
         self, ps: PairStatus, changes: list[RemoteChange]
-    ) -> None:
-        """Convert remote changes to sync actions and execute them."""
+    ) -> dict | None:
+        """Convert remote changes to sync actions and execute them.
+
+        Returns a summary of what happened, or ``None`` when nothing was attempted --
+        so the caller can report a completed pass (#60).
+        """
         stored_entries = {e.path: e for e in await self._db.get_all_entries(ps.pair_id)}
 
         # Build path mapping from remote_id -> stored path
@@ -860,8 +962,10 @@ class SyncEngine:
         actions = filter_actions_by_mode(actions, ps.pair.sync_mode)
         if ps.executor:
             if not await self._may_execute(ps, actions):
-                return
-            await ps.executor.execute_all(actions)
+                return None
+            failed = await ps.executor.execute_all(actions)
+            return summarise_actions(actions, failed)
+        return None
 
     # ── Public control methods ──────────────────────────────────────
 
