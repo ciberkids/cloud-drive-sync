@@ -11,6 +11,8 @@ import tomli_w
 
 from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.paths import config_path
+from cloud_drive_sync.webhooks.models import WebhooksConfig
+from cloud_drive_sync.webhooks.serialise import webhooks_from_toml, webhooks_to_toml
 
 log = get_logger("config")
 
@@ -98,6 +100,9 @@ class SyncPair:
     # state on whatever we send and we cannot migrate it. Minted at creation;
     # derived deterministically for pairs that predate this field.
     uid: str = ""
+    # Per-pair webhook overrides. The lowest level of the hierarchy: it may override
+    # fields of an inherited target, switch one off, or define one of its own.
+    webhooks: WebhooksConfig = field(default_factory=WebhooksConfig)
 
 
 @dataclass
@@ -151,6 +156,7 @@ class Config:
     accounts: list[Account] = field(default_factory=list)
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     http: HttpConfig = field(default_factory=HttpConfig)
+    webhooks: WebhooksConfig = field(default_factory=WebhooksConfig)
     # Where this config was loaded from, so save() writes back to the same file.
     # Without it, `--config /custom/path` loaded from there and saved to the
     # default location: every setting change went to a file the user was not
@@ -177,6 +183,9 @@ class Config:
         # HTTP section
         http = data.get("http", {})
         cfg.http.token = http.get("token", cfg.http.token)
+
+        # Webhooks section (global level of the hierarchy)
+        cfg.webhooks = webhooks_from_toml(data.get("webhooks"))
 
         # Sync section
         sync = data.get("sync", {})
@@ -225,6 +234,7 @@ class Config:
                     deletion_window_seconds=pair_data.get("deletion_window_seconds"),
                     force_polling=pair_data.get("force_polling", False),
                     uid=pair_data.get("uid", ""),
+                    webhooks=webhooks_from_toml(pair_data.get("webhooks")),
                 )
             )
 
@@ -338,6 +348,11 @@ class Config:
                         # Truthiness is correct here: "" means "not yet assigned",
                         # and there is no meaningful empty-but-set uid.
                         **({"uid": p.uid} if p.uid else {}),
+                        **(
+                            {"webhooks": webhooks_to_toml(p.webhooks)}
+                            if not p.webhooks.is_empty()
+                            else {}
+                        ),
                         "sync_rules": {
                             "max_file_size_mb": p.sync_rules.max_file_size_mb,
                             "include_regex": p.sync_rules.include_regex,
@@ -360,6 +375,11 @@ class Config:
                 for a in self.accounts
             ],
         }
+
+        # Webhooks section, omitted entirely when unset for the same reason as
+        # [http]: an upgraded config should not sprout empty tables.
+        if not self.webhooks.is_empty():
+            data["webhooks"] = webhooks_to_toml(self.webhooks)
 
         # Proxy section
         data["proxy"] = {
