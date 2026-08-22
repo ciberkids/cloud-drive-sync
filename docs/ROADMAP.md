@@ -14,8 +14,8 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — v2.4.1 (Google), v2.4.2 (every provider) |
 | 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
-| 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5 (history follows its pair); the identity scheme is still positional |
-| 10 | [Event webhooks](#10--event-webhooks) | Feature | — | 📋 Proposed — see [the proposal](Proposal-Event-Webhooks) |
+| 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5; a stable `uid` now exists on every pair, but the engine and database still key on `pair_N` |
+| 10 | [Event webhooks](#10--event-webhooks) | Feature | — | 🚧 Phases 0–1 shipped (global + per-pair, none/basic/bearer/custom); account tier and minted JWT still open |
 
 ---
 
@@ -157,7 +157,39 @@ The identity scheme is still positional, so the invariant is maintained by remem
 - Does the account level pull its weight, given it holds exactly one setting today?
 - Batching, for the case where a library scan produces thousands of per-file events.
 
-> **Full design:** [Proposal: Event Webhooks](Proposal-Event-Webhooks) — payload schema, the three-level merge algorithm with a worked example, all five authorization mechanisms, and the two prerequisites it depends on.
+### What shipped
+
+**Phase 0** — a stable per-pair `uid`, plus the two prerequisites the design turned up:
+auth rows silently dropped on the IPC and HTTP paths ([#58](https://github.com/ciberkids/cloud-drive-sync/issues/58)),
+and a notify consumer that could stop a pair syncing ([#59](https://github.com/ciberkids/cloud-drive-sync/issues/59)).
+
+**Phase 1** — an event bus with per-subscriber isolation; continuous-loop pass
+reporting, which also closed the gap where a pair failing every cycle was invisible
+([#60](https://github.com/ciberkids/cloud-drive-sync/issues/60)); the global and
+per-pair configuration levels with the full merge; `none`/`basic`/`bearer`/`custom`
+auth with environment indirection; HMAC body signing; the delivery queue with
+retries, a circuit breaker and a priority lane; secret redaction; and the CLI, REST
+and MCP surfaces. See [Webhooks](Daemon#webhooks) and
+[`[webhooks]`](Configuration#webhooks).
+
+### What is still open
+
+- **The account tier.** The merge already accepts an arbitrary stack of levels, so
+  this is config plumbing rather than new logic — but it is the level with the least
+  obvious use case, and worth confirming somebody wants before building it.
+- **Minted JWT.** Deliberately deferred: PyJWT is not a declared dependency and
+  reaches CI only through `mcp` in the dev extra, so a PyJWT-based implementation
+  would be green in CI and crash for anyone who installed without that extra. HS256
+  via stdlib `hmac` and RS256 via `cryptography` are both viable with no new
+  dependency.
+- **A durable outbox.** The queue is in memory, so events pending at shutdown are
+  lost. Needs `SCHEMA_VERSION` 6 on a migration path whose version bump is not
+  guarded by success, plus its own retention.
+- **The UI.** Configuration is CLI- and REST-only so far; the settings page has no
+  webhook section yet, and per-pair provenance ("inherited from global") is the part
+  that makes a multi-level hierarchy usable.
+
+> **Full design:** [Proposal: Event Webhooks](Proposal-Event-Webhooks) — payload schema, the three-level merge algorithm with a worked example, all five authorization mechanisms, and the open questions review turned up.
 
 ---
 
