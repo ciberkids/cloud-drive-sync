@@ -151,8 +151,11 @@ server_url = "https://cloud.company.com"
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `token` | string | generated on a fresh install | Shared token required on `/api/*` and the web UI. Empty or absent means no authentication. `--http-token` / `CDS_HTTP_TOKEN` override it — see [Authentication](Daemon#authentication) |
+| `trust_proxy` | bool | `false` | Believe `X-Forwarded-Proto` and `X-Forwarded-For` from whatever is in front of the daemon. Turn this on **only** behind a reverse proxy you control: it is what lets the session cookie be marked `Secure` for a TLS deployment the daemon itself only ever sees as HTTP. Off by default because otherwise anyone who can reach the port can assert those headers |
 
-A **new** install generates this on first start and prints it to the log; an existing install is left alone, so an upgrade cannot lock you out. Delete the value to disable authentication again.
+A **new** install generates the token on first start and prints it to the log; an existing install is left alone, so an upgrade cannot lock you out. Delete the value to disable authentication again.
+
+> The **web UI account** is not configured here. It lives in the database (`state.db`), because a password change is a row update rather than a rewrite of this whole file. Manage it with `cloud-drive-sync user set` / `show` / `clear` — see [Signing in to the web UI](Daemon#signing-in-to-the-web-ui).
 
 ---
 

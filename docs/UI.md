@@ -57,7 +57,8 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 
 | Component | File | Description |
 |---|---|---|
-| **App** | `src/App.tsx` | Root layout with sidebar navigation, routing, and daemon connection banner |
+| **App** | `src/App.tsx` | Root layout with sidebar navigation, routing, and daemon connection banner. Also hosts **AuthGate**, which resolves who you are before anything else renders |
+| **SignIn** | `src/components/SignIn.tsx` | **Web UI only.** The sign-in screen (three views: account, access token, create account) and the change-password form used by Settings. The desktop app never renders it — its transport reports `auth: "none"`, because it reaches the daemon over a Unix socket where the HTTP port's authentication does not apply |
 | **SyncStatus** | `src/components/SyncStatus.tsx` | Status dashboard: connection state, file counts, sync/pause controls, daemon info (PID, uptime, version, start time) |
 | **Settings** | `src/components/Settings.tsx` | Sync pair management (add/remove), sync mode selector, conflict strategy selector |
 | **ConflictDialog** | `src/components/ConflictDialog.tsx` | Lists unresolved conflicts with per-file and batch resolution buttons |
@@ -72,7 +73,7 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 
 | Module | File | Description |
 |---|---|---|
-| **IPC Client** | `src/lib/ipc.ts` | TypeScript wrappers around Tauri `invoke()` for all daemon commands |
+| **IPC Client** | `src/lib/ipc.ts` | TypeScript wrappers around Tauri `invoke()` for all daemon commands. The `WEB=1` and `DEMO=1` builds alias this module to `ipc-http.ts` / `ipc-demo.ts` — including the `"./lib/ipc"` specifier that `App.tsx` uses, which was missing from the alias map and silently gave the web build the Tauri transport for everything App.tsx calls directly |
 | **Types** | `src/lib/types.ts` | Shared TypeScript interfaces (`DaemonStatus`, `SyncPair`, `ConflictRecord`, `LogEntry`) |
 | **Hooks** | `src/lib/hooks.ts` | React hooks: `useStatus`, `useSyncPairs`, `useConflicts`, `useActivityLog`, `useDaemonEvent` |
 
@@ -84,6 +85,24 @@ Build artifacts are placed in `src-tauri/target/release/bundle/`:
 | **commands** | `src-tauri/src/commands.rs` | Tauri command handlers that proxy calls through the daemon bridge |
 | **ipc_bridge** | `src-tauri/src/ipc_bridge.rs` | Unix socket client that connects to the daemon's JSON-RPC server |
 | **tray** | `src-tauri/src/tray.rs` | System tray icon and context menu management (uses native APIs on macOS/Windows, appindicator on Linux) |
+
+## Sign-in (web UI only)
+
+`AuthGate` wraps the app *above* the router. That is not a style choice: `NavBar` renders outside `<Routes>` and polls `/api/status` from mount, so a `/login` **route** would draw the whole authenticated chrome around the form and poll itself into a 401 loop behind it.
+
+It resolves `GET /api/auth/session` once, renders a neutral splash while pending, and then either the sign-in screen or the app. Which of the three views appears is the daemon's answer, never a guess in the client:
+
+| `auth` | View |
+|---|---|
+| `"none"` | None — the app renders immediately. Always the case in the desktop and demo builds |
+| `"token"` | Paste the access token, with *Create an account* offered beside it |
+| `"user"` | Username and password |
+
+A 401 from any `/api/*` call raises a `cds:session-expired` event, and the gate swaps to the sign-in view in place. It used to be `window.location.href = "/login"`, which discarded whatever the user had typed and could not return them to the route they were on.
+
+Sign out lives in the sidebar footer next to the emergency stop, and only when there is a session to end. Change password is a section in Settings.
+
+![Sign-in](screenshots/signin.png)
 
 ## Connecting to the Daemon
 

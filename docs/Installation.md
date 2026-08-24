@@ -174,5 +174,7 @@ Then open `http://<server-ip>:8080`. The bare `ExecStart=` is required — it cl
 > 🔑 A **new** install generates an access token on first start and prints it — find it with `journalctl --user -u cloud-drive-sync-daemon | grep -A3 "First run"`. It is stored in your config file under `[http] token`.
 >
 > ⚠️ An install that **already has a config file** is left alone, so it stays unauthenticated on all interfaces until you set a token yourself: run `cloud-drive-sync gen-token` and add `--http-token <token>` to the `ExecStart` line — or set `CDS_HTTP_TOKEN` in the unit, which keeps it out of the process list. Without one, anyone who can reach the port can add or remove cloud accounts, change where data syncs, and switch off delete protection. Alternatively bind it to loopback and reach it through an SSH tunnel (`ssh -L 8080:localhost:8080 user@server`). See [Authentication](Daemon#authentication).
+>
+> 👤 For a browser, a token is awkward to type. Once a token is set you can create **one account** with a username and password — `cloud-drive-sync user set <name>`, or *Create an account* on the sign-in page — and your token keeps working for scripts. Behind a TLS-terminating reverse proxy, also set `[http] trust_proxy = true` so the session cookie is marked `Secure`. See [Signing in to the web UI](Daemon#signing-in-to-the-web-ui).
 
 If you would rather run headless in a container, [Docker](Docker) and [Quadlet](Quadlet) have the HTTP UI switched on out of the box.

@@ -16,6 +16,7 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
 | 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5; a stable `uid` now exists on every pair, but the engine and database still key on `pair_N` |
 | 10 | [Event webhooks](#10--event-webhooks) | Feature | — | 🚧 Phases 0–1 shipped (global + per-pair, none/basic/bearer/custom); account tier and minted JWT still open |
+| 11 | [Web UI sign-in](#11--web-ui-sign-in) | Security / feature | — | ✅ Done — one account, DB-backed, in-memory sessions; the access token still works for scripts. See [full design](Proposal-Web-UI-Login) |
 
 ---
 
@@ -190,6 +191,75 @@ and MCP surfaces. See [Webhooks](Daemon#webhooks) and
   that makes a multi-level hierarchy usable.
 
 > **Full design:** [Proposal: Event Webhooks](Proposal-Event-Webhooks) — payload schema, the three-level merge algorithm with a worked example, all five authorization mechanisms, and the open questions review turned up.
+
+---
+
+## 11 — Web UI sign-in
+
+**Problem.** The web UI has no concept of a person. Authentication is a single shared
+token, and the "login page" asks for that token and stores it verbatim in a cookie —
+so everyone who can sign in signs in as the same anonymous somebody, the credential
+cannot be rotated for one person without rotating it for all, and nothing records who
+changed what. The documentation already concedes the shape: *"The token is a shared
+secret, not a user account. No roles, no per-user auditing."*
+
+**Feature.** One named account with a password, a real sign-in page, sign out, and
+change password — on the **web UI only**. The desktop UI reaches the daemon over a Unix
+socket and never touches the HTTP port, so that boundary needs no enforcement.
+Deliberately single-user with no roles: a single-owner sync daemon gains nothing from a
+user table it would only ever put one row in, and adding a second row later is a smaller
+change than removing a management screen.
+
+**Shape.** The token stays what it is — the *machine* credential for `/api/*`, so every
+existing script, systemd unit, compose file, Bruno request and MCP client keeps working
+untouched — and user accounts are added beside it as the *human* credential for the
+browser, carried by an opaque session cookie. The account is a single row in the
+database (`SCHEMA_VERSION` 6, `CHECK (id = 1)`) and sessions live in process memory — so
+a restart signs you out, which is the accepted price of not adding a second table.
+Passwords are hashed with stdlib scrypt behind a concurrency cap, because an
+unauthenticated login endpoint running a memory-hard KDF is a denial-of-service vector
+if the cost is not bounded.
+
+**Why this and not the alternative.** Replacing the token with accounts would be
+cleaner to describe and would break every headless deployment on upgrade — the same
+trade [item 7](#7--authentication-on-by-default-for-new-installs) settled by leaving
+existing installs alone. Layering costs one extra branch in the middleware and nothing
+in anyone's deployment.
+
+**The part that needs care** is bootstrap. The first account is created by presenting
+the token first run already generates and prints, which is why a browser-based setup
+page is not a claim page: an install with no token can only add its first user from the
+local socket. Get this wrong and an exposed daemon hands its admin account to whoever
+reaches the port first.
+
+### What shipped
+
+- `hashlib.scrypt` with the parameters inside the encoded value, verified on a worker
+  thread behind a four-slot cap — measured at ~34 ms and ~16 MB per operation, and
+  `scrypt` releases the GIL, so the thread buys real parallelism. The cap is not
+  tidiness: `POST /api/auth/login` is unauthenticated, so each attempt is an
+  attacker-controlled 16 MB allocation.
+- `SCHEMA_VERSION` 6 and a `web_user` table with `CHECK (id = 1)`, so the
+  single-account rule is the schema's job rather than a convention. Its migration
+  bumps the version only after the table is confirmed present — this file's history
+  includes a bump that sailed past a column that was never added.
+- Six `/api/auth/*` endpoints, in-memory sessions behind an `HttpOnly`, `SameSite=Lax`
+  cookie (`Secure` when the transport is TLS, or a trusted proxy says so), and CSRF
+  refused three ways for cookie-authenticated mutations — none of which applies to
+  bearer-token callers, so scripts and the Bruno collection were untouched.
+- `AuthGate` above the router in the SPA, three sign-in views, sign out in the sidebar,
+  change password in Settings. `cloud-drive-sync user set` / `show` / `clear`.
+
+**One pre-existing bug fell out of it.** `App.tsx` imports `"./lib/ipc"`, which the
+`WEB=1` alias map never covered — so in the web build everything App.tsx called directly
+got the *Tauri* transport, whose `invoke()` is shimmed to reject. The emergency stop
+button, the delete-block banner and reconnect have never worked in the web UI, failing
+silently into a `.catch()`. `AuthGate` lives in that file, which is how it surfaced.
+
+> **Full design:** [Proposal: Web UI User Accounts](Proposal-Web-UI-Login) — the layered
+> credential model, hashing and session decisions, CSRF and CORS consequences, the SPA
+> gate, the CLI break-glass path, the five decisions settled in review, and what building
+> it changed.
 
 ---
 

@@ -339,7 +339,16 @@ Confirm it came up — the daemon logs the bound address on startup:
 
 ### Authentication
 
-> ⚠️ **Authentication is off unless you set a token.** Without one, anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, change where data syncs, and **switch off delete protection**.
+> ⚠️ **Authentication is off unless you set a token or create an account.** Without either, anyone who can reach the port has full control of the daemon: they can list your files, add or remove cloud accounts, change where data syncs, and **switch off delete protection**.
+
+There are two credentials, and they are layered rather than alternatives:
+
+| | What it is for | How it travels |
+|---|---|---|
+| **Access token** | Scripts, `curl`, Docker health checks, anything automated | `Authorization: Bearer <token>` on `/api/*` |
+| **Web UI account** | A person in a browser | Username and password, then a session cookie |
+
+Both are accepted on `/api/*`. Setting up an account does **not** invalidate your token, so nothing scripted breaks — see [Signing in to the web UI](#signing-in-to-the-web-ui).
 
 ### Requiring a token
 
@@ -393,6 +402,34 @@ Change it by editing that value, or override it entirely with `--http-token` / `
 
 **Upgrades are deliberately left alone.** Turning auth on for a deployment that already exists would lock people out of a web UI they have bookmarked, and the only place the new token would exist is the log of a service they can no longer reach through the UI. So an existing install keeps the previous behaviour, and the daemon logs a prominent warning at startup whenever a port is reachable beyond loopback without a token. If you see that warning, it applies to you — set a token as above.
 
+### Signing in to the web UI
+
+The token works as a sign-in, but it is one shared secret with nobody's name on it. For a browser you can create **one account** with a username and password:
+
+```bash
+cloud-drive-sync user set alice        # prompts twice, hidden
+cloud-drive-sync user show            # username and dates, never the hash
+cloud-drive-sync user clear           # back to token-only
+```
+
+Or create it from the browser: open the UI, choose **Create an account with a username and password**, and paste the access token to prove you are the operator. That is the same token first run printed, and it is why the setup screen is not something a stranger can claim — on a daemon with **no** token there is no browser path at all, and `user set` on the host is the only way in.
+
+Once an account exists:
+
+- the browser asks for the username and password, and holds a session cookie (`HttpOnly`, `SameSite=Lax`, and `Secure` when the connection is HTTPS)
+- `Authorization: Bearer <token>` keeps working exactly as before, for everything automated
+- the token stops being accepted *as a browser cookie* — otherwise it would be a second way in that bypasses the account entirely
+
+**Deliberately one account, with no roles.** A single-owner sync daemon gains nothing from a user list it would only ever put one row in. If you need per-person access, put a reverse proxy with its own authentication in front.
+
+**Sessions live in memory, so restarting the daemon signs you out.** That is the accepted price of not keeping session state on disk; an upgrade or a container restart means signing in again.
+
+**Forgot the password?** Run `cloud-drive-sync user set <name>` on the host — access to the machine is the recovery path, exactly as it is for every other daemon setting. There is no email reset, because there is no mail transport and no second factor, so a reset flow would just be a bypass.
+
+Failed sign-ins are throttled with a growing delay rather than a lockout: with one account, a lockout is an outage anyone who knows the username could trigger.
+
+The account is a row in the **database** (`state.db`), not in `config.toml`. If you delete the database — a supported repair for a corrupt sync state — the account goes with it, and the daemon falls back to the token that is still in your config file, so you can sign in and create it again.
+
 ### Restricting the bind address
 
 `--http-host` (default `0.0.0.0`, which containers need) controls who can connect at all:
@@ -405,14 +442,17 @@ Bound to loopback only this machine can reach it, and running without a token th
 
 ### Remaining specifics
 
-- **CORS is `Access-Control-Allow-Origin: *`.** With a token required this matters much less: a page on another origin cannot read the token, and the cookie is `SameSite=Strict` so it is not sent cross-site. Without a token, any web page in a browser that can reach the port can drive the API.
-- **The token is a shared secret, not a user account.** No roles, no per-user auditing. That is the right shape for a single-owner daemon and the wrong shape for multi-tenant access.
+- **CORS is `Access-Control-Allow-Origin: *`,** and we never send `Access-Control-Allow-Credentials`. Browsers refuse to combine credentials with a wildcard origin, so a page on another origin can neither read the token nor ride on the session cookie. Without any credential configured, any web page in a browser that can reach the port can drive the API.
+- **Cross-site request forgery is refused three ways** once a session cookie is involved: the cookie is `SameSite=Lax` (so it is not sent on a cross-site `POST`/`PUT`/`DELETE`), a mutating `/api/*` call authenticated by cookie must not be form-encoded (an HTML form cannot send JSON), and its `Origin` must match. None of this applies to bearer-token callers, so `curl` scripts that send no explicit content type keep working.
+- **The account has no roles and there is only one of it.** No per-user auditing. That is the right shape for a single-owner daemon and the wrong shape for multi-tenant access — put a reverse proxy in front for that.
+- **Passwords over plain HTTP are sniffable,** exactly as the token always was. On an untrusted network, terminate TLS in front of the daemon and set `[http] trust_proxy = true` so the session cookie is marked `Secure`.
 
 Recommended deployments:
 
 | Situation | Approach |
 |---|---|
 | Single machine, local use | Docker: publish as `-p 127.0.0.1:8080:8080` so only that host can connect |
+| LAN access from a phone or laptop | Create an account (`cloud-drive-sync user set <name>`) so the credential is not a token you paste on a small screen |
 | Remote server, occasional admin | Leave the port unpublished and use an SSH tunnel: `ssh -L 8080:localhost:8080 user@server`, then open `http://localhost:8080` |
 | Permanent remote access | Reverse proxy (nginx, Caddy, Traefik) terminating TLS and enforcing authentication in front of it |
 | Any | Firewall the port; never forward it from a router to the internet |
@@ -498,6 +538,26 @@ The `scope` query parameter selects the level: `global` (the default) or `pair:<
 | POST | `/api/remote-folders` | Create a remote folder |
 | GET | `/api/local-dirs` | List local directories (`?path=`) |
 | POST | `/api/local-dirs` | Create a local directory |
+
+#### Sign-in endpoints
+
+Five endpoints, and no user management, because there is one account. They are the only `/api/*` paths reachable without a credential — they have to be, or there would be no way to obtain one.
+
+| Method | Path | Body | Purpose |
+|---|---|---|---|
+| `GET` | `/api/auth/session` | — | What the sign-in screen should render: `{"auth":"none"\|"token"\|"user", "setup_available":bool, "authenticated":bool, "username":str\|null}` |
+| `POST` | `/api/auth/token` | `{token}` | Exchange the access token for a cookie. Refused once an account exists |
+| `POST` | `/api/auth/setup` | `{token, username, password}` | Create the account. Needs the access token |
+| `POST` | `/api/auth/login` | `{username, password}` | Sign in. Answers one `401 invalid_credentials` for a wrong username *or* a wrong password — no enumeration |
+| `POST` | `/api/auth/logout` | — | Drop the presented session |
+| `POST` | `/api/auth/password` | `{current, new}` | Change the password. Signs out every other browser |
+
+```bash
+# Sign in and keep the cookie, the way the browser does
+curl -c jar -X POST -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"…"}' http://localhost:8080/api/auth/login
+curl -b jar http://localhost:8080/api/status
+```
 
 ### Adding accounts via Web UI
 

@@ -33,6 +33,11 @@ Monitoring:
   conflicts                        Show unresolved conflicts
   resolve <conflict_id> <resolution>   Resolve a conflict
 
+Web UI sign-in:
+  user set <name> [--password P]   Create or replace the web UI account
+  user show                        Show the account (never the hash)
+  user clear                       Remove the account; back to token-only
+
 Webhooks:
   webhook list [--scope S] [--raw]  Show webhooks that will fire
   webhook status                    Delivery health per target
@@ -215,6 +220,57 @@ cloud-drive-sync account list
 ```
 
 Legend: `●` = connected, `○` = disconnected
+
+---
+
+## Web UI Sign-in
+
+One account, no roles — see [Signing in to the web UI](Daemon#signing-in-to-the-web-ui) for why, and for the browser path that does the same thing.
+
+These commands talk to the running daemon over its Unix socket, so access to the machine is what authorises them. That is also the recovery path: a forgotten password is fixed here, not by email.
+
+### `user set`
+
+Create or replace the account. One verb for both, because there is only one account to disambiguate.
+
+```bash
+cloud-drive-sync user set alice
+Password: ********
+Repeat for confirmation: ********
+Web UI account set for alice.
+The web UI now asks for this username and password.
+```
+
+**Options:**
+
+| Option | Description |
+|---|---|
+| `--password TEXT` | The password, if you cannot be prompted (scripts). Prefer the prompt: a password on the command line lands in your shell history and the process list |
+
+Minimum 10 characters, and it may not be the username or the access token. No composition rules — length is the only requirement that helps.
+
+Running this on a daemon with no access token **turns browser authentication on** for that deployment; the command says so.
+
+### `user show`
+
+```bash
+cloud-drive-sync user show
+Username:         alice
+Created:          2026-08-24T09:12:04.512+00:00
+Password changed: 2026-08-24T09:40:55.108+00:00
+```
+
+Never prints the hash. With no account: *"No web UI account. The web UI uses the access token, if one is set."*
+
+### `user clear`
+
+```bash
+cloud-drive-sync user clear
+Remove the web UI account? Access falls back to the token, or to nothing if no token is set. [y/N]: y
+Web UI account removed.
+```
+
+If no token is set either, this leaves the port **unauthenticated** — which is what the confirmation prompt is warning about.
 
 ---
 
@@ -494,6 +550,16 @@ cloud-drive-sync start
 # or
 systemctl --user start cloud-drive-sync-daemon
 ```
+
+### "Sign-in failed" in the web UI
+
+The daemon answers one error for a wrong username *and* a wrong password, on purpose — it will not tell an attacker which half was right. Check the username with `cloud-drive-sync user show`, and reset the password with `cloud-drive-sync user set <name>`.
+
+Repeated failures are delayed with a growing pause (never a lockout), so a burst of attempts gets slower rather than blocked. Wait, or run `user set` on the host.
+
+If sign-in succeeds and then immediately asks again, the session cookie is not coming back. Behind a TLS-terminating proxy, set `[http] trust_proxy = true` so the cookie is marked `Secure` for a connection the daemon itself sees as plain HTTP.
+
+**Signed out after every restart?** That is expected: sessions live in memory, not on disk.
 
 ### "Not authenticated"
 

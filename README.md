@@ -78,6 +78,8 @@ An **MCP server** for AI assistants (Claude Desktop, Claude Code, any MCP client
 
 > 🔑 A **new install** generates a web UI access token on first start and prints it to the log. An install that already has a config file is left as it was, so an upgrade cannot lock you out — it stays unauthenticated until you set `--http-token` / `CDS_HTTP_TOKEN` or `[http] token`.
 >
+> 👤 For a browser, you can swap that shared token for a **username and password**: `cloud-drive-sync user set <name>`, or click *Create an account* on the sign-in page and paste the token. One account, no roles. Your token keeps working for scripts either way — see [Signing in to the web UI](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#signing-in-to-the-web-ui).
+>
 > ⚠️ The **MCP endpoint** is always unauthenticated unless you set `--mcp-token` / `CDS_MCP_TOKEN`. Both ports bind all interfaces. If you publish either, read [Authentication](https://github.com/ciberkids/cloud-drive-sync/wiki/Daemon#authentication) first.
 
 **What's next:** the ordered [Feature Queue](https://github.com/ciberkids/cloud-drive-sync/wiki/ROADMAP) lists what is being built and in what order — currently a delete fail-safe, an emergency stop control, and a spike on replacing the Nextcloud WebDAV bridge.

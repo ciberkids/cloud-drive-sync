@@ -2,6 +2,56 @@
 
 ASCII wireframe mockups for every page and state of the Cloud Drive Sync desktop application.
 
+## Sign-in (web UI only)
+
+Rendered above the app layout, so there is deliberately no sidebar: until the daemon says who you are, there is nothing truthful to show around the form. The desktop app never renders this — it reaches the daemon over a Unix socket, where the HTTP port's authentication does not apply.
+
+Which view appears is the daemon's answer to `GET /api/auth/session`, not a client-side guess.
+
+### An account exists
+
+```
++-----------------------------------------------------------------+
+|                                                                 |
+|                +-------------------------------+                |
+|                |  Cloud Drive Sync             |                |
+|                |  Sign in to continue.         |                |
+|                |                               |                |
+|                |  Username                     |                |
+|                |  [                          ] |                |
+|                |  Password                     |                |
+|                |  [                          ] |                |
+|                |                               |                |
+|                |  [        Sign in           ] |                |
+|                +-------------------------------+                |
+|                                                                 |
++-----------------------------------------------------------------+
+```
+
+### Token only, with an account offered
+
+```
++-----------------------------------------------------------------+
+|                                                                 |
+|                +-------------------------------+                |
+|                |  Cloud Drive Sync             |                |
+|                |  This daemon requires its     |                |
+|                |  access token.                |                |
+|                |                               |                |
+|                |  Access token                 |                |
+|                |  [                          ] |                |
+|                |                               |                |
+|                |  [        Sign in           ] |                |
+|                |                               |                |
+|                |  Create an account with a     |                |
+|                |  username and password        |                |
+|                +-------------------------------+                |
+|                                                                 |
++-----------------------------------------------------------------+
+```
+
+Live captures: `screenshots/signin.png`, `screenshots/signin-token.png`.
+
 ## Status Dashboard
 
 The main view. Shows overall sync health, file counts, and control buttons.

@@ -579,6 +579,41 @@ Clear stored OAuth credentials and sign out.
 
 ---
 
+### Web UI account methods
+
+The account behind the web UI's sign-in. These live on the IPC handler because that is where the database is; sessions and cookies are the HTTP front-end's business and never appear here. One account, no roles — see [Signing in to the web UI](Daemon#signing-in-to-the-web-ui).
+
+| Method | Params | Result |
+|---|---|---|
+| `get_web_account` | none | `{"exists": bool, "username": str\|null, "created_at": str, "password_changed_at": str}` — never the hash |
+| `set_web_account` | `{username, password}` | `{"status": "ok", "username": str}`, or `{"status": "invalid", "error": str}` |
+| `verify_web_account` | `{username, password}` | `{"ok": bool}`. One answer for a wrong username or a wrong password, and a wrong username still spends a verification so it is not measurably faster |
+| `change_web_password` | `{current, new}` | `{"status": "ok"\|"invalid_credentials"\|"invalid"\|"not_found"}` |
+| `clear_web_account` | none | `{"status": "ok"\|"not_found"}` |
+
+Passwords are hashed with scrypt (`scrypt$n=…,r=…,p=…$salt$hash`, parameters inside the value so the cost can be raised later) on a worker thread behind a concurrency cap. `verify_web_account` rehashes in place when it sees an older cost.
+
+**Example**:
+
+```json
+// Request
+{"jsonrpc": "2.0", "method": "get_web_account", "id": 14}
+
+// Response
+{
+  "jsonrpc": "2.0",
+  "id": 14,
+  "result": {
+    "exists": true,
+    "username": "alice",
+    "created_at": "2026-08-24T09:12:04.512+00:00",
+    "password_changed_at": "2026-08-24T09:40:55.108+00:00"
+  }
+}
+```
+
+---
+
 ### `list_remote_folders`
 
 List folders in a given parent folder on Google Drive. Used by the UI for the remote folder browser.

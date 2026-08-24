@@ -50,6 +50,7 @@ jobs:
             [ROADMAP]=docs/ROADMAP.md
             [Spike-Nextcloud-Backend]=docs/Spike-Nextcloud-Backend.md
             [Proposal-Event-Webhooks]=docs/Proposal-Event-Webhooks.md
+            [Proposal-Web-UI-Login]=docs/Proposal-Web-UI-Login.md
           )
 
           # Sidebar layout: "Section:Page1,Page2". Every page name must be a key
@@ -57,7 +58,7 @@ jobs:
           SIDEBAR_SECTIONS=(
             "Getting Started:Installation,Docker,Quadlet,Provider-Setup,Configuration,Cross-Cloud-Sync"
             "Reference:CLI,Daemon,API-Reference,Architecture,UI,Contributing"
-            "Project:ROADMAP,Spike-Nextcloud-Backend,Proposal-Event-Webhooks"
+            "Project:ROADMAP,Spike-Nextcloud-Backend,Proposal-Event-Webhooks,Proposal-Web-UI-Login"
           )
 
           # ── Validate before touching the wiki ──────────────────────
