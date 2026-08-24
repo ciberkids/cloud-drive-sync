@@ -2701,3 +2701,120 @@ body {
   letter-spacing: 0.3px;
   align-self: flex-start;
 }
+
+/* ── Web UI sign-in ──────────────────────────────────────────────────
+   Rendered by AuthGate *above* the app layout, so it deliberately has no
+   sidebar and no chrome: until the daemon says who we are there is nothing
+   truthful to show around it. The desktop app never renders any of this. */
+
+.signin-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg-primary);
+}
+
+.signin-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signin-card h1 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.signin-lead {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: -8px 0 4px;
+}
+
+.signin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.signin-field input {
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font);
+}
+
+.signin-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.signin-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Deliberately quiet, and never says which half of the credential was wrong —
+   the daemon does not tell us, and inventing detail here would be a lie. */
+.signin-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin: 0;
+}
+
+.signin-ok {
+  color: var(--success);
+  font-size: 12px;
+  margin: 0;
+}
+
+.signin-switch {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  padding: 0;
+  text-align: center;
+}
+
+.signin-switch:hover {
+  text-decoration: underline;
+}
+
+.signin-hint {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.signin-hint code {
+  font-size: 11px;
+}
+
+.sign-out {
+  width: 100%;
+}
+
+.change-password {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 360px;
+}

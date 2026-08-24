@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  AuthSession,
   DeleteFailsafeLimits,
   StopState,
   PendingDeletion,
@@ -300,4 +301,39 @@ export async function emergencyResume(accountId?: string): Promise<{
   pairs_resumed: number;
 }> {
   return invoke("emergency_resume", { accountId });
+}
+
+// ── Sign-in ─────────────────────────────────────────────────────────
+//
+// Stubs, on purpose. The desktop app reaches the daemon over a Unix domain
+// socket, so the HTTP port's authentication never applies to it — the boundary
+// is filesystem permissions, exactly as it was before this feature. Reporting
+// "none" is what makes AuthGate render the app immediately here.
+
+export async function getAuthSession(): Promise<AuthSession> {
+  return { auth: "none", setup_available: false, authenticated: true, username: null };
+}
+
+export async function signIn(_username: string, _password: string): Promise<void> {
+  throw new Error("Sign-in is a web UI feature.");
+}
+
+export async function signInWithToken(_token: string): Promise<void> {
+  throw new Error("Sign-in is a web UI feature.");
+}
+
+export async function createAccount(
+  _token: string,
+  _username: string,
+  _password: string
+): Promise<void> {
+  throw new Error("Sign-in is a web UI feature.");
+}
+
+export async function signOut(): Promise<void> {
+  throw new Error("Sign-in is a web UI feature.");
+}
+
+export async function changePassword(_current: string, _next: string): Promise<void> {
+  throw new Error("Sign-in is a web UI feature.");
 }

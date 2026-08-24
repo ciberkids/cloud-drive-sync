@@ -6,6 +6,7 @@
 
 import type {
   Account,
+  AuthSession,
   DaemonStatus,
   SyncPair,
   ConflictRecord,
@@ -17,16 +18,75 @@ import type {
 } from "./types";
 
 /**
- * Send the browser to the login page when the daemon requires a token.
+ * Event the app listens for when the daemon stops accepting our credential.
  *
  * Every /api/* call goes through the helpers below, so one check here covers the
- * whole app. Without it a token-protected daemon would render an empty UI full of
+ * whole app. Without it a protected daemon would render an empty UI full of
  * "API error: Unauthorized" with no way to sign in.
+ *
+ * This used to be `window.location.href = "/login"`. A full page load throws away
+ * whatever the user had typed, and it cannot come back to the route they were on —
+ * so it is an event now, and AuthGate swaps the view in place.
  */
+export const SESSION_EXPIRED_EVENT = "cds:session-expired";
+
 function redirectIfUnauthorised(res: Response): void {
-  if (res.status === 401 && window.location.pathname !== "/login") {
-    window.location.href = "/login";
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
   }
+}
+
+// ── Sign-in ─────────────────────────────────────────────────────────
+//
+// The web UI is the only front-end with a sign-in: the desktop app reaches the
+// daemon over a Unix socket and never touches the HTTP port. That is why these
+// live here and are stubbed in the other two transports.
+
+/** Raised with a message the form can show verbatim. */
+async function authPost(path: string, body: Record<string, unknown>): Promise<void> {
+  const res = await fetch(`/api/auth/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return;
+  let detail = res.statusText;
+  try {
+    detail = (await res.json()).detail || detail;
+  } catch {
+    // A proxy error page is not JSON; the status text is still useful.
+  }
+  throw new Error(detail);
+}
+
+export async function getAuthSession(): Promise<AuthSession> {
+  const res = await fetch("/api/auth/session");
+  if (!res.ok) throw new Error(`API error: ${res.statusText}`);
+  return res.json();
+}
+
+export async function signIn(username: string, password: string): Promise<void> {
+  return authPost("login", { username, password });
+}
+
+export async function signInWithToken(token: string): Promise<void> {
+  return authPost("token", { token });
+}
+
+export async function createAccount(
+  token: string,
+  username: string,
+  password: string
+): Promise<void> {
+  return authPost("setup", { token, username, password });
+}
+
+export async function signOut(): Promise<void> {
+  return authPost("logout", {});
+}
+
+export async function changePassword(current: string, next: string): Promise<void> {
+  return authPost("password", { current, new: next });
 }
 
 async function get<T>(path: string): Promise<T> {

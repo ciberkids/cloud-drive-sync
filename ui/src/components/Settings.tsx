@@ -3,7 +3,8 @@ import { useSyncPairs, useStatus } from "../lib/hooks";
 import { RemoteFolderBrowser } from "./RemoteFolderBrowser";
 import { providerLabel, providerColor } from "./AccountManager";
 import { detectBridges } from "./CloudBridges";
-import type { Account, ConflictStrategy, SyncMode } from "../lib/types";
+import { ChangePassword } from "./SignIn";
+import type { Account, AuthSession, ConflictStrategy, SyncMode } from "../lib/types";
 import * as ipc from "../lib/ipc";
 import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 
@@ -11,6 +12,13 @@ export function Settings() {
   const { pairs, add, remove, refresh } = useSyncPairs();
   const status = useStatus();
   const [homeDir, setHomeDir] = useState("~");
+  // Sign-in is a web UI feature: the desktop transport reports "none", so this
+  // section simply is not there in the desktop app.
+  const [session, setSession] = useState<AuthSession | null>(null);
+
+  useEffect(() => {
+    ipc.getAuthSession().then(setSession).catch(() => {});
+  }, []);
 
   useEffect(() => {
     getHomeDir()
@@ -983,6 +991,13 @@ export function Settings() {
           </button>
         </div>
       </section>
+
+      {session?.auth === "user" && session.authenticated && (
+        <section className="settings-section">
+          <h3>Sign-in</h3>
+          <ChangePassword username={session.username} />
+        </section>
+      )}
 
       <section className="settings-section">
         <h3>Storage</h3>

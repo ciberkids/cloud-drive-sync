@@ -5,6 +5,7 @@
 
 import type {
   Account,
+  AuthSession,
   DaemonStatus,
   SyncPair,
   ConflictRecord,
@@ -240,3 +241,28 @@ export async function emergencyResume(_accountId?: string) {
   demoStopped = false;
   return { pairs_resumed: 2 };
 }
+
+// ── Sign-in ─────────────────────────────────────────────────────────
+//
+// Demo mode renders the app with no gate, so screenshots of every other screen
+// are unaffected by this feature. The sign-in views are captured from a real
+// token-protected daemon instead -- a mocked login that always succeeds would be
+// a screenshot of something that does not exist.
+
+export async function getAuthSession(): Promise<AuthSession> {
+  return { auth: "none", setup_available: false, authenticated: true, username: null };
+}
+
+export async function signIn(_username: string, _password: string): Promise<void> {}
+
+export async function signInWithToken(_token: string): Promise<void> {}
+
+export async function createAccount(
+  _token: string,
+  _username: string,
+  _password: string
+): Promise<void> {}
+
+export async function signOut(): Promise<void> {}
+
+export async function changePassword(_current: string, _next: string): Promise<void> {}

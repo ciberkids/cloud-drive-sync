@@ -20,6 +20,14 @@ const shimTargets = ipcModule
   ? {
       "../lib/ipc": path.resolve(__dirname, ipcModule),
       "./ipc": path.resolve(__dirname, ipcModule),
+      // App.tsx sits at src/ and imports "./lib/ipc", which neither of the two
+      // specifiers above matches — so in WEB and DEMO builds it was silently
+      // getting the *Tauri* module, whose invoke() is shimmed to reject. Every
+      // ipc call made directly from App.tsx (emergency stop, the delete-block
+      // banner, reconnect) therefore did nothing in the web UI, failing quietly
+      // into a .catch(). Found while wiring AuthGate, which is in the same file
+      // and would have rendered the app for everyone regardless of sign-in.
+      "./lib/ipc": path.resolve(__dirname, ipcModule),
       "@tauri-apps/api/core": path.resolve(__dirname, "src/lib/tauri-shims.ts"),
       "@tauri-apps/api/event": path.resolve(__dirname, "src/lib/tauri-shims.ts"),
       "@tauri-apps/api/path": path.resolve(__dirname, "src/lib/tauri-shims.ts"),

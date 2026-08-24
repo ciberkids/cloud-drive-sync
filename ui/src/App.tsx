@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { SyncStatus } from "./components/SyncStatus";
 import { Settings } from "./components/Settings";
@@ -9,9 +9,10 @@ import { Transfers } from "./components/Transfers";
 import { AccountManager } from "./components/AccountManager";
 import { About } from "./components/About";
 import { CloudBridges } from "./components/CloudBridges";
+import { SignIn } from "./components/SignIn";
 import { useStatus } from "./lib/hooks";
 import * as ipc from "./lib/ipc";
-import type { PendingDeletion, StopState } from "./lib/types";
+import type { AuthSession, PendingDeletion, StopState } from "./lib/types";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -87,7 +88,39 @@ function NavBar() {
         </li>
       </ul>
       <StopActivityButton />
+      <SignOutButton />
     </nav>
+  );
+}
+
+/**
+ * Sign out, in the sidebar footer.
+ *
+ * Renders only when there is a session to end — which on the desktop app is
+ * never, because its transport reports `auth: "none"`.
+ */
+function SignOutButton() {
+  const [session, setSession] = useState<AuthSession | null>(null);
+
+  useEffect(() => {
+    ipc.getAuthSession().then(setSession).catch(() => {});
+  }, []);
+
+  if (!session || session.auth !== "user" || !session.authenticated) return null;
+
+  return (
+    <button
+      className="btn btn-sm btn-secondary sign-out"
+      onClick={async () => {
+        await ipc.signOut().catch(() => {});
+        // A reload is right here, and only here: signing out should leave nothing
+        // of the previous session's data on screen.
+        window.location.reload();
+      }}
+      title={`Signed in as ${session.username ?? ""}`}
+    >
+      Sign out
+    </button>
   );
 }
 
@@ -337,8 +370,68 @@ function DaemonBanner() {
   );
 }
 
+/**
+ * Resolve who we are before rendering anything else.
+ *
+ * A gate rather than a `/login` *route*, and that is not a style choice: NavBar
+ * renders outside `<Routes>` and polls `/api/status` from mount, so a login route
+ * would draw the whole authenticated chrome — sidebar, connection dot, delete
+ * banner — around the sign-in form and poll itself into a 401 loop behind it.
+ *
+ * The neutral splash while pending matters for the same reason: rendering the app
+ * optimistically would flash a broken dashboard on every page load.
+ */
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const resolve = useCallback(() => {
+    ipc
+      .getAuthSession()
+      .then((s) => {
+        setSession(s);
+        setFailed(null);
+      })
+      .catch((e) => setFailed(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  useEffect(() => {
+    resolve();
+    // Any /api call that comes back 401 raises this — an expired session, or a
+    // daemon that gained an account while the tab was open. Re-resolving swaps in
+    // the sign-in view without a page load, so nothing typed is lost.
+    const onExpired = () => resolve();
+    window.addEventListener("cds:session-expired", onExpired);
+    return () => window.removeEventListener("cds:session-expired", onExpired);
+  }, [resolve]);
+
+  if (failed) {
+    return (
+      <div className="signin-screen">
+        <div className="signin-card">
+          <h1>Cloud Drive Sync</h1>
+          <p className="signin-lead">Cannot reach the daemon.</p>
+          <p className="signin-error">{failed}</p>
+          <button className="btn btn-primary signin-submit" onClick={resolve}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return <div className="signin-screen" />;
+
+  if (!session.authenticated) {
+    return <SignIn session={session} onSignedIn={resolve} />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
+    <AuthGate>
     <BrowserRouter>
       <div className="app-layout">
         <NavBar />
@@ -360,5 +453,6 @@ export default function App() {
         </div>
       </div>
     </BrowserRouter>
+    </AuthGate>
   );
 }

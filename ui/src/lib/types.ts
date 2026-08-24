@@ -138,3 +138,19 @@ export interface Account {
   provider?: string;
   max_concurrent_transfers?: number;
 }
+
+/**
+ * What the sign-in screen needs in order to render, and nothing else.
+ *
+ * `auth` is three-valued rather than a boolean because there are three ways in:
+ * nothing configured, an access token (the pre-account state), and an account.
+ * The desktop build always sees "none" — it talks to the daemon over a Unix
+ * socket, so the HTTP port's authentication does not apply to it at all.
+ */
+export interface AuthSession {
+  auth: "none" | "token" | "user";
+  /** A token is configured and no account exists yet, so one can be created. */
+  setup_available: boolean;
+  authenticated: boolean;
+  username: string | null;
+}
