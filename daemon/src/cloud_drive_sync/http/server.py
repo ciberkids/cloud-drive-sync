@@ -1,6 +1,8 @@
 """HTTP REST API server wrapping the daemon's JSON-RPC handler."""
 
+import asyncio
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -16,30 +18,27 @@ WEBUI_DIR = Path(__file__).parent / "webui"
 
 LOGIN_PATH = "/login"
 
-# Deliberately dependency-free and self-contained: it has to render before the
-# React bundle is trusted to load, and it must not leak anything about the token.
-_LOGIN_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Cloud Drive Sync — sign in</title>
-<style>
- body{font-family:system-ui,sans-serif;background:#1c1c1e;color:#f5f5f7;
-      display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
- form{background:#2c2c2e;padding:28px;border-radius:8px;min-width:320px}
- h1{font-size:16px;margin:0 0 4px}
- p{color:#98989d;font-size:13px;margin:0 0 16px}
- input{width:100%;padding:9px;border-radius:6px;border:1px solid #38383a;
-       background:#1c1c1e;color:#f5f5f7;box-sizing:border-box}
- button{width:100%;margin-top:12px;padding:9px;border:0;border-radius:6px;
-        background:#2997ff;color:#fff;font-weight:600;cursor:pointer}
- .err{color:#ff6b6b;margin:10px 0 0}
-</style></head>
-<body><form method="post" action="/login">
- <h1>Cloud Drive Sync</h1>
- <p>This daemon requires an access token.</p>
- <input type="password" name="token" placeholder="Access token" autofocus>
- <button type="submit">Sign in</button>
- <!--ERROR-->
-</form></body></html>
-"""
+#: Endpoints the sign-in screen itself needs, before anyone is signed in.
+PUBLIC_API_PATHS = frozenset(
+    {
+        "/api/auth/session",
+        "/api/auth/token",
+        "/api/auth/login",
+        "/api/auth/setup",
+        "/api/auth/logout",
+    }
+)
+
+#: Methods that cannot change anything, so they need no CSRF defence.
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+#: How long the front-end may believe a cached answer to "is there an account?".
+#: A lookup per request would be a database round trip on every static asset, and
+#: an unbounded cache would miss an account created by the CLI while we run. Five
+#: seconds bounds that staleness; our own writes invalidate immediately.
+ACCOUNT_CACHE_SECONDS = 5.0
+
+_NO_ACCOUNT = {"exists": False, "username": None}
 
 
 class HttpServer:
@@ -49,11 +48,21 @@ class HttpServer:
         host: str = "0.0.0.0",
         port: int = 8080,
         auth_token: str | None = None,
+        trust_proxy: bool = False,
     ) -> None:
         self._handler = handler
         self._host = host
         self._port = port
         self._auth_token = auth_token or None
+        self._trust_proxy = trust_proxy
+        # Sessions live here rather than in the database: they are mutable,
+        # expiring and disposable, and the accepted cost is that restarting the
+        # daemon signs you out. The account itself is a database row, reached
+        # through the JSON-RPC handler — which is what keeps this class free of a
+        # database handle.
+        self._sessions = auth.SessionStore()
+        self._throttle = auth.LoginThrottle()
+        self._account_cache: tuple[float, dict] | None = None
         # Auth runs before CORS so an unauthorised request is rejected without the
         # handler being reached at all.
         self._app = web.Application(
@@ -62,65 +71,372 @@ class HttpServer:
         self._runner: web.AppRunner | None = None
         self._setup_routes()
 
+    # ── Authentication ──────────────────────────────────────────────
+    #
+    # Two credentials, layered. The token is the *machine* credential for /api/*
+    # — deployed in systemd units and compose files, used by the Bruno collection
+    # and every curl example — so it keeps working untouched. The account is the
+    # *human* credential for the browser, carried by a session cookie.
+    #
+    # Both are accepted; neither replaces the other. See
+    # docs/Proposal-Web-UI-Login.md for why replacing the token was rejected.
+
+    async def _account(self, *, refresh: bool = False) -> dict:
+        """Whether a web UI account exists, cached briefly. Never the hash."""
+        now = time.monotonic()
+        cached = self._account_cache
+        if not refresh and cached and now - cached[0] < ACCOUNT_CACHE_SECONDS:
+            return cached[1]
+        state = await self._rpc_quiet("get_web_account") or _NO_ACCOUNT
+        if not isinstance(state, dict):
+            state = _NO_ACCOUNT
+        self._account_cache = (now, state)
+        return state
+
+    def _forget_account(self) -> None:
+        """Drop the cache after we change the account ourselves."""
+        self._account_cache = None
+
     @web.middleware
     async def _auth_middleware(self, request, handler):
-        """Require the shared token when one is configured.
+        """Require a credential when one is configured.
 
-        Disabled entirely without a token, which is the default and preserves the
-        previous behaviour — see :mod:`cloud_drive_sync.http.auth` for why.
+        Disabled entirely when there is neither a token nor an account, which is
+        the default and preserves the pre-v2.4.0 behaviour exactly — an upgrade
+        must never lock anyone out of a bookmarked URL.
         """
-        if self._auth_token is None:
-            return await handler(request)
-
-        path = request.path
         # Preflight carries no credentials by design.
         if request.method == "OPTIONS":
             return await handler(request)
-        # The login form and the static bundle are not sensitive; the data behind
-        # /api is. Serving the shell unauthenticated is what lets the SPA render a
-        # login prompt at all.
-        if path == LOGIN_PATH or path.startswith("/assets"):
+
+        account = await self._account()
+        account_exists = bool(account.get("exists"))
+        if self._auth_token is None and not account_exists:
             return await handler(request)
 
-        if auth.is_authorised(
-            self._auth_token,
-            authorization=request.headers.get("Authorization"),
-            cookie=request.cookies.get(auth.COOKIE_NAME),
-        ):
+        path = request.path
+        # Everything outside /api is the static bundle and the shell that renders
+        # the sign-in screen. Serving it unauthenticated is what lets the SPA
+        # *show* a sign-in form at all; there is no data in it, and /assets was
+        # already public before this.
+        if not path.startswith("/api/"):
+            return await handler(request)
+        if path in PUBLIC_API_PATHS:
             return await handler(request)
 
-        if path.startswith("/api/"):
-            # 401 with the scheme, so a CLI or script knows what to send.
+        kind, username = self._identify(request, account_exists=account_exists)
+        if kind is None:
             return web.json_response(
-                {"error": "unauthorized", "detail": "A token is required."},
+                {"error": "unauthorized", "detail": "Sign in, or send a bearer token."},
                 status=401,
                 headers={"WWW-Authenticate": 'Bearer realm="cloud-drive-sync"'},
             )
-        return web.Response(text=_LOGIN_PAGE, content_type="text/html", status=401)
 
-    async def _login(self, request):
-        """Exchange a token for a cookie, so the browser UI can authenticate."""
-        data = await request.post()
-        presented = str(data.get("token", ""))
-        if not auth.matches(self._auth_token or "", presented):
-            # No detail about which part was wrong, and no logging of the value.
-            return web.Response(
-                text=_LOGIN_PAGE.replace(
-                    "<!--ERROR-->", '<p class="err">That token was not accepted.</p>'
-                ),
-                content_type="text/html",
+        # CSRF applies only when a *cookie* is the credential: a bearer-token
+        # caller cannot be a confused browser, and applying these rules to it
+        # would break `curl -d` scripts that send no explicit content type.
+        if kind == "session" and request.method not in SAFE_METHODS:
+            problem = self._csrf_problem(request)
+            if problem:
+                log.warning("Refused a cross-site request to %s: %s", path, problem)
+                return web.json_response(
+                    {"error": "forbidden", "detail": problem}, status=403
+                )
+
+        request["cds_user"] = username
+        return await handler(request)
+
+    def _identify(self, request, *, account_exists: bool):
+        """Resolve this request's credential to ``(kind, username)``.
+
+        The two cookies have different names, and that is what keeps the
+        credentials from being interchangeable: a session id offered as a bearer
+        token is compared against the access token and fails, and the access token
+        offered as a session id is looked up in the session store and is not
+        there. No shared comparison to get wrong.
+        """
+        if self._auth_token is not None and auth.matches(
+            self._auth_token, auth.token_from_headers(request.headers.get("Authorization"))
+        ):
+            return "token", None
+
+        if not account_exists and self._auth_token is not None:
+            # The pre-account browser path: the token in a cookie. Once an account
+            # exists this stops being accepted, so the token goes back to being
+            # purely a machine credential.
+            if auth.matches(self._auth_token, request.cookies.get(auth.COOKIE_NAME)):
+                return "token", None
+
+        if account_exists:
+            username = self._sessions.resolve(request.cookies.get(auth.SESSION_COOKIE))
+            if username:
+                return "session", username
+
+        return None, None
+
+    def _csrf_problem(self, request) -> str | None:
+        """Why this cookie-authenticated mutation should be refused, if it should."""
+        if auth.is_form_content_type(request.headers.get("Content-Type")):
+            return "This endpoint accepts application/json only."
+        if not auth.origin_is_same(
+            request.headers.get("Origin"),
+            request.headers.get("Referer"),
+            request.headers.get("Host"),
+        ):
+            return "Origin does not match this daemon."
+        return None
+
+    def _client_address(self, request) -> str:
+        """The peer address, for throttling. Never trusted for authorisation."""
+        if self._trust_proxy:
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        peer = request.remote
+        return peer or "unknown"
+
+    def _set_session_cookie(self, response, request, session_id: str) -> None:
+        response.set_cookie(
+            auth.SESSION_COOKIE,
+            session_id,
+            httponly=True,
+            samesite="Lax",
+            secure=auth.wants_secure_cookie(
+                scheme=request.scheme,
+                forwarded_proto=request.headers.get("X-Forwarded-Proto"),
+                trust_proxy=self._trust_proxy,
+            ),
+            max_age=auth.SESSION_ABSOLUTE_SECONDS,
+            path="/",
+        )
+
+    async def _auth_session(self, request):
+        """What the sign-in screen needs in order to render, and nothing else."""
+        account = await self._account()
+        account_exists = bool(account.get("exists"))
+        if account_exists:
+            mode = "user"
+        elif self._auth_token is not None:
+            mode = "token"
+        else:
+            mode = "none"
+        kind, username = self._identify(request, account_exists=account_exists)
+        return self._json(
+            {
+                "auth": mode,
+                # A token-only deployment is a valid steady state, not a half-built
+                # one, so this offers the upgrade rather than demanding it.
+                "setup_available": self._auth_token is not None and not account_exists,
+                "authenticated": kind is not None or mode == "none",
+                "username": username or (account.get("username") if kind else None),
+            }
+        )
+
+    async def _auth_login(self, request):
+        body = await self._body(request)
+        username = str(body.get("username", "")).strip()
+        password = str(body.get("password", ""))
+        keys = (f"user:{username.lower()}", f"addr:{self._client_address(request)}")
+
+        delay = self._throttle.delay_for(*keys)
+        if delay:
+            # Before the verification, not after: the point is to make the
+            # attacker wait, and to keep the expensive part behind the delay.
+            await asyncio.sleep(delay)
+
+        if auth.waiting_for_slot():
+            # Every hashing slot is busy. Refusing beats queueing: each waiting
+            # attempt is a 16 MB allocation, and this endpoint is unauthenticated.
+            return web.json_response(
+                {"error": "busy", "detail": "Too many sign-in attempts at once."},
+                status=503,
+                headers={"Retry-After": "2"},
+            )
+
+        result = await self._rpc_quiet(
+            "verify_web_account", {"username": username, "password": password}
+        )
+        if not (result or {}).get("ok"):
+            self._throttle.record_failure(*keys)
+            log.warning(
+                "Failed web UI sign-in for %r from %s",
+                username,
+                self._client_address(request),
+            )
+            # One answer for a wrong username and a wrong password alike.
+            return web.json_response(
+                {"error": "invalid_credentials", "detail": "Sign-in failed."}, status=401
+            )
+
+        self._throttle.record_success(*keys)
+        resolved = result.get("username") or username
+        response = web.Response(status=204)
+        self._set_session_cookie(response, request, self._sessions.issue(resolved))
+        log.info("Web UI sign-in for %s from %s", resolved, self._client_address(request))
+        return response
+
+    async def _exchange_token(self, request):
+        """Exchange the access token for a cookie — the pre-account browser path.
+
+        This is the JSON replacement for the old form POST to ``/login``. It stays
+        because a token-only deployment is a supported steady state, not a
+        half-finished setup: someone with a bookmarked ``http://nas:8080`` and a
+        token in their compose file must still be able to sign in after upgrading.
+
+        Once an account exists it is refused, which is decision 3 in the proposal:
+        from then on the token is purely a machine credential and a second way
+        into the browser would bypass the account entirely.
+        """
+        if self._auth_token is None:
+            return web.json_response(
+                {"error": "unavailable", "detail": "This daemon has no access token."},
+                status=403,
+            )
+        if (await self._account()).get("exists"):
+            return web.json_response(
+                {
+                    "error": "account_configured",
+                    "detail": "This daemon has an account. Sign in with it instead.",
+                },
+                status=409,
+            )
+
+        body = await self._body(request)
+        addr = self._client_address(request)
+        keys = (f"token:{addr}",)
+        delay = self._throttle.delay_for(*keys)
+        if delay:
+            await asyncio.sleep(delay)
+        if not auth.matches(self._auth_token, str(body.get("token", ""))):
+            self._throttle.record_failure(*keys)
+            log.warning("Rejected a wrong access token from %s", addr)
+            # No detail about which part was wrong, and the value is never logged.
+            return web.json_response(
+                {"error": "invalid_token", "detail": "That token was not accepted."},
                 status=401,
             )
-        response = web.HTTPFound("/")
+        self._throttle.record_success(*keys)
+
+        response = web.Response(status=204)
         response.set_cookie(
             auth.COOKIE_NAME,
-            presented,
+            str(body.get("token", "")),
             httponly=True,
-            samesite="Strict",
+            samesite="Lax",
+            secure=auth.wants_secure_cookie(
+                scheme=request.scheme,
+                forwarded_proto=request.headers.get("X-Forwarded-Proto"),
+                trust_proxy=self._trust_proxy,
+            ),
             max_age=60 * 60 * 24 * 30,
             path="/",
         )
-        raise response
+        return response
+
+    async def _auth_setup(self, request):
+        """Create the account by presenting the access token.
+
+        The token is the proof that you are the operator — first run generates it
+        and prints it to stdout. That is why this is not an open claim page: on a
+        daemon with no token there is no way to bootstrap over the network at all,
+        and the CLI (over the local socket) is the only path.
+        """
+        account = await self._account(refresh=True)
+        if account.get("exists"):
+            return web.json_response(
+                {"error": "already_configured", "detail": "An account already exists."},
+                status=409,
+            )
+        if self._auth_token is None:
+            return web.json_response(
+                {
+                    "error": "unavailable",
+                    "detail": (
+                        "This daemon has no access token, so an account cannot be "
+                        "created from the browser. Run 'cloud-drive-sync user set "
+                        "<name>' on the host instead."
+                    ),
+                },
+                status=403,
+            )
+
+        body = await self._body(request)
+        addr = self._client_address(request)
+        key = (f"setup:{addr}",)
+        delay = self._throttle.delay_for(*key)
+        if delay:
+            await asyncio.sleep(delay)
+        if not auth.matches(self._auth_token, str(body.get("token", ""))):
+            self._throttle.record_failure(*key)
+            log.warning("Rejected account setup with a wrong token from %s", addr)
+            return web.json_response(
+                {"error": "invalid_token", "detail": "That token was not accepted."},
+                status=401,
+            )
+        self._throttle.record_success(*key)
+
+        result = await self._rpc_quiet(
+            "set_web_account",
+            {"username": body.get("username", ""), "password": body.get("password", "")},
+        ) or {}
+        if result.get("status") != "ok":
+            return web.json_response(
+                {
+                    "error": result.get("status", "error"),
+                    "detail": result.get("error", "Could not create the account."),
+                },
+                status=400,
+            )
+
+        self._forget_account()
+        response = web.Response(status=204)
+        self._set_session_cookie(
+            response, request, self._sessions.issue(result["username"])
+        )
+        log.info("Web UI account created for %s from %s", result["username"], addr)
+        return response
+
+    async def _auth_logout(self, request):
+        """Drop the presented session. Needs no credential of its own."""
+        self._sessions.drop(request.cookies.get(auth.SESSION_COOKIE))
+        response = web.Response(status=204)
+        response.del_cookie(auth.SESSION_COOKIE, path="/")
+        return response
+
+    async def _auth_password(self, request):
+        """Change the password, then invalidate every session.
+
+        Dropping the sessions is the point: a password change that leaves the old
+        password's sessions alive has not changed anything for whoever had one.
+        """
+        body = await self._body(request)
+        result = await self._rpc_quiet(
+            "change_web_password",
+            {"current": body.get("current", ""), "new": body.get("new", "")},
+        ) or {}
+        status = result.get("status")
+        if status == "ok":
+            self._sessions.drop_all()
+            self._forget_account()
+            response = web.Response(status=204)
+            # The caller who just changed it keeps working, on a fresh session.
+            username = (await self._account(refresh=True)).get("username") or ""
+            self._set_session_cookie(response, request, self._sessions.issue(username))
+            return response
+        if status == "invalid_credentials":
+            return web.json_response(
+                {"error": "invalid_credentials", "detail": "Current password is wrong."},
+                status=401,
+            )
+        if status == "not_found":
+            return web.json_response(
+                {"error": "no_account", "detail": "No account is configured."},
+                status=404,
+            )
+        return web.json_response(
+            {"error": status or "error", "detail": result.get("error", "Failed.")},
+            status=400,
+        )
 
     @web.middleware
     async def _cors_middleware(self, request, handler):
@@ -185,9 +501,14 @@ class HttpServer:
         r.add_put("/api/settings/conflict-strategy", self._set_conflict_strategy)
         r.add_post("/api/repair", self._repair)
 
-        # Only useful when a token is configured; harmless otherwise.
-        r.add_post(LOGIN_PATH, self._login)
-        r.add_get(LOGIN_PATH, self._login_page)
+        # Sign-in. Five endpoints and no user management, because there is one
+        # account. /login itself is a client route now, served by the SPA shell.
+        r.add_get("/api/auth/session", self._auth_session)
+        r.add_post("/api/auth/token", self._exchange_token)
+        r.add_post("/api/auth/setup", self._auth_setup)
+        r.add_post("/api/auth/login", self._auth_login)
+        r.add_post("/api/auth/logout", self._auth_logout)
+        r.add_post("/api/auth/password", self._auth_password)
 
         r.add_get("/api/settings/max-deletions", self._get_max_deletions)
         r.add_put("/api/settings/max-deletions", self._set_max_deletions)
@@ -216,6 +537,24 @@ class HttpServer:
                 text=json.dumps({"error": asdict(response.error)}),
                 content_type="application/json",
             )
+        return response.result
+
+    async def _rpc_quiet(self, method: str, params: dict | None = None):
+        """Call the handler and return ``None`` on failure instead of raising.
+
+        The sign-in path needs answers, not exceptions: a database that cannot say
+        whether an account exists must read as "no account" and leave the token
+        path working, rather than turning every request into a 400.
+        """
+        request = JsonRpcRequest(id=1, method=method, params=params or {})
+        try:
+            response = await self._handler.handle(request)
+        except Exception:
+            log.exception("Auth RPC %s failed", method)
+            return None
+        if response.error:
+            log.warning("Auth RPC %s: %s", method, response.error)
+            return None
         return response.result
 
     def _json(self, data):
@@ -366,9 +705,6 @@ class HttpServer:
     async def _get_stop_state(self, req):
         return self._json(await self._rpc("get_stop_state"))
 
-    async def _login_page(self, req):
-        return web.Response(text=_LOGIN_PAGE, content_type="text/html")
-
     async def _get_max_deletions(self, req):
         return self._json(await self._rpc("get_max_deletions"))
 
@@ -404,11 +740,13 @@ class HttpServer:
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
         log.info("HTTP server listening on http://%s:%d", self._host, self._port)
+        account = await self._account(refresh=True)
         auth.warn_if_exposed(
             name="HTTP API and web UI",
             host=self._host,
             port=self._port,
             token=self._auth_token,
+            account=bool(account.get("exists")),
         )
 
     async def stop(self) -> None:

@@ -515,6 +515,89 @@ def gen_token():
     click.echo(generate_token())
 
 
+# ---------------------------------------------------------------------------
+# Web UI sign-in
+#
+# `auth` is already taken by OAuth account sign-in, so the group is `user`. Three
+# commands, because there is exactly one account: `set` is create-and-update in
+# one verb precisely because there is nothing to disambiguate.
+#
+# These go over the IPC socket, which means the daemon must be running -- and the
+# socket is also the recovery credential: a forgotten password is fixed from a
+# shell on the box, which is why no self-service reset exists.
+# ---------------------------------------------------------------------------
+
+@cli.group()
+def user():
+    """Manage the web UI sign-in account."""
+
+
+@user.command("set")
+@click.argument("username")
+@click.option(
+    "--password",
+    default=None,
+    help="Password (prompted for, hidden, if omitted -- which is the safer path: "
+         "a password on the command line lands in your shell history and the "
+         "process list).",
+)
+def user_set(username: str, password: str | None):
+    """Create or replace the web UI account."""
+    if password is None:
+        password = click.prompt("Password", hide_input=True, confirmation_prompt=True)
+    try:
+        result = _run_client_call(
+            "set_web_account", {"username": username, "password": password}
+        ) or {}
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    if result.get("status") != "ok":
+        click.echo(f"Error: {result.get('error', 'could not set the account')}", err=True)
+        sys.exit(1)
+    click.echo(f"Web UI account set for {result['username']}.")
+    # Setting an account changes how the port behaves, so say so rather than
+    # letting the operator discover it at the next sign-in.
+    click.echo("The web UI now asks for this username and password.")
+
+
+@user.command("show")
+def user_show():
+    """Show the web UI account, if one is configured."""
+    try:
+        result = _run_client_call("get_web_account") or {}
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    if not result.get("exists"):
+        click.echo("No web UI account. The web UI uses the access token, if one is set.")
+        return
+    click.echo(f"Username:         {result['username']}")
+    click.echo(f"Created:          {result.get('created_at', '?')}")
+    click.echo(f"Password changed: {result.get('password_changed_at', '?')}")
+
+
+@user.command("clear")
+@click.confirmation_option(
+    prompt="Remove the web UI account? Access falls back to the token, or to "
+           "nothing if no token is set."
+)
+def user_clear():
+    """Remove the web UI account."""
+    try:
+        result = _run_client_call("clear_web_account") or {}
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    if result.get("status") == "not_found":
+        click.echo("There was no web UI account to remove.")
+        return
+    if result.get("status") != "ok":
+        click.echo(f"Error: {result.get('error', 'could not clear the account')}", err=True)
+        sys.exit(1)
+    click.echo("Web UI account removed.")
+
+
 @cli.group("deletions")
 def deletions():
     """Inspect and resolve deletions blocked by the delete fail-safe."""

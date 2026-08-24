@@ -156,15 +156,32 @@ def _carry_secrets(new, old, secret_fields: tuple[str, ...], raw: dict):
     return new
 
 
-def require_http_token(token: str | None) -> None:
-    """Refuse a webhook write when authentication is not configured."""
-    if not token:
+def require_authentication(token: str | None, *, account: bool = False) -> None:
+    """Refuse a webhook write when authentication is not configured.
+
+    Either credential counts. Before the web UI gained a sign-in account, "a token
+    is set" *was* the definition of authenticated — so this used to check only the
+    token, and leaving it that way would have refused webhook configuration on a
+    daemon whose UI asks for a username and password, telling the operator to set
+    a token they had deliberately replaced.
+    """
+    if not token and not account:
         raise WebhookAuthRequired(
             "Webhook configuration requires authentication to be enabled. This "
-            "daemon has no HTTP token set, so the API is reachable without "
-            "credentials — and a webhook can send your file activity to any host. "
-            "Set a token first (see 'cloud-drive-sync gen-token'), then retry."
+            "daemon has no HTTP token and no web UI account, so the API is "
+            "reachable without credentials — and a webhook can send your file "
+            "activity to any host. Set a token ('cloud-drive-sync gen-token') or "
+            "create an account ('cloud-drive-sync user set <name>'), then retry."
         )
+
+
+def require_http_token(token: str | None) -> None:
+    """Token-only form of :func:`require_authentication`.
+
+    Kept because it is the narrower question and reads better at a call site that
+    genuinely means "is there a token"; the webhook handlers use the wider one.
+    """
+    require_authentication(token)
 
 
 def summarise_target(target: WebhookTarget) -> dict:

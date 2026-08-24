@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import time
 import uuid
 from typing import Any, ClassVar
@@ -76,6 +77,14 @@ class RequestHandler:
             "repair": self._repair,
             "get_pending_deletions": self._get_pending_deletions,
             "set_max_deletions": self._set_max_deletions,
+            # Web UI sign-in. The account lives here, on the daemon side, because
+            # this is where the database is; sessions and cookies live in the HTTP
+            # front-end. That split is what keeps HttpServer free of a DB handle.
+            "get_web_account": self._get_web_account,
+            "set_web_account": self._set_web_account,
+            "clear_web_account": self._clear_web_account,
+            "verify_web_account": self._verify_web_account,
+            "change_web_password": self._change_web_password,
             "get_max_deletions": self._get_max_deletions,
             "resolve_pending_deletions": self._resolve_pending_deletions,
             "emergency_stop": self._emergency_stop,
@@ -322,6 +331,122 @@ class RequestHandler:
                 "accounts": {a.email: a.stopped for a in self._config.accounts},
             }
         return self._engine.stop_state()
+
+    # ── Web UI account ──────────────────────────────────────────────
+
+    def _web_db(self):
+        return self._db or (self._engine._db if self._engine else None)
+
+    async def _has_web_account(self) -> bool:
+        """Whether a web UI account exists. Used by the webhook auth gate too."""
+        db = self._web_db()
+        if db is None:
+            return False
+        try:
+            return await db.get_web_user() is not None
+        except Exception:
+            # A database that cannot answer must not read as "authenticated".
+            return False
+
+    async def _get_web_account(self, params: dict) -> dict:
+        """Whether sign-in is configured, and as whom. Never returns the hash."""
+        db = self._web_db()
+        if db is None:
+            return {"exists": False, "username": None}
+        user = await db.get_web_user()
+        if user is None:
+            return {"exists": False, "username": None}
+        return {
+            "exists": True,
+            "username": user.username,
+            "created_at": user.created_at.isoformat(),
+            "password_changed_at": user.password_changed_at.isoformat(),
+        }
+
+    async def _set_web_account(self, params: dict) -> dict:
+        """Create or replace the account.
+
+        Validation lives in ``http.auth`` so the CLI, the setup endpoint and the
+        change-password endpoint cannot disagree about what a valid password is.
+        """
+        from cloud_drive_sync.http import auth
+
+        db = self._web_db()
+        if db is None:
+            return {"status": "error", "error": "The database is not open yet."}
+        username = str(params.get("username", "")).strip()
+        password = str(params.get("password", ""))
+        problem = auth.username_problem(username) or auth.password_problem(
+            password, username=username, token=self._config.http.token or None
+        )
+        if problem:
+            return {"status": "invalid", "error": problem}
+        await db.set_web_user(username, await auth.hash_password_async(password))
+        log.info("Web UI account set for %s", username)
+        return {"status": "ok", "username": username}
+
+    async def _clear_web_account(self, params: dict) -> dict:
+        db = self._web_db()
+        if db is None:
+            return {"status": "error", "error": "The database is not open yet."}
+        existing = await db.get_web_user()
+        if existing is None:
+            return {"status": "not_found"}
+        await db.clear_web_user()
+        log.warning(
+            "Web UI account removed; the HTTP front-end is back to %s",
+            "token-only access" if self._config.http.token else "NO authentication",
+        )
+        return {"status": "ok"}
+
+    async def _verify_web_account(self, params: dict) -> dict:
+        """Check a username and password pair.
+
+        Answers a single boolean: the caller must not be able to tell a wrong
+        username from a wrong password. Rehashes in place when the stored hash
+        was made with parameters we have since raised.
+        """
+        from cloud_drive_sync.http import auth
+
+        db = self._web_db()
+        user = await db.get_web_user() if db else None
+        if user is None:
+            return {"ok": False}
+        username = str(params.get("username", "")).strip()
+        password = str(params.get("password", ""))
+        if not secrets.compare_digest(username.lower(), user.username.lower()):
+            # Still spend the verification, so a wrong username is not faster
+            # than a wrong password. Timing is a credential oracle otherwise.
+            await auth.verify_password_async(user.password, password)
+            return {"ok": False}
+        if not await auth.verify_password_async(user.password, password):
+            return {"ok": False}
+        if auth.needs_rehash(user.password):
+            await db.set_web_user(
+                user.username, await auth.hash_password_async(password)
+            )
+            log.info("Rehashed the web UI password at the current scrypt cost")
+        return {"ok": True, "username": user.username}
+
+    async def _change_web_password(self, params: dict) -> dict:
+        from cloud_drive_sync.http import auth
+
+        db = self._web_db()
+        user = await db.get_web_user() if db else None
+        if user is None:
+            return {"status": "not_found"}
+        current = str(params.get("current", ""))
+        new = str(params.get("new", ""))
+        if not await auth.verify_password_async(user.password, current):
+            return {"status": "invalid_credentials"}
+        problem = auth.password_problem(
+            new, username=user.username, token=self._config.http.token or None
+        )
+        if problem:
+            return {"status": "invalid", "error": problem}
+        await db.set_web_user(user.username, await auth.hash_password_async(new))
+        log.info("Web UI password changed for %s", user.username)
+        return {"status": "ok"}
 
     async def _get_max_deletions(self, params: dict) -> dict:
         """Current delete fail-safe limits: global defaults and per-pair overrides.
@@ -1434,11 +1559,13 @@ class RequestHandler:
             WebhookAuthRequired,
             apply_update,
             masked,
-            require_http_token,
+            require_authentication,
         )
 
         try:
-            require_http_token(self._config.http.token)
+            require_authentication(
+                self._config.http.token, account=await self._has_web_account()
+            )
         except WebhookAuthRequired as exc:
             raise TypeError(str(exc)) from exc
 
@@ -1492,10 +1619,15 @@ class RequestHandler:
 
     async def _test_webhook(self, params: dict) -> dict:
         """Send a ``webhook.test`` event to one target and report the outcome."""
-        from cloud_drive_sync.webhooks.api import WebhookAuthRequired, require_http_token
+        from cloud_drive_sync.webhooks.api import (
+            WebhookAuthRequired,
+            require_authentication,
+        )
 
         try:
-            require_http_token(self._config.http.token)
+            require_authentication(
+                self._config.http.token, account=await self._has_web_account()
+            )
         except WebhookAuthRequired as exc:
             raise TypeError(str(exc)) from exc
 

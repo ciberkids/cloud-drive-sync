@@ -197,3 +197,31 @@ class PartialTransfer:
             temp_path=row[7],
             created_at=datetime.fromisoformat(row[8]),
         )
+
+
+@dataclass
+class WebUser:
+    """The web UI's single account.
+
+    One row, ever — the table enforces it with ``CHECK (id = 1)``. This is a
+    deliberate design decision rather than a stage on the way to multi-user: a
+    single-owner sync daemon with no roles gains nothing from a user list it
+    would only ever put one entry in. See docs/Proposal-Web-UI-Login.md.
+
+    ``password`` is an encoded scrypt hash (``scrypt$n=…$salt$hash``), never a
+    password and never reversible. It is the only field that must not be logged.
+    """
+
+    username: str
+    password: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    password_changed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @classmethod
+    def from_row(cls, row: tuple) -> WebUser:
+        return cls(
+            username=row[0],
+            password=row[1],
+            created_at=datetime.fromisoformat(row[2]),
+            password_changed_at=datetime.fromisoformat(row[3]),
+        )

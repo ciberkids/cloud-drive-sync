@@ -324,6 +324,7 @@ class Daemon:
                     host=self._http_host,
                     port=self._http_port,
                     auth_token=self._http_token,
+                    trust_proxy=self._config.http.trust_proxy,
                 )
                 await self._http_server.start()
 

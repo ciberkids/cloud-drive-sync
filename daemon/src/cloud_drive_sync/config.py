@@ -146,6 +146,13 @@ class HttpConfig:
     #: existing deployment is never locked out of a bookmarked URL by an update.
     token: str = ""
 
+    #: Whether to believe ``X-Forwarded-Proto`` from whatever is in front of us.
+    #: Off by default because that header is attacker-controlled otherwise: anyone
+    #: who can reach the port could assert ``https`` and change how the session
+    #: cookie is set. On, behind a real reverse proxy, it is what lets the cookie
+    #: carry ``Secure`` for a deployment the daemon itself only ever sees as HTTP.
+    trust_proxy: bool = False
+
 
 @dataclass
 class Config:
@@ -183,6 +190,7 @@ class Config:
         # HTTP section
         http = data.get("http", {})
         cfg.http.token = http.get("token", cfg.http.token)
+        cfg.http.trust_proxy = bool(http.get("trust_proxy", cfg.http.trust_proxy))
 
         # Webhooks section (global level of the hierarchy)
         cfg.webhooks = webhooks_from_toml(data.get("webhooks"))
@@ -307,8 +315,14 @@ class Config:
                 "log_level": self.general.log_level,
             },
             # Omitted entirely when unset, so an upgraded config does not gain an
-            # empty token line that looks like a setting someone cleared.
-            **({"http": {"token": self.http.token}} if self.http.token else {}),
+            # empty token line that looks like a setting someone cleared. Each key
+            # is included only when it differs from the default, for the same
+            # reason — and because `save()` writes this dict *literally*, anything
+            # not enumerated here is erased from the file on the next write.
+            **({"http": _http_section} if (_http_section := {
+                **({"token": self.http.token} if self.http.token else {}),
+                **({"trust_proxy": True} if self.http.trust_proxy else {}),
+            }) else {}),
             "sync": {
                 "poll_interval": self.sync.poll_interval,
                 "conflict_strategy": self.sync.conflict_strategy,

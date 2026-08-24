@@ -16,13 +16,14 @@ from cloud_drive_sync.db.models import (
     PartialTransfer,
     SyncEntry,
     SyncLogEntry,
+    WebUser,
 )
 from cloud_drive_sync.util.logging import get_logger
 from cloud_drive_sync.util.paths import db_path
 
 log = get_logger("database")
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # A full VACUUM rewrites the whole database and blocks startup, so it only runs
 # when a meaningful fraction *and* a meaningful absolute amount is wasted. The
@@ -108,6 +109,14 @@ CREATE TABLE IF NOT EXISTS partial_transfers (
     temp_path TEXT,
     created_at TEXT NOT NULL,
     PRIMARY KEY (path, pair_id)
+);
+
+CREATE TABLE IF NOT EXISTS web_user (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    username TEXT NOT NULL,
+    password TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    password_changed_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_state_pair ON sync_state(pair_id);
@@ -351,9 +360,62 @@ CREATE TABLE IF NOT EXISTS partial_transfers (
                     log.info("Migrated database to v5: added pending_deletions table")
                 except Exception as exc:
                     log.debug("v5 migration step skipped: %s", exc)
+            # Migration from v5 -> v6: add the web_user table (roadmap item 11)
+            if current_version < 6:
+                # Deliberately NOT wrapped in try/except like the steps above.
+                # SCHEMA_SQL has already run CREATE TABLE IF NOT EXISTS, so this
+                # is a check that it worked — and if it did not, the version must
+                # not advance. This file's history includes a bump that sailed
+                # past a column that was never added; that is the failure mode
+                # being closed here, so an exception is the correct outcome.
+                cursor = await self.db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='web_user'"
+                )
+                if await cursor.fetchone() is None:
+                    raise RuntimeError(
+                        "v6 migration: the web_user table was not created; "
+                        "refusing to advance schema_version past it"
+                    )
+                log.info("Migrated database to v6: added web_user table")
             await self.db.execute(
                 "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
             )
+        await self.db.commit()
+
+    # ── Web UI account ──────────────────────────────────────────────
+    #
+    # One row, id = 1. The single-account rule lives in the schema, so nothing
+    # here has to defend it and no caller can create a second by accident.
+
+    async def get_web_user(self) -> WebUser | None:
+        """The web UI account, or ``None`` when sign-in is not configured."""
+        cursor = await self.db.execute(
+            "SELECT username, password, created_at, password_changed_at "
+            "FROM web_user WHERE id = 1"
+        )
+        row = await cursor.fetchone()
+        return WebUser.from_row(row) if row else None
+
+    async def set_web_user(self, username: str, password_hash: str) -> None:
+        """Create or replace the account, keeping the original ``created_at``.
+
+        Replace rather than insert, because ``user set`` is deliberately one verb
+        for both cases — with a single account there is nothing to disambiguate.
+        """
+        now = datetime.now(UTC).isoformat()
+        existing = await self.get_web_user()
+        created = existing.created_at.isoformat() if existing else now
+        await self.db.execute(
+            "INSERT OR REPLACE INTO web_user "
+            "(id, username, password, created_at, password_changed_at) "
+            "VALUES (1, ?, ?, ?, ?)",
+            (username, password_hash, created, now),
+        )
+        await self.db.commit()
+
+    async def clear_web_user(self) -> None:
+        """Remove the account. The daemon falls back to token-only access."""
+        await self.db.execute("DELETE FROM web_user")
         await self.db.commit()
 
     # ── SyncEntry CRUD ──────────────────────────────────────────────

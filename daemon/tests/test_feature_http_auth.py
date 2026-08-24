@@ -23,9 +23,22 @@ from cloud_drive_sync.ipc.protocol import JsonRpcResponse
 TOKEN = "s3cret-token-value"  # test-only
 
 
+#: Methods the auth layer itself calls. The middleware has to ask whether a web
+#: UI account exists before it can decide which credential to accept, so these
+#: show up on an unauthenticated request by design — and counting them as "the
+#: handler ran" would make every rejection test lie. Answered from a 5-second
+#: cache in the running daemon; cold here, because each test builds a new server.
+AUTH_PLUMBING = {"get_web_account", "verify_web_account", "set_web_account"}
+
+
 class FakeHandler:
     def __init__(self) -> None:
         self.calls: list[str] = []
+
+    @property
+    def route_calls(self) -> list[str]:
+        """Calls a *route* made — what "the request got through" actually means."""
+        return [c for c in self.calls if c not in AUTH_PLUMBING]
 
     async def handle(self, request):
         self.calls.append(request.method)
@@ -164,7 +177,7 @@ async def test_with_a_token_the_api_refuses_anonymous_calls(client_factory):
 
     assert resp.status == 401
     assert "Bearer" in resp.headers.get("WWW-Authenticate", "")
-    assert handler.calls == [], "the handler ran despite the request being rejected"
+    assert handler.route_calls == [], "the handler ran despite the request being rejected"
 
 
 async def test_the_dangerous_call_is_refused_anonymously(client_factory):
@@ -176,7 +189,7 @@ async def test_the_dangerous_call_is_refused_anonymously(client_factory):
     )
 
     assert resp.status == 401
-    assert handler.calls == [], "delete protection could have been switched off"
+    assert handler.route_calls == [], "delete protection could have been switched off"
 
 
 async def test_emergency_stop_is_refused_anonymously(client_factory):
@@ -186,7 +199,7 @@ async def test_emergency_stop_is_refused_anonymously(client_factory):
     resp = await client.post("/api/sync/stop", json={})
 
     assert resp.status == 401
-    assert handler.calls == []
+    assert handler.route_calls == []
 
 
 async def test_a_bearer_token_is_accepted(client_factory):
@@ -195,7 +208,7 @@ async def test_a_bearer_token_is_accepted(client_factory):
     resp = await client.get("/api/status", headers={"Authorization": f"Bearer {TOKEN}"})
 
     assert resp.status == 200
-    assert handler.calls == ["get_status"]
+    assert handler.route_calls == ["get_status"]
 
 
 async def test_a_wrong_bearer_token_is_refused(client_factory):
@@ -206,49 +219,71 @@ async def test_a_wrong_bearer_token_is_refused(client_factory):
     assert resp.status == 401
 
 
-async def test_signing_in_sets_a_cookie_that_then_works(client_factory):
-    """The browser path end to end: post the token, get a cookie, use the API."""
+async def test_exchanging_the_token_sets_a_cookie_that_then_works(client_factory):
+    """The browser path end to end, for a deployment with a token and no account.
+
+    Was a form POST to ``/login``; it is now JSON to ``/api/auth/token``, because
+    the sign-in screen moved into the SPA and a form POST is also the one shape a
+    cross-site page can forge without JavaScript.
+    """
     client, _ = await client_factory(TOKEN)
 
-    login = await client.post("/login", data={"token": TOKEN}, allow_redirects=False)
-    assert login.status in (302, 303)
+    login = await client.post("/api/auth/token", json={"token": TOKEN})
+    assert login.status == 204
 
     # The client keeps the cookie, so the next call needs no header.
     resp = await client.get("/api/status")
     assert resp.status == 200
 
 
-async def test_the_login_cookie_is_hardened(client_factory):
-    """HttpOnly stops script access; SameSite=Strict stops cross-site use."""
+async def test_the_token_cookie_is_hardened(client_factory):
+    """HttpOnly stops script access; SameSite stops cross-site use.
+
+    ``Lax`` rather than the previous ``Strict``: Lax still withholds the cookie on
+    cross-site POST/PUT/DELETE, which is the CSRF case, while Strict additionally
+    breaks arriving from a bookmark in another app — which reads as a broken
+    sign-in and buys nothing.
+    """
     client, _ = await client_factory(TOKEN)
 
-    login = await client.post("/login", data={"token": TOKEN}, allow_redirects=False)
+    login = await client.post("/api/auth/token", json={"token": TOKEN})
 
     raw = login.headers.get("Set-Cookie", "")
     assert "HttpOnly" in raw
-    assert "SameSite=Strict" in raw
+    assert "SameSite=Lax" in raw
+    # Plain HTTP: a Secure cookie here would be accepted and never sent back,
+    # which presents as "sign-in works, then asks again".
+    assert "Secure" not in raw
 
 
-async def test_a_wrong_token_at_login_sets_no_cookie(client_factory):
+async def test_a_wrong_token_sets_no_cookie(client_factory):
     client, _ = await client_factory(TOKEN)
 
-    login = await client.post("/login", data={"token": "nope"}, allow_redirects=False)
+    login = await client.post("/api/auth/token", json={"token": "nope"})
 
     assert login.status == 401
     assert "Set-Cookie" not in login.headers
 
 
-async def test_the_login_page_is_reachable_unauthenticated(client_factory):
-    """Otherwise there would be no way in through a browser."""
+async def test_the_shell_is_served_unauthenticated_so_the_spa_can_ask(client_factory):
+    """Otherwise there would be no way in through a browser.
+
+    The old server-rendered form answered 401 with an HTML body. The SPA cannot
+    route on a body it was not given, so the shell is served 200 and it renders
+    the sign-in view itself. The bundle was already public via /assets, so this
+    exposes nothing new — and /api still refuses.
+    """
     client, _ = await client_factory(TOKEN)
 
-    resp = await client.get("/login")
+    for path in ("/", "/login"):
+        resp = await client.get(path)
+        assert resp.status == 200, path
+        assert "text/html" in resp.headers["Content-Type"]
 
-    assert resp.status == 200
-    assert "token" in (await resp.text())
+    assert (await client.get("/api/status")).status == 401
 
 
-async def test_the_login_page_does_not_leak_the_token(client_factory):
+async def test_the_shell_does_not_leak_the_token(client_factory):
     client, _ = await client_factory(TOKEN)
 
     body = await (await client.get("/login")).text()
@@ -256,15 +291,17 @@ async def test_the_login_page_does_not_leak_the_token(client_factory):
     assert TOKEN not in body
 
 
-async def test_an_unauthenticated_ui_request_gets_the_login_page(client_factory):
-    """A browser hitting / should see a form, not a bare 401 body."""
+async def test_the_session_endpoint_says_what_to_render(client_factory):
+    """The one thing an unauthenticated browser is allowed to learn."""
     client, _ = await client_factory(TOKEN)
 
-    resp = await client.get("/")
+    resp = await client.get("/api/auth/session")
 
-    assert resp.status == 401
-    assert "text/html" in resp.headers["Content-Type"]
-    assert "Sign in" in (await resp.text())
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["auth"] == "token"
+    assert body["setup_available"] is True, "a token can bootstrap an account"
+    assert TOKEN not in str(body)
 
 
 async def test_preflight_is_not_blocked(client_factory):
