@@ -549,3 +549,45 @@ async def test_the_account_lookup_is_cached_rather_than_per_request(server_facto
         await client.get("/api/auth/session")
 
     assert handler.calls.count("get_web_account") <= 2, handler.calls
+
+
+# ── Failing closed ──────────────────────────────────────────────────
+
+
+async def test_a_failed_account_lookup_still_requires_a_credential(server_factory):
+    """A guard that switches itself off under load is not a guard.
+
+    An account-only daemon (no token) whose account lookup starts failing must not
+    conclude that nothing is configured and serve the API to anyone.
+    """
+    client, handler, server = await server_factory(None, account=True)
+    await _sign_in(client)
+    assert (await client.get("/api/status")).status == 200
+
+    async def broken(request):
+        raise RuntimeError("database is gone")
+
+    handler.handle = broken
+    server._forget_account()
+    server._sessions.drop_all()
+
+    resp = await client.get("/api/status")
+
+    assert resp.status == 401, "the port opened up when the database failed"
+
+
+async def test_a_failed_lookup_does_not_lock_out_an_install_with_no_account(server_factory):
+    """The other direction: never-configured must stay open on a transient error.
+
+    Failing closed unconditionally would lock an open deployment out of its own UI
+    for as long as the error lasted, which is the bug this is not.
+    """
+    client, handler, server = await server_factory(None)
+
+    async def broken(request):
+        raise RuntimeError("database is gone")
+
+    handler.handle = broken
+    server._forget_account()
+
+    assert (await client.get("/api/status")).status != 401

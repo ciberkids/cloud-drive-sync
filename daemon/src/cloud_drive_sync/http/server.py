@@ -63,6 +63,9 @@ class HttpServer:
         self._sessions = auth.SessionStore()
         self._throttle = auth.LoginThrottle()
         self._account_cache: tuple[float, dict] | None = None
+        # Sticky: once an account has been seen, a *failed* lookup must not be
+        # read as "no account configured". See _account().
+        self._account_seen = False
         # Auth runs before CORS so an unauthorised request is rejected without the
         # handler being reached at all.
         self._app = web.Application(
@@ -82,14 +85,37 @@ class HttpServer:
     # docs/Proposal-Web-UI-Login.md for why replacing the token was rejected.
 
     async def _account(self, *, refresh: bool = False) -> dict:
-        """Whether a web UI account exists, cached briefly. Never the hash."""
+        """Whether a web UI account exists, cached briefly. Never the hash.
+
+        A failed lookup **fails closed** for an install that has one. Without
+        that, a database error on an account-only daemon (no token) would answer
+        "no account", the middleware would conclude nothing is configured, and the
+        port would serve everything to anyone for as long as the error lasted —
+        a guard that switches itself off under load is not a guard.
+
+        It cannot fail closed unconditionally, though: an install that genuinely
+        has no account would then be locked out of its own open UI by a transient
+        error. So the memory is sticky in one direction only — once an account has
+        been seen, a failure keeps requiring credentials; if none was ever seen, a
+        failure leaves the previous behaviour alone.
+        """
         now = time.monotonic()
         cached = self._account_cache
         if not refresh and cached and now - cached[0] < ACCOUNT_CACHE_SECONDS:
             return cached[1]
-        state = await self._rpc_quiet("get_web_account") or _NO_ACCOUNT
+        state = await self._rpc_quiet("get_web_account")
         if not isinstance(state, dict):
+            if self._account_seen:
+                log.error(
+                    "Could not read the web UI account; still requiring a "
+                    "credential, because one was configured"
+                )
+                # Deliberately not cached: retry on the next request rather than
+                # pinning a guess for the cache window.
+                return {"exists": True, "username": None}
             state = _NO_ACCOUNT
+        if state.get("exists"):
+            self._account_seen = True
         self._account_cache = (now, state)
         return state
 
