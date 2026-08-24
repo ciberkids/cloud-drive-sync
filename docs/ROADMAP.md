@@ -14,7 +14,7 @@ The ordered list of what gets built next. This file is the queue; each item also
 | 6 | Lock down stored OAuth tokens (`0600`) | Security | — | ✅ Done — v2.4.1 (Google), v2.4.2 (every provider) |
 | 7 | Authentication on by default for new installs | Security | — | ✅ Done — shipped in v2.4.3; upgrades untouched |
 | 8 | Encrypt OneDrive, Box and Nextcloud credentials | Security | [#57](https://github.com/ciberkids/cloud-drive-sync/issues/57) | ✅ Done — shipped in v2.4.3 |
-| 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.4.5; a stable `uid` now exists on every pair, but the engine and database still key on `pair_N` |
+| 9 | Give each sync pair a stable id | Data safety | — | ⚖️ Harm fixed in v2.5.0; a stable `uid` now exists on every pair, but the engine and database still key on `pair_N` |
 | 10 | [Event webhooks](#10--event-webhooks) | Feature | — | 🚧 Phases 0–1 shipped (global + per-pair, none/basic/bearer/custom); account tier and minted JWT still open |
 | 11 | [Web UI sign-in](#11--web-ui-sign-in) | Security / feature | — | ✅ Done — one account, DB-backed, in-memory sessions; the access token still works for scripts. See [full design](Proposal-Web-UI-Login) |
 
@@ -118,10 +118,10 @@ Pairs are identified by their position in the config list: pair *N* is `pair_N`,
 
 - A refused deletion block outlived its pair, so approving it granted a delete-protection bypass to a folder the user was never asked about. *(Mitigated: removal discards blocks at or after the removal point, and approving verifies the sample paths belong to the pair.)*
 - `pair remove` left the pair registered in the running engine, so a removed pair kept running until restart. *(Still open — the stored state is now correct, but the live engine is not told.)*
-- Demo mode inserted its pair at index 0 of the real config, so it inherited the first real pair's identity and overwrote its sync state. *(Fixed in v2.4.5 — it appends.)*
+- Demo mode inserted its pair at index 0 of the real config, so it inherited the first real pair's identity and overwrote its sync state. *(Fixed in v2.5.0 — it appends.)*
 - `pause 0` / `sync 0` matched nothing because the CLI prints `0` and the engine keys `pair_0`. *(Mitigated: ids are normalised at the handler.)*
 
-### What v2.4.5 fixed
+### What v2.5.0 fixed
 
 The *harm* is gone. Removing a pair now shifts the surviving pairs' rows down across all six `pair_id` tables in one transaction, so each pair keeps its own sync state, change token, conflicts and refused deletion batch. Demo mode appends its pair instead of inserting at index 0, which had renumbered every real pair. Those were the only two things that mutated pair order.
 
@@ -135,7 +135,7 @@ The identity scheme is still positional, so the invariant is maintained by remem
 
 **The cost is larger than it looks, and most of it is not in the daemon.** The engine's `pair_N` ids are exposed to the UI — through `get_status` keys, activity-log rows and pair counts — and `Transfers.tsx`, `SyncStatus.tsx` and `ActivityLog.tsx` each rebuild `pair_${i}` from a list index to join against them. Switching to uuids therefore means a config-dependent database migration **plus** three UI components **plus** a webui rebuild, and the UI join is where a mistake shows wrong data silently instead of erroring.
 
-**And the migration cannot be more correct than the data it inherits.** The mapping `pair_N -> pairs[N].id` is only right if the config order at migration time matches the order when the rows were written. Anyone who removed a pair on a version before v2.4.5 already has mis-assigned rows, and nothing records the old order — so the migration freezes whatever state exists and prevents future drift. It cannot repair past drift, and it should not try: a heuristic matching stored paths against `local_path` would be guessing about the user's files.
+**And the migration cannot be more correct than the data it inherits.** The mapping `pair_N -> pairs[N].id` is only right if the config order at migration time matches the order when the rows were written. Anyone who removed a pair on a version before v2.5.0 already has mis-assigned rows, and nothing records the old order — so the migration freezes whatever state exists and prevents future drift. It cannot repair past drift, and it should not try: a heuristic matching stored paths against `local_path` would be guessing about the user's files.
 
 ## 10 — Event webhooks
 

@@ -346,7 +346,9 @@ Also worth recording: the first browser check of the built bundle showed the das
 
 **This ships as a version bump, not a ride-along.** It adds a user-facing surface, a schema migration and a new database table, so it wants its own tag and its own release notes — the same reasoning [item 7](ROADMAP#7--authentication-on-by-default-for-new-installs) used for the first-run token.
 
-One thing to settle at tag time rather than here: **`v2.4.5` was never tagged.** The pair-uid work and webhook phases 0–1 are on `main` unreleased, and [ROADMAP](ROADMAP) and [Proposal: Event Webhooks](Proposal-Event-Webhooks) already describe fixes "in v2.4.5" as though shipped. So the next tag carries this feature *and* that backlog, and either it is called `v2.5.0` and those references are corrected, or `v2.4.5` is cut first from an earlier commit. That is a release decision, not a design one — but it must not be discovered during the release.
+One thing that had to be settled at tag time rather than here: **`v2.4.5` was never tagged.** The pair-uid work and webhook phases 0–1 sat on `main` unreleased, while [ROADMAP](ROADMAP) and [Proposal: Event Webhooks](Proposal-Event-Webhooks) already described fixes "in v2.4.5" as though shipped — a version that did not exist.
+
+Settled as **`v2.5.0` carrying all three items** (9, 10 and 11), with those stale references corrected to `v2.5.0`. A minor bump is the honest label for a release that adds features; cutting a retroactive `v2.4.5` from an earlier commit would have meant two release pipelines and a patch number carrying a feature. Worth recording as a habit rather than an incident: docs that name a version before the tag exists are a claim the repository cannot back.
 
 Per `CLAUDE.md` step 10 the pipeline injects the version from the git tag into `pyproject.toml` and `tauri.conf.json`, so there is no manual bump to make — only a tag to choose.
 

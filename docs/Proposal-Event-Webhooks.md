@@ -48,7 +48,7 @@ A webhook payload is an **external wire contract**. Whatever identifier it carri
 
 Pairs are identified by their position in the config list — `f"pair_{i}"`, minted at `sync/engine.py:109` and `:118` and persisted under that name in **six** tables — `sync_state`, `change_tokens`, `conflicts`, `sync_log`, `pending_deletions` and `partial_transfers` (`database.py:47`, `:60`, `:68`, `:83`, `:90`, `:102`). **No pair id is stored in `config.toml` at all**; it is derived from the list index at load time. Remove pair 1 and every pair after it renumbers: `pair_2` silently starts describing a different folder.
 
-[Roadmap item 9](ROADMAP#9--give-each-sync-pair-a-stable-id) records this. Note carefully what it says: the *harm* was fixed in v2.4.5 (history no longer transfers to the pair that takes a removed pair's place), but **the identity scheme is still positional**. Item 9 is not done.
+[Roadmap item 9](ROADMAP#9--give-each-sync-pair-a-stable-id) records this. Note carefully what it says: the *harm* was fixed in v2.5.0 (history no longer transfers to the pair that takes a removed pair's place), but **the identity scheme is still positional**. Item 9 is not done.
 
 Emitting `pair_2` in a payload would export that renumbering to third parties, where the failure is invisible to us and unfixable by us: the receiver's dashboard silently re-attributes one folder's events to another, and nothing anywhere logs an error.
 
