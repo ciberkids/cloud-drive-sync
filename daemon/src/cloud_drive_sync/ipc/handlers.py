@@ -352,12 +352,19 @@ class RequestHandler:
         """Whether sign-in is configured, and as whom. Never returns the hash."""
         db = self._web_db()
         if db is None:
-            return {"exists": False, "username": None}
+            # "The database is not available" is NOT "there is no account", and
+            # conflating them would let the HTTP front-end conclude that nothing is
+            # configured. It answers this before the daemon attaches the database,
+            # which today happens before the HTTP port opens — but that ordering
+            # should not be the only thing standing between an account-only
+            # deployment and an open port.
+            return {"exists": False, "username": None, "available": False}
         user = await db.get_web_user()
         if user is None:
-            return {"exists": False, "username": None}
+            return {"exists": False, "username": None, "available": True}
         return {
             "exists": True,
+            "available": True,
             "username": user.username,
             "created_at": user.created_at.isoformat(),
             "password_changed_at": user.password_changed_at.isoformat(),
@@ -414,7 +421,9 @@ class RequestHandler:
             return {"ok": False}
         username = str(params.get("username", "")).strip()
         password = str(params.get("password", ""))
-        if not secrets.compare_digest(username.lower(), user.username.lower()):
+        if not secrets.compare_digest(
+            username.casefold().encode("utf-8"), user.username.casefold().encode("utf-8")
+        ):
             # Still spend the verification, so a wrong username is not faster
             # than a wrong password. Timing is a credential oracle otherwise.
             await auth.verify_password_async(user.password, password)

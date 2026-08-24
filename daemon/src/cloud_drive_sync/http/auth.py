@@ -64,10 +64,16 @@ def matches(expected: str, presented: str | None) -> bool:
 
     ``compare_digest`` rather than ``==`` so response timing does not leak how much
     of the token was correct.
+
+    Compared as **UTF-8 bytes**, not as ``str``. ``compare_digest`` accepts str
+    only for ASCII and raises ``TypeError`` otherwise — so before this, anyone who
+    pasted a non-ASCII character into the token field got an unhandled exception
+    rather than "that token was not accepted". Encoding cannot change any verdict:
+    UTF-8 is injective, so equal bytes mean equal strings.
     """
     if not presented:
         return False
-    return secrets.compare_digest(expected, presented)
+    return secrets.compare_digest(expected.encode("utf-8"), presented.encode("utf-8"))
 
 
 def is_authorised(
@@ -286,7 +292,7 @@ def password_problem(
         return f"Password must be at most {MAX_PASSWORD_LENGTH} characters."
     if username and password.strip().lower() == username.strip().lower():
         return "Password must not be the username."
-    if token and secrets.compare_digest(password, token):
+    if token and secrets.compare_digest(password.encode("utf-8"), token.encode("utf-8")):
         return "Password must not be the access token."
     return None
 
@@ -296,7 +302,12 @@ def username_problem(username: str) -> str | None:
 
     No character class rules — this is a label, not a shell argument — but it is
     stripped, bounded, and must not be blank or contain control characters that
-    would corrupt a log line.
+    would corrupt a log line. Non-ASCII is deliberately allowed: NIST 800-63B,
+    which the password rules follow, requires accepting all Unicode, and a sync
+    client for people with names is the wrong place to invent an exception.
+
+    That permissiveness is exactly why every comparison of these values encodes to
+    bytes first — see :func:`matches`.
     """
     name = username.strip()
     if not name:

@@ -591,3 +591,61 @@ async def test_a_failed_lookup_does_not_lock_out_an_install_with_no_account(serv
     server._forget_account()
 
     assert (await client.get("/api/status")).status != 401
+
+
+# ── Non-ASCII credentials, end to end ───────────────────────────────
+
+
+async def test_a_non_ascii_account_can_actually_sign_in(server_factory):
+    """The lockout this closes: created successfully, then never able to sign in."""
+    client, handler, _ = await server_factory(TOKEN)
+
+    created = await client.post(
+        "/api/auth/setup",
+        json={"token": TOKEN, "username": "matteø", "password": "pässwörd-läng"},
+    )
+    assert created.status == 204, await created.text()
+    assert (await client.post("/api/auth/logout")).status == 204
+
+    signed_in = await client.post(
+        "/api/auth/login", json={"username": "matteø", "password": "pässwörd-läng"}
+    )
+
+    assert signed_in.status == 204, await signed_in.text()
+    assert (await client.get("/api/status")).status == 200
+
+
+async def test_a_non_ascii_token_gets_a_401_not_a_500(server_factory):
+    """Predates this feature: it was an unhandled exception on the token path."""
+    client, _, _ = await server_factory(TOKEN)
+
+    resp = await client.post("/api/auth/token", json={"token": "pässwörd"})
+
+    assert resp.status == 401
+    assert (
+        await client.get("/api/status", headers={"Authorization": "Bearer pässwörd"})
+    ).status == 401
+
+
+async def test_an_unavailable_database_does_not_read_as_no_account(server_factory):
+    """`available: False` is an absence of an answer, not an answer of "no account".
+
+    Today the daemon attaches the database before the HTTP port opens, so this is
+    defence in depth — but that ordering should not be the only thing between an
+    account-only deployment and an open port.
+    """
+    client, handler, server = await server_factory(None, account=True)
+    await _sign_in(client)
+
+    async def unavailable(request):
+        if request.method == "get_web_account":
+            return JsonRpcResponse.success(
+                request.id, {"exists": False, "username": None, "available": False}
+            )
+        return JsonRpcResponse.success(request.id, {"ok": True})
+
+    handler.handle = unavailable
+    server._forget_account()
+    server._sessions.drop_all()
+
+    assert (await client.get("/api/status")).status == 401

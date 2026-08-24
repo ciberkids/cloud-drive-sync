@@ -509,3 +509,175 @@ def test_neither_credential_still_warns(caplog):
 
     assert "NO AUTHENTICATION" in caplog.text
     assert "user set" in caplog.text, "the warning should say how to fix it"
+
+
+# ── Non-ASCII credentials ───────────────────────────────────────────
+#
+# `secrets.compare_digest` accepts `str` for ASCII only and raises TypeError
+# otherwise. Every comparison here therefore encodes to UTF-8 first. Without
+# that, an account created with a name like "matteø" could never sign in — the
+# TypeError surfaced as the same opaque "Sign-in failed." the design chose so it
+# would not leak which half was wrong, making it a silent permanent lockout.
+
+
+def test_a_non_ascii_username_is_allowed():
+    """NIST 800-63B requires accepting all Unicode, and people have names."""
+    assert auth.username_problem("matteø") is None
+    assert auth.username_problem("张伟") is None
+
+
+def test_a_non_ascii_password_is_checked_without_raising():
+    encoded = auth.hash_password("pässwörd-läng")
+    assert auth.verify_password(encoded, "pässwörd-läng") is True
+    assert auth.verify_password(encoded, "pässwörd-lang") is False
+
+
+def test_a_non_ascii_password_is_compared_against_the_token():
+    """The comparison that used to raise. A verdict, not a TypeError."""
+    assert auth.password_problem("pässwörd-läng", username="alice", token="tok") is None
+    token = "tökén-välue-that-is-long"
+    assert auth.password_problem(token, username="alice", token=token) is not None
+
+
+def test_a_non_ascii_token_is_a_refusal_not_a_crash():
+    """Anyone can type a non-ASCII character into the token field.
+
+    This one predates the sign-in work: it has been reachable on the token path
+    since v2.4.0, where it produced an unhandled exception instead of a 401.
+    """
+    assert auth.matches("ascii-token", "pässwörd") is False
+    assert auth.is_authorised("ascii-token", authorization="Bearer pässwörd") is False
+    assert auth.is_authorised("ascii-token", cookie="pässwörd") is False
+
+
+def test_a_non_ascii_token_still_matches_itself():
+    assert auth.matches("tökén-välue", "tökén-välue") is True
+    assert auth.matches("tökén-välue", "tokén-välue") is False
+
+
+# ── The real handler, not a fake ─────────────────────────────────────
+#
+# The endpoint tests in test_feature_web_login_http.py drive a fake handler, so
+# they cannot catch a bug in the real one — a first attempt to pin the non-ASCII
+# lockout there passed against both the fixed and the broken comparison. These go
+# through RequestHandler itself.
+
+
+class _FakeDB:
+    """Just enough Database for the account methods."""
+
+    def __init__(self) -> None:
+        self.user = None
+
+    async def get_web_user(self):
+        return self.user
+
+    async def set_web_user(self, username, password_hash):
+        from datetime import UTC, datetime
+
+        from cloud_drive_sync.db.models import WebUser
+
+        created = self.user.created_at if self.user else datetime.now(UTC)
+        self.user = WebUser(
+            username=username,
+            password=password_hash,
+            created_at=created,
+            password_changed_at=datetime.now(UTC),
+        )
+
+    async def clear_web_user(self):
+        self.user = None
+
+
+def _handler():
+    from cloud_drive_sync.config import Config
+    from cloud_drive_sync.ipc.handlers import RequestHandler
+
+    handler = RequestHandler(None, Config())
+    handler.set_db(_FakeDB())
+    return handler
+
+
+async def _call(handler, method, params=None):
+    from cloud_drive_sync.ipc.protocol import JsonRpcRequest
+
+    response = await handler.handle(JsonRpcRequest(id=1, method=method, params=params or {}))
+    assert response.error is None, f"{method} failed: {response.error}"
+    return response.result
+
+
+def test_the_real_handler_signs_in_a_non_ascii_account():
+    """The lockout, pinned where it actually lived.
+
+    A username like this was accepted at creation and then compared with
+    ``secrets.compare_digest`` on ``str`` — which raises for non-ASCII, surfacing
+    as the same opaque "Sign-in failed." as a wrong password. Created fine, could
+    never sign in, no diagnosable error anywhere.
+    """
+    async def main():
+        handler = _handler()
+        created = await _call(
+            handler, "set_web_account", {"username": "matteø", "password": "pässwörd-läng"}
+        )
+        assert created["status"] == "ok"
+
+        ok = await _call(
+            handler,
+            "verify_web_account",
+            {"username": "matteø", "password": "pässwörd-läng"},
+        )
+        assert ok["ok"] is True, "the correct credentials were refused"
+
+    asyncio.run(main())
+
+
+def test_the_real_handler_still_refuses_a_wrong_non_ascii_password():
+    async def main():
+        handler = _handler()
+        await _call(
+            handler, "set_web_account", {"username": "matteø", "password": "pässwörd-läng"}
+        )
+        bad = await _call(
+            handler, "verify_web_account", {"username": "matteø", "password": "pässwörd-lang"}
+        )
+        assert bad["ok"] is False
+
+    asyncio.run(main())
+
+
+def test_the_real_handler_reports_no_database_as_unavailable():
+    """Distinct from "no account", so the HTTP layer can fail closed on it."""
+    async def main():
+        from cloud_drive_sync.config import Config
+        from cloud_drive_sync.ipc.handlers import RequestHandler
+
+        handler = RequestHandler(None, Config())  # no set_db
+        state = await _call(handler, "get_web_account")
+        assert state["exists"] is False
+        assert state["available"] is False
+
+        with_db = _handler()
+        state = await _call(with_db, "get_web_account")
+        assert state["available"] is True
+
+    asyncio.run(main())
+
+
+def test_the_real_handler_changes_a_non_ascii_password():
+    async def main():
+        handler = _handler()
+        await _call(handler, "set_web_account", {"username": "matteø", "password": "pässwörd-läng"})
+        result = await _call(
+            handler,
+            "change_web_password",
+            {"current": "pässwörd-läng", "new": "nöuveau-mot-de-passe"},
+        )
+        assert result["status"] == "ok", result
+        ok = await _call(
+            handler,
+            "verify_web_account",
+            {"username": "matteø", "password": "nöuveau-mot-de-passe"},
+        )
+        assert ok["ok"] is True
+
+    asyncio.run(main())

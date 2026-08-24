@@ -104,6 +104,11 @@ class HttpServer:
         if not refresh and cached and now - cached[0] < ACCOUNT_CACHE_SECONDS:
             return cached[1]
         state = await self._rpc_quiet("get_web_account")
+        # ``available: False`` means the daemon could not consult the database at
+        # all. Same treatment as an exception: it is an absence of an answer, not
+        # an answer of "no account".
+        if isinstance(state, dict) and state.get("available") is False:
+            state = None
         if not isinstance(state, dict):
             if self._account_seen:
                 log.error(
