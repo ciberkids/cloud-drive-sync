@@ -412,6 +412,12 @@ cloud-drive-sync user show            # username and dates, never the hash
 cloud-drive-sync user clear           # back to token-only
 ```
 
+In a container the module form is the one that exists — the image ships `cloud-drive-sync-daemon`, not `cloud-drive-sync`:
+
+```bash
+docker exec -it cloud-drive-sync python -m cloud_drive_sync user set alice
+```
+
 Or create it from the browser: open the UI, choose **Create an account with a username and password**, and paste the access token to prove you are the operator. That is the same token first run printed, and it is why the setup screen is not something a stranger can claim — on a daemon with **no** token there is no browser path at all, and `user set` on the host is the only way in.
 
 Once an account exists:

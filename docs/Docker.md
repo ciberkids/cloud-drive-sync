@@ -224,6 +224,10 @@ docker exec cloud-drive-sync python -m cloud_drive_sync status
 # Trigger an immediate sync
 docker exec cloud-drive-sync python -m cloud_drive_sync sync
 
+# Create the web UI sign-in account (a username and password instead of
+# pasting the access token into a browser)
+docker exec -it cloud-drive-sync python -m cloud_drive_sync user set alice
+
 # Stop the container (Compose)
 docker compose down
 

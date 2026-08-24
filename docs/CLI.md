@@ -249,6 +249,12 @@ The web UI now asks for this username and password.
 
 Minimum 10 characters, and it may not be the username or the access token. No composition rules — length is the only requirement that helps.
 
+In a container, use the module form — the image ships `cloud-drive-sync-daemon`, so the bare `cloud-drive-sync` name is not on its PATH:
+
+```bash
+docker exec -it cloud-drive-sync python -m cloud_drive_sync user set alice
+```
+
 Running this on a daemon with no access token **turns browser authentication on** for that deployment; the command says so.
 
 ### `user show`
